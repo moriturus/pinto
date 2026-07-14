@@ -1,0 +1,10 @@
+/AGENTS.md
+/CLAUDE.md
+/target
+/fuzz/target
+.claude/settings.local.json
+
+# macOS
+.DS_Store
+
+/coverage.xml
