@@ -1,6 +1,6 @@
 # Contributing
 
-Read the repository's [AGENTS.md](https://github.com/moriturus/pinto/blob/main/AGENTS.md),
+Read the repository's [AGENTS.base.md](https://github.com/moriturus/pinto/blob/main/AGENTS.base.md),
 [CONTRIBUTING.md](https://github.com/moriturus/pinto/blob/main/CONTRIBUTING.md),
 and [design guide](https://github.com/moriturus/pinto/blob/main/docs/DESIGN.md)
 before making a design decision. The project favors a small, fast, Scrum-focused

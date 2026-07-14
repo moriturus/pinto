@@ -66,7 +66,7 @@ fn package_contains_only_runtime_files() {
         ".pinto/", ".serena/", ".github/", "demos/", "docs/", "fuzz/", "skills/", "tests/",
     ];
     let forbidden_files = [
-        "AGENTS.md",
+        "AGENTS.base.md",
         "CHANGELOG.md",
         "CLAUDE.md",
         "CODE_OF_CONDUCT.md",

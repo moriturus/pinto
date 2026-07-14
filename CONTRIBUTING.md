@@ -4,7 +4,7 @@ Thanks for considering a contribution. pinto is deliberately small: every
 change should support practical Scrum work while preserving a fast, local-first,
 plain-text tool.
 
-Read [AGENTS.md](AGENTS.md) and [docs/DESIGN.md](docs/DESIGN.md) before making
+Read [AGENTS.base.md](AGENTS.base.md) and [docs/DESIGN.md](docs/DESIGN.md) before making
 design decisions.
 
 ## Project principles
