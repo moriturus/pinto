@@ -1,0 +1,272 @@
+name: CI
+
+# Run the pinned development `mise run check` gate on every primary OS.
+# The MSRV job verifies the declared minimum, current-stable checks forward
+# compatibility with the full test suite, and release verifies the pinned
+# build/package/install path.
+# Configure branch protection to require these status checks:
+#   - check (ubuntu-latest)
+#   - check (macos-latest)
+#   - check (windows-latest)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  msrv:
+    name: MSRV (Rust 1.89.0)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup MSRV
+        uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
+        with:
+          rust-version: 1.89.0
+          cache: false
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.89.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.89.0-cargo-
+      - name: Build default features with MSRV
+        run: cargo build --locked
+      - name: Test default features with MSRV
+        run: cargo test --locked
+      - name: Build all features with MSRV
+        run: cargo build --all-features --locked
+      - name: Test all features with MSRV
+        run: cargo test --all-features --locked
+
+  check:
+    name: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Setup pinned development toolchain
+        uses: jdx/mise-action@v4.2.0
+        with:
+          install: true
+          install_args: rust mdbook
+          cache: true
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+
+      - name: Verify Git CLI availability
+        run: git --version
+
+      - name: Run pinned check (test + lint + docs + fmt)
+        run: mise run check
+
+  current-stable:
+    name: current stable compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup latest stable Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-stable-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-stable-cargo-
+      - name: Test all features on latest stable
+        run: cargo test --all-features --locked
+
+  release:
+    name: release build and package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup pinned release toolchain
+        uses: jdx/mise-action@v4.2.0
+        with:
+          install: true
+          install_args: rust
+          cache: true
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+      - name: Build release artifact with locked dependencies
+        run: cargo build --release --all-features --locked
+      - name: Verify allowlisted crate package and packaged crate tests
+        run: ./scripts/verify-package.sh
+      - name: Verify source install with locked dependencies
+        run: cargo install --path . --locked --root "$RUNNER_TEMP/pinto"
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup mise
+        uses: jdx/mise-action@v4.2.0
+        with:
+          install: true
+          install_args: rust cargo:cargo-llvm-cov
+          cache: true
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+      - name: Install LLVM coverage tools
+        run: rustup component add llvm-tools-preview
+      - name: Measure coverage
+        run: mise run coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: coverage-report
+          path: coverage.xml
+          if-no-files-found: error
+
+  dependency-policy:
+    name: dependency security and licenses
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup mise
+        uses: jdx/mise-action@v4.2.0
+        with:
+          install: true
+          install_args: rust cargo:cargo-audit cargo:cargo-deny
+          cache: true
+      - name: Audit known vulnerabilities
+        run: mise run audit
+      - name: Check dependency policy
+        run: mise run deny
+
+  rank-benchmark:
+    name: rank benchmark
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup mise
+        uses: jdx/mise-action@v4.2.0
+        with:
+          install: true
+          install_args: rust
+          cache: true
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+      - name: Run rank benchmark
+        run: cargo run --release --locked --example rank_bench
+
+  fuzz:
+    name: ${{ matrix.target }} fuzz
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [automation_plan_parse, markdown_frontmatter_parse]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-nightly-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-nightly-cargo-
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Fuzz ${{ matrix.target }} for five minutes
+        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=300
+      - name: Upload fuzz crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: fuzz-crashes-${{ matrix.target }}-${{ github.run_id }}
+          path: fuzz/artifacts
+          if-no-files-found: ignore

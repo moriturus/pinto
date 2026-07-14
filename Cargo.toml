@@ -1,0 +1,84 @@
+[package]
+name = "pinto-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+description = "A lightweight, local-first, Git-friendly Scrum backlog and Kanban board for the CLI and TUI"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/moriturus/pinto"
+keywords = ["scrum", "kanban", "backlog", "cli", "productivity"]
+categories = ["command-line-utilities"]
+include = [
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE",
+    "/src/**",
+    "/locales/**",
+    "/examples/rank_bench.rs",
+]
+
+[lib]
+name = "pinto"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pinto"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.103"
+chrono = { version = "0.4.45", features = ["serde"] }
+clap = { version = "4.6.1", features = ["derive", "string"] }
+clap_complete = "4.6.7"
+fs4 = { version = "1.1.0", default-features = false, features = ["tokio"] }
+rayon = "1.11.0"
+regex = "1.12.4"
+# TUI for the interactive Kanban (`kanban` subcommand). ratatui re-exports
+# crossterm, so no additional terminal backend dependency is needed.
+ratatui = "0.30.2"
+# Secure editor buffers: exclusive creation, owner-only Unix permissions,
+# collision retries, and RAII cleanup while an external editor runs.
+tempfile = "3.27.0"
+rustyline = "18.0.1"
+# Optional SQLite backend. `bundled` compiles SQLite from source, avoiding a
+# system-library dependency; it remains outside the default build. Keep the
+# 0.39 series while Rust 1.89 is the MSRV: 0.40 pulls a build script that uses
+# the unstable `cfg_select` macro.
+rusqlite = { version = "0.39.0", features = ["bundled"], optional = true }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+# Small crate used only to obtain terminal width (Unix reuses transitive rustix).
+# Querying terminal width is OS-specific and cannot be done with std alone.
+terminal_size = "0.4.4"
+thiserror = "2.0.18"
+# Determines display width (East Asian Width), including combining, zero-width,
+# and emoji characters, more accurately than a local table.
+unicode-width = "0.2.1"
+# Keep only the required Tokio features: the multithread runtime, macros,
+# asynchronous files and processes, coordination primitives, and time-based lock backoff.
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "fs", "io-util", "process", "sync", "time"] }
+toml = "1.1.2"
+fluent-bundle = "0.16"
+unic-langid = "0.9"
+termimad = "0.35.1"
+
+[target.'cfg(unix)'.dependencies]
+# The Unix PTY integration tests use libc directly; the production lock uses fs4 instead.
+libc = "0.2"
+
+[features]
+# Enables the optional SQLite backend. It is disabled by default; enable it with
+# `cargo build --features sqlite` and select it in `config.toml`.
+sqlite = ["dep:rusqlite"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+proptest = "1.9.0"

@@ -1,0 +1,2 @@
+- [ ] run the public API doctests
+- [ ] run the Kanban pseudo-terminal smoke test

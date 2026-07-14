@@ -1,0 +1,62 @@
+# mise manages tool versions and project tasks.
+
+[tools]
+# Development and release commands use this explicit toolchain. The CI
+# current-stable job checks forward compatibility separately.
+rust = "1.97.0"
+mdbook = "0.5.4"
+"cargo:cargo-llvm-cov" = "0.8.7"
+"cargo:cargo-audit" = "0.22.2"
+"cargo:cargo-deny" = "0.20.2"
+
+[tasks.test]
+description = "Run all tests, including optional features such as SQLite"
+# Keep optional feature code paths in the quality gate.
+run = "cargo test --all-features --locked"
+
+[tasks.lint]
+description = "Run Clippy with warnings and selected pedantic lints denied"
+run = "cargo clippy --all-targets --all-features --locked -- -D warnings -D clippy::must_use_candidate -D clippy::redundant_closure_for_method_calls"
+
+[tasks.fmt]
+description = "Format Rust sources"
+run = "cargo fmt"
+
+[tasks.doc]
+description = "Build documentation with warnings denied"
+env = { RUSTDOCFLAGS = "-D warnings" }
+run = "cargo doc --no-deps --all-features --locked"
+
+[tasks.book]
+description = "Build the mdBook project documentation"
+run = "mdbook build"
+
+[tasks.coverage]
+description = "Measure test coverage and fail below 95%"
+run = "cargo llvm-cov --all-features --workspace --locked --cobertura --output-path coverage.xml --fail-under-lines 95"
+
+[tasks.audit]
+description = "Audit dependencies for known vulnerabilities"
+run = "cargo audit"
+
+[tasks.deny]
+description = "Check dependency license and source policies"
+run = "cargo deny check"
+
+[tasks.check]
+description = "Pre-commit gate: test, lint, docs, and formatting"
+depends = ["test", "lint", "doc", "book"]
+run = "cargo fmt --check"
+
+[tasks.release-build]
+description = "Build the release artifact with the pinned toolchain"
+run = "cargo build --release --all-features --locked"
+
+[tasks.release-package]
+description = "Verify the allowlisted crate package with the committed lockfile"
+run = "./scripts/verify-package.sh"
+
+[tasks.release-check]
+description = "Reproduce the complete local pre-release quality gate and package"
+depends = ["check", "coverage", "audit", "deny", "release-build", "release-package"]
+run = "cargo fmt --check"

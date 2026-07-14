@@ -1,0 +1,1 @@
+- [ ] catalog keys match in every locale

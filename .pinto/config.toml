@@ -1,0 +1,20 @@
+columns = [
+    "todo",
+    "in-progress",
+    "review",
+    "done",
+]
+done_column = "done"
+
+[project]
+name = "pinto"
+key = "P"
+
+[tui]
+confirm_quit = true
+
+[storage]
+backend = "file"
+
+[wip]
+enabled = true

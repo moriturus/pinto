@@ -1,0 +1,13 @@
+[book]
+title = "pinto documentation"
+authors = ["pinto contributors"]
+description = "A practical guide to pinto, a local-first Scrum backlog and Kanban board."
+language = "en"
+src = "docs/book/src"
+
+[build]
+build-dir = "target/book"
+
+[output.html]
+git-repository-url = "https://github.com/moriturus/pinto"
+edit-url-template = "https://github.com/moriturus/pinto/edit/main/{path}"

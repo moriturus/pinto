@@ -1,0 +1,5 @@
+- [ ] All Acceptance Criteria checkboxes have been completed
+- [ ] A corresponding integration test exists
+- [ ] Corresponding demo data and `README.md` are present under `demos/`
+- [ ] `mise run check` (test / lint / fmt) passes
+- [ ] Actual behavior has been verified through dogfooding

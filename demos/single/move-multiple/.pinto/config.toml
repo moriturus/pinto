@@ -1,0 +1,23 @@
+columns = [
+    "todo",
+    "in-progress",
+    "review",
+    "done",
+]
+done_column = "done"
+
+[project]
+name = "move-multiple"
+key = "T"
+
+[tui]
+confirm_quit = true
+
+[storage]
+backend = "file"
+
+[wip]
+enabled = true
+
+[wip.limits]
+"in-progress" = 1

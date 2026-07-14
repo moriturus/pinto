@@ -1,0 +1,11 @@
+{
+  "commands": [
+    [
+      "add",
+      "Automation plan demo",
+      "--body",
+      "## Notes\n\n- [ ] run from a file"
+    ],
+    ["move", "T-1", "in-progress"]
+  ]
+}

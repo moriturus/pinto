@@ -1,0 +1,2 @@
+- [ ] inspect the commit tree
+- [ ] verify git status is clean

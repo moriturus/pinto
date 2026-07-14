@@ -1,0 +1,24 @@
+columns = [
+    "todo",
+    "in-progress",
+    "review",
+    "done",
+]
+done_column = "done"
+
+[project]
+name = "wip-limit"
+key = "T"
+
+[tui]
+confirm_quit = true
+
+[storage]
+backend = "file"
+
+[wip]
+enabled = true
+
+[wip.limits]
+"in-progress" = 2
+"review" = 1

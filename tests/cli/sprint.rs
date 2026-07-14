@@ -1,0 +1,1120 @@
+//! Sprint and cycle-time commands.
+
+use super::common::*;
+
+#[test]
+fn sprint_new_uses_a_plain_text_sprint_template() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let template_dir = dir.path().join(".pinto/templates/sprint");
+    std::fs::create_dir_all(&template_dir).expect("create template dir");
+    std::fs::write(
+        template_dir.join("planning.md"),
+        "## Sprint goal\n\nShip it",
+    )
+    .expect("write template");
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--template",
+            "planning",
+        ])
+        .assert()
+        .success();
+
+    let value = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(value[0]["goal"], "## Sprint goal\n\nShip it");
+}
+
+#[test]
+fn cycletime_reports_cycle_and_lead_for_completed_items() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path()).args(["add", "A"]).assert().success();
+    pinto(dir.path()).args(["add", "B"]).assert().success();
+    // 2 件を完了へ移す（start_at / done_at が記録される）。
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["move", "T-2", "done"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .arg("cycletime")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 completed"))
+        .stdout(predicate::str::contains("cycle (start → done)"))
+        .stdout(predicate::str::contains("lead  (created → done)"));
+}
+
+#[test]
+fn ct_alias_emits_json_summaries() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path()).args(["add", "A"]).assert().success();
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["ct", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"completed\": 1"))
+        .stdout(predicate::str::contains("\"cycle\""))
+        .stdout(predicate::str::contains("\"lead\""))
+        .stdout(predicate::str::contains("\"mean_seconds\""))
+        .stdout(predicate::str::contains("\"missing_start\""));
+}
+
+#[test]
+fn cycletime_reports_zero_when_nothing_completed() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path()).args(["add", "A"]).assert().success();
+
+    pinto(dir.path())
+        .arg("cycletime")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 completed"))
+        .stdout(predicate::str::contains("cycle (").not());
+}
+
+#[test]
+fn cycletime_filters_by_sprint() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "In sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Out of sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["move", "T-2", "done"])
+        .assert()
+        .success();
+
+    // S-1 に割り当てた 1 件のみが対象。
+    pinto(dir.path())
+        .args(["cycletime", "--sprint", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 completed"));
+}
+
+#[test]
+fn cycletime_filters_out_items_completed_before_the_since_bound() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path()).args(["add", "A"]).assert().success();
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success();
+
+    // 完了は「今」なので、遠い未来を下限にすれば対象 0 件になる。
+    pinto(dir.path())
+        .args(["cycletime", "--since", "2999-01-01"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 completed"));
+}
+
+#[test]
+fn cycletime_without_init_errors_and_prompts_init() {
+    let dir = TempDir::new().expect("temp dir");
+
+    pinto(dir.path())
+        .arg("cycletime")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("init"));
+}
+
+#[test]
+fn sprint_without_init_errors_and_prompts_init() {
+    let dir = TempDir::new().expect("temp dir");
+
+    pinto(dir.path())
+        .args(["sprint", "list"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("init"));
+}
+
+#[test]
+fn sprint_list_json_outputs_sprint_schema() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Planning", "--goal", "Ship MVP"])
+        .assert()
+        .success();
+
+    let value = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    let sprints = value.as_array().expect("sprint list --json is an array");
+    assert_eq!(sprints.len(), 1);
+    let sprint = &sprints[0];
+    assert_eq!(sprint["id"], "S-1");
+    assert_eq!(sprint["title"], "Planning");
+    assert_eq!(sprint["state"], "planned");
+    assert_eq!(sprint["goal"], "Ship MVP");
+    assert_eq!(sprint["start"], serde_json::Value::Null);
+    assert_eq!(sprint["end"], serde_json::Value::Null);
+    assert!(sprint["created"].is_string(), "created is RFC3339 string");
+}
+
+#[test]
+fn sprint_new_creates_sprint_file_with_frontmatter() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--goal",
+            "Ship the MVP",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created sprint S-1"))
+        .stdout(predicate::str::contains("Sprint One"));
+
+    let file = std::fs::read_to_string(dir.path().join(".pinto/sprints/S-1.md"))
+        .expect("sprint file exists");
+    assert!(file.contains("id = \"S-1\""), "frontmatter carries id");
+    assert!(
+        file.contains("state = \"planned\""),
+        "new sprint is planned"
+    );
+    assert!(
+        file.contains("title = \"Sprint One\""),
+        "title stored in frontmatter"
+    );
+    assert!(file.contains("\n\nShip the MVP\n"), "goal stored as body");
+}
+
+#[test]
+fn sprint_new_with_date_only_period_shows_midnight_in_list() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let config_path = dir.path().join(".pinto/config.toml");
+    let config = std::fs::read_to_string(&config_path).expect("config");
+    std::fs::write(
+        &config_path,
+        config.replace("timezone = \"local\"", "timezone = \"UTC\""),
+    )
+    .expect("configure UTC display");
+
+    // 日付のみ指定は 00:00（UTC）として扱い、表示設定も UTC に固定する。
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-20",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "2026-07-06 00:00 → 2026-07-20 00:00",
+        ));
+}
+
+#[test]
+fn sprint_new_with_minute_precision_period_is_shown_in_list() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let config_path = dir.path().join(".pinto/config.toml");
+    let config = std::fs::read_to_string(&config_path).expect("config");
+    std::fs::write(
+        &config_path,
+        config.replace("timezone = \"local\"", "timezone = \"UTC\""),
+    )
+    .expect("configure UTC display");
+
+    // 分単位の時刻を扱い、そのまま UTC 一覧に表示する。
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06T09:30",
+            "--end",
+            "2026-07-20T18:15",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "2026-07-06 09:30 → 2026-07-20 18:15",
+        ));
+}
+
+#[test]
+fn sprint_start_requires_a_goal_but_creation_does_not() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "sprint goal must be set before starting the sprint",
+        ));
+
+    pinto(dir.path())
+        .args(["sprint", "list", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"state\": \"planned\""));
+}
+
+#[test]
+fn sprint_edit_updates_goal_title_and_period_then_allows_start() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Planning"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "edit",
+            "S-1",
+            "--title",
+            "Execution",
+            "--goal",
+            "Ship the sprint",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-10",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated sprint S-1"));
+
+    let edited = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(edited[0]["title"], "Execution");
+    assert_eq!(edited[0]["goal"], "Ship the sprint");
+    assert_eq!(edited[0]["start"], "2026-07-06T00:00:00+00:00");
+    assert_eq!(edited[0]["end"], "2026-07-10T00:00:00+00:00");
+
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Started sprint S-1"));
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]))[0]["state"],
+        "active"
+    );
+}
+
+#[test]
+fn sprint_edit_rejects_empty_title_and_no_fields_without_mutation() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Planning"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("no fields to update"));
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--title", ""])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("sprint title must not be empty"));
+
+    let unchanged = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(unchanged[0]["title"], "Planning");
+    assert_eq!(unchanged[0]["goal"], "");
+}
+
+#[test]
+fn sprint_capacity_sets_and_displays_calculated_hours() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-10",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "capacity",
+            "S-1",
+            "--daily-hours",
+            "8",
+            "--holidays",
+            "1",
+            "--deduction-factor",
+            "0.8",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Working days: 4"))
+        .stdout(predicate::str::contains("Capacity: 25.6 hours"));
+
+    let value = json_stdout(pinto(dir.path()).args(["sprint", "capacity", "S-1", "--json"]));
+    assert_eq!(value["working_days"], 4);
+    assert_eq!(value["hours"], 25.6);
+}
+
+#[test]
+fn sprint_capacity_rejects_out_of_range_deduction_factor() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-10",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "capacity",
+            "S-1",
+            "--daily-hours",
+            "8",
+            "--holidays",
+            "0",
+            "--deduction-factor",
+            "1.1",
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "deduction factor must be a finite number from 0 to 1",
+        ));
+}
+
+#[test]
+fn sprint_new_start_without_end_is_usage_error_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    // `--start` と `--end` は対で指定する（片方だけは使い方の誤り）。
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06",
+        ])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn sprint_new_start_after_end_is_user_error_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-20",
+            "--end",
+            "2026-07-06",
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("invalid sprint period"));
+}
+
+#[test]
+fn sprint_new_duplicate_id_is_user_error_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "First"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Second"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("already exists"));
+}
+
+#[test]
+fn sprint_start_then_close_transitions_state() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--goal",
+            "Ship the sprint",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Started sprint S-1"));
+    assert!(
+        std::fs::read_to_string(dir.path().join(".pinto/sprints/S-1.md"))
+            .unwrap()
+            .contains("state = \"active\""),
+        "start moves to active"
+    );
+
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Closed sprint S-1"));
+    assert!(
+        std::fs::read_to_string(dir.path().join(".pinto/sprints/S-1.md"))
+            .unwrap()
+            .contains("state = \"closed\""),
+        "close moves to closed"
+    );
+}
+
+#[test]
+fn sprint_close_from_planned_is_user_error_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("invalid sprint transition"));
+}
+
+#[test]
+fn sprint_add_and_unassign_assigns_and_unassigns_pbi() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "Task"]).assert().success();
+
+    // 割り当て → show に反映。
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assigned T-1 to sprint S-1"));
+    pinto(dir.path())
+        .args(["show", "T-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("S-1"));
+
+    // 解除 → sprint フィールドが外れる。
+    pinto(dir.path())
+        .args(["sprint", "unassign", "S-1", "T-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Unassigned T-1 from sprint S-1"));
+    let task = std::fs::read_to_string(dir.path().join(".pinto/tasks/T-1.md")).unwrap();
+    assert!(!task.contains("sprint ="), "sprint field cleared: {task}");
+}
+
+#[test]
+fn sprint_add_by_status_assigns_ranked_items_up_to_limit() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    for title in ["First", "Second", "Third"] {
+        pinto(dir.path()).args(["add", title]).assert().success();
+    }
+    pinto(dir.path())
+        .args(["move", "T-3", "in-progress"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "--status", "todo", "--limit", "2"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assigned T-1 to sprint S-1"))
+        .stdout(predicate::str::contains("Assigned T-2 to sprint S-1"))
+        .stdout(predicate::str::contains("Assigned T-3 to sprint S-1").not());
+
+    let assigned = json_stdout(pinto(dir.path()).args(["list", "--sprint", "S-1", "--json"]));
+    let ids: Vec<_> = assigned
+        .as_array()
+        .expect("list JSON array")
+        .iter()
+        .map(|item| item["id"].as_str().expect("item id"))
+        .collect();
+    assert_eq!(ids, ["T-1", "T-2"]);
+}
+
+#[test]
+fn sprint_add_by_status_without_limit_assigns_all_matching_items() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "First"]).assert().success();
+    pinto(dir.path()).args(["add", "Second"]).assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "--status", "todo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assigned T-1 to sprint S-1"))
+        .stdout(predicate::str::contains("Assigned T-2 to sprint S-1"));
+
+    let assigned = json_stdout(pinto(dir.path()).args(["list", "--sprint", "S-1", "--json"]));
+    assert_eq!(assigned.as_array().expect("list JSON array").len(), 2);
+}
+
+#[test]
+fn sprint_add_by_status_rejects_invalid_input_without_changes() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "Task"]).assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "--status", "missing"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("unknown status"));
+    assert!(show_json(pinto(dir.path()).args(["show", "T-1", "--json"]))["sprint"].is_null());
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "--status", "todo", "--limit", "0"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("must be at least 1"));
+    assert!(show_json(pinto(dir.path()).args(["show", "T-1", "--json"]))["sprint"].is_null());
+}
+
+#[test]
+fn sprint_add_by_status_rejects_closed_sprint_without_changes() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One", "--goal", "Ship it"])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "Task"]).assert().success();
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "--status", "todo"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("closed sprint"));
+    assert!(show_json(pinto(dir.path()).args(["show", "T-1", "--json"]))["sprint"].is_null());
+}
+
+#[test]
+fn sprint_delete_unassigns_pbis_and_keeps_their_data() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Planning"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Keep this PBI"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "remove", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted sprint S-1"));
+
+    assert!(
+        json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]))
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(item["title"], "Keep this PBI");
+    assert!(item["sprint"].is_null(), "deleted sprint is unassigned");
+}
+
+#[test]
+fn sprint_rm_alias_removes_a_sprint() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Planning"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "rm", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted sprint S-1"));
+}
+
+#[test]
+fn sprint_add_to_missing_sprint_is_user_error_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path()).args(["add", "Task"]).assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-9", "T-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("sprint not found"));
+}
+
+#[test]
+fn sprint_add_to_malformed_sprint_is_user_error_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path()).args(["add", "Task"]).assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S 1", "T-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("invalid sprint id"));
+
+    let item = json_stdout(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(item["sprint"], serde_json::Value::Null);
+}
+
+#[test]
+fn sprint_add_rejects_closed_sprint_as_user_error() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--goal",
+            "Ship the sprint",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "Task"]).assert().success();
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("closed sprint"))
+        .stderr(predicate::str::contains("planned or active"));
+
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(item["sprint"], serde_json::Value::Null);
+}
+
+#[test]
+fn sprint_add_allows_active_and_unassign_allows_closed_sprint() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--goal",
+            "Ship the sprint",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "Task"]).assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assigned T-1 to sprint S-1"));
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "unassign", "S-1", "T-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Unassigned T-1 from sprint S-1"));
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(item["sprint"], serde_json::Value::Null);
+}
+
+#[test]
+fn sprint_list_shows_sprints_in_creation_order() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "First"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-2",
+            "Second",
+            "--goal",
+            "Ship the sprint",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "start", "S-2"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("S-1"))
+        .stdout(predicate::str::contains("planned"))
+        .stdout(predicate::str::contains("S-2"))
+        .stdout(predicate::str::contains("active"));
+}
+
+#[test]
+fn sprint_list_empty_reports_no_sprints() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No sprints"));
+}
+
+#[test]
+fn sprint_velocity_lists_completed_points_average_and_unestimated_work() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    for id in ["S-1", "S-2"] {
+        pinto(dir.path())
+            .args(["sprint", "new", id, id])
+            .assert()
+            .success();
+    }
+    pinto(dir.path())
+        .args(["add", "Estimated", "--points", "3"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Unestimated"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Incomplete", "--points", "8"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-2", "T-2"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-2", "T-3"])
+        .assert()
+        .success();
+    for id in ["T-1", "T-2"] {
+        pinto(dir.path())
+            .args(["move", id, "done"])
+            .assert()
+            .success();
+    }
+
+    pinto(dir.path())
+        .args(["sprint", "velocity", "--recent", "2"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Velocity (last 2 sprints)"))
+        .stdout(predicate::str::contains("S-1"))
+        .stdout(predicate::str::contains("S-2"))
+        .stdout(predicate::str::contains("Average: 1.5 points"))
+        .stdout(predicate::str::contains("Change: -100.0% vs prior average"))
+        .stdout(predicate::str::contains("unestimated: 1"))
+        .stdout(predicate::str::contains("incomplete: 1"));
+}
+
+#[test]
+fn sprint_velocity_handles_an_empty_board() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .arg("sprint")
+        .arg("velocity")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No sprints"));
+}
+
+#[test]
+fn sprint_burndown_renders_chart_with_period_and_remaining() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-08",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "A"]).assert().success();
+    pinto(dir.path()).args(["add", "B"]).assert().success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-2"])
+        .assert()
+        .success();
+    // T-1 を完了へ移す（残量が減る）。
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "burndown", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("burndown (items)"))
+        .stdout(predicate::str::contains("Period 2026-07-06 → 2026-07-08"));
+}
+
+#[test]
+fn sprint_burndown_json_emits_daily_series() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-08",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "A"]).assert().success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "burndown", "S-1", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"metric\": \"items\""))
+        .stdout(predicate::str::contains("\"remaining\""))
+        .stdout(predicate::str::contains("\"date\": \"2026-07-06\""));
+}
+
+#[test]
+fn sprint_burndown_without_period_guides_user_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["add", "A"]).assert().success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+
+    // 計画日程が無いので描画できず、設定方法を案内する。
+    pinto(dir.path())
+        .args(["sprint", "burndown", "S-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("no start/end dates"));
+}
+
+#[test]
+fn sprint_burndown_without_items_guides_user_code_1() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-08",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "burndown", "S-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("no assigned items"));
+}
