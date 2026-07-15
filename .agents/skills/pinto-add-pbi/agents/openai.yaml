@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pinto Add PBI"
+  short_description: "Create English PBIs with automate and stack order"
+  default_prompt: "Use $pinto-add-pbi to create English PBIs with dry-run-validated automate plans and stacked priority."
