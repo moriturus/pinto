@@ -51,6 +51,10 @@ Run `mdbook serve` to preview the site locally. The source is in
 repository's design, JSON, migration, and dogfooding reference documents remain available under
 [`docs/`](docs/).
 
+The published book is available at [moriturus.github.io/pinto](https://moriturus.github.io/pinto/).
+The [`pages.yml`](.github/workflows/pages.yml) workflow rebuilds and deploys it to GitHub Pages on
+pushes to `main` and on manual dispatch.
+
 ## Quick start
 
 ```bash

@@ -1,0 +1,57 @@
+name: Deploy book to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  MISE_AUTO_INSTALL: "false"
+
+jobs:
+  build:
+    name: build book
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup pinned book toolchain
+        uses: jdx/mise-action@v4.2.0
+        with:
+          version: 2026.7.6
+          install: true
+          install_args: mdbook
+          cache: true
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Build book
+        run: mise run book
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/book
+
+  deploy:
+    name: deploy book
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
