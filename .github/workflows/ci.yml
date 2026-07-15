@@ -33,7 +33,7 @@ jobs:
       - name: Setup MSRV
         uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
         with:
-          rust-version: 1.89.0
+          toolchain: 1.89.0
           cache: false
       - name: Cache Cargo dependencies and build artifacts
         uses: actions/cache@v6.1.0
@@ -74,6 +74,8 @@ jobs:
           install: true
           install_args: rust mdbook
           cache: true
+      - name: Install Rust quality components
+        run: rustup component add --toolchain 1.97.0 clippy rustfmt
       - name: Cache Cargo dependencies and build artifacts
         uses: actions/cache@v6.1.0
         with:
@@ -92,6 +94,8 @@ jobs:
         run: git --version
 
       - name: Run pinned check (test + lint + docs + fmt)
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run check
 
   current-stable:
@@ -178,6 +182,8 @@ jobs:
       - name: Install LLVM coverage tools
         run: rustup component add llvm-tools-preview
       - name: Measure coverage
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run coverage
       - name: Upload coverage report
         if: always()
@@ -200,8 +206,12 @@ jobs:
           install_args: rust cargo:cargo-audit cargo:cargo-deny
           cache: true
       - name: Audit known vulnerabilities
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run audit
       - name: Check dependency policy
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run deny
 
   rank-benchmark:

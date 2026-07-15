@@ -160,10 +160,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "sqlite")]
     use crate::backlog::{BacklogItem, ItemId, Status};
+    #[cfg(feature = "sqlite")]
     use crate::rank::Rank;
     use crate::service::init_board;
-    use crate::storage::{BacklogItemRepository, StorageBackend};
+    #[cfg(feature = "sqlite")]
+    use crate::storage::BacklogItemRepository;
+    use crate::storage::StorageBackend;
+    #[cfg(feature = "sqlite")]
     use chrono::Utc;
     use std::sync::Arc;
     use tempfile::TempDir;

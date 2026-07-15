@@ -150,6 +150,16 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn parent_traversal_stops_on_an_existing_cycle() {
+        let items = [item_with_parent(1, 2), item_with_parent(2, 1)];
+        assert!(!parent_creates_cycle(
+            &items,
+            &ItemId::new("T", 3),
+            &ItemId::new("T", 1)
+        ));
+    }
+
     // --- dependency_creates_cycle ---
 
     #[test]
@@ -206,6 +216,16 @@ mod tests {
         assert!(!dependency_creates_cycle(
             &items,
             &ItemId::new("T", 4),
+            &ItemId::new("T", 1)
+        ));
+    }
+
+    #[test]
+    fn dependency_traversal_ignores_an_existing_cycle_not_reaching_the_item() {
+        let items = [item_with_deps(1, &[2]), item_with_deps(2, &[1])];
+        assert!(!dependency_creates_cycle(
+            &items,
+            &ItemId::new("T", 3),
             &ItemId::new("T", 1)
         ));
     }

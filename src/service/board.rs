@@ -793,6 +793,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn done_sort_places_completed_items_before_undated_items() {
+        let now = chrono::DateTime::from_timestamp(0, 0).expect("ts");
+        let mut completed = BacklogItem::new(
+            crate::backlog::ItemId::new("T", 1),
+            "Completed",
+            Status::new("done"),
+            crate::rank::Rank::after(None),
+            now,
+        )
+        .expect("item");
+        completed.done_at = Some(now);
+        let undated = BacklogItem::new(
+            crate::backlog::ItemId::new("T", 2),
+            "Undated",
+            Status::new("done"),
+            crate::rank::Rank::after(None),
+            now,
+        )
+        .expect("item");
+        let mut items = vec![completed, undated];
+
+        sort_items(&mut items, SortKey::Done, false);
+
+        assert!(items[0].done_at.is_some());
+        assert!(items[1].done_at.is_none());
+    }
+
     /// Overwrite `created` with any value (definitive setup for sorting tests).
     async fn set_created(dir: &Path, id: &crate::backlog::ItemId, created: i64) {
         use crate::storage::{BacklogItemRepository, FileRepository};

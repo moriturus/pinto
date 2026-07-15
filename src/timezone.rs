@@ -172,6 +172,9 @@ mod tests {
             minus.format_datetime(instant(30 * 60), "%Y-%m-%d %H:%M"),
             "1969-12-31 23:30"
         );
+        assert_eq!(DisplayTimezone::Utc.to_string(), "UTC");
+        assert_eq!(plus.to_string(), "+09:00");
+        assert_eq!(minus.to_string(), "-01:00");
     }
 
     #[test]
