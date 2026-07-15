@@ -2146,4 +2146,42 @@ mod tests {
 
         assert!(error.to_string().contains("must be provided together"));
     }
+
+    #[tokio::test]
+    async fn automation_plan_source_handles_inline_and_invalid_sources() {
+        let inline = "{\0\"commands\":[]}";
+        assert_eq!(read_automation_plan(inline).await.unwrap(), inline);
+
+        let invalid_path = "automation\0plan.json";
+        let error = read_automation_plan(invalid_path)
+            .await
+            .expect_err("invalid path should return a structured source error");
+        assert!(matches!(
+            error.downcast_ref::<Error>(),
+            Some(Error::AutomationPlanSource { path, .. })
+                if path == Path::new(invalid_path)
+        ));
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let directory_path = directory.path().to_str().expect("temporary path is UTF-8");
+        let error = read_automation_plan(directory_path)
+            .await
+            .expect_err("a directory is not a readable plan file");
+        assert!(matches!(
+            error.downcast_ref::<Error>(),
+            Some(Error::AutomationPlanSource { path, .. })
+                if path == directory.path()
+        ));
+
+        let missing_path = directory.path().join("missing.json");
+        let missing_path = missing_path.to_str().expect("temporary path is UTF-8");
+        let error = read_automation_plan(missing_path)
+            .await
+            .expect_err("missing path should return a structured source error");
+        assert!(matches!(
+            error.downcast_ref::<Error>(),
+            Some(Error::AutomationPlanSource { path, message })
+                if path == Path::new(missing_path) && message == "file does not exist"
+        ));
+    }
 }

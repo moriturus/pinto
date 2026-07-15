@@ -86,6 +86,15 @@ fn documentation_includes_the_required_operating_instructions() {
             "contributing guide omits {term}"
         );
     }
+
+    let testing = repository_file("docs/book/src/testing.md");
+    for term in [
+        "mise run coverage",
+        "SHELL_EXIT_WAIT",
+        "Cobertura line-rate",
+    ] {
+        assert!(testing.contains(term), "testing guide omits {term}");
+    }
 }
 
 #[test]
@@ -590,4 +599,35 @@ fn local_release_gate_runs_every_required_quality_job() {
     for task in ["check", "coverage", "audit", "deny"] {
         assert!(gate.contains(task), "release-check omits the {task} task");
     }
+}
+
+#[test]
+fn ci_runs_on_primary_development_branch_pushes() {
+    let workflow = repository_file(".github/workflows/ci.yml");
+    assert!(
+        workflow.contains("branches: [main, develop]"),
+        "CI push trigger must include both main and develop"
+    );
+}
+
+#[test]
+fn coverage_gate_checks_the_uploaded_cobertura_metric() {
+    let mise = repository_file("mise.toml");
+    assert!(mise.contains("--cobertura --output-path coverage.xml"));
+    assert!(mise.contains("./scripts/check-coverage.sh coverage.xml 0.95"));
+    assert!(!mise.contains("--fail-under-lines"));
+
+    let checker = repository_file("scripts/check-coverage.sh");
+    for marker in ["line-rate", "minimum", "coverage.xml"] {
+        assert!(checker.contains(marker), "coverage checker omits {marker}");
+    }
+
+    let workflow = repository_file(".github/workflows/ci.yml");
+    let coverage_job = workflow
+        .split_once("  coverage:")
+        .and_then(|(_, rest)| rest.split_once("  dependency-policy:"))
+        .map(|(job, _)| job)
+        .expect("workflow contains a bounded coverage job");
+    assert!(coverage_job.contains("if: success()"));
+    assert!(!coverage_job.contains("if: always()"));
 }

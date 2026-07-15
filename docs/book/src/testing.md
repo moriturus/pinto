@@ -10,6 +10,26 @@ cargo test --test cli         # CLI and pseudo-terminal smoke tests
 mise run check                # tests, Clippy, Rust docs, mdBook, and fmt
 ```
 
+`mise run coverage` writes `coverage.xml` in Cobertura format and then checks
+the artifact's root Cobertura line-rate with `scripts/check-coverage.sh`. The 0.95
+threshold is therefore applied to the same metric that CI uploads, rather than
+to the different denominator used by the LLVM text summary.
+
+The macOS PTY lifecycle regression can be reproduced with:
+
+```bash
+cargo test --test cli kanban::pty_tests::shell_can_reenter_kanban_without_leaking_lifecycle_state -- --exact --nocapture
+```
+
+The CI failure observed on the macOS 26 arm64 runner occurred after the test
+had returned to the third `pinto>` prompt following two Kanban entries. The
+child process did not satisfy the test's three-second exit deadline after
+Ctrl-D, while the same lifecycle passed on local macOS and Linux; the Windows
+check suite also passed.
+The test keeps the Ctrl-D and terminal-flag assertions, but uses the
+platform-specific `SHELL_EXIT_WAIT` deadline only for this final process-exit
+wait so PTY teardown latency is not mistaken for a lifecycle leak.
+
 The Markdown frontmatter parser and automation-plan parser have libFuzzer
 targets under `fuzz/`. Install the fuzz runner once with nightly-compatible
 tooling:

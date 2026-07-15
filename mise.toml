@@ -32,8 +32,11 @@ description = "Build the mdBook project documentation"
 run = "mdbook build"
 
 [tasks.coverage]
-description = "Measure test coverage and fail below 95%"
-run = "cargo llvm-cov --all-features --workspace --locked --cobertura --output-path coverage.xml --fail-under-lines 95"
+description = "Measure Cobertura line coverage and fail below 95%"
+run = [
+  "cargo llvm-cov --all-features --workspace --locked --cobertura --output-path coverage.xml",
+  "./scripts/check-coverage.sh coverage.xml 0.95",
+]
 
 [tasks.audit]
 description = "Audit dependencies for known vulnerabilities"

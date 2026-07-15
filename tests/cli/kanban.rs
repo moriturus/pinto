@@ -182,6 +182,10 @@ mod pty_tests {
     use std::time::{Duration, Instant};
 
     const WAIT: Duration = Duration::from_secs(3);
+    // macOS runners can take longer to hand the PTY back to rustyline after repeated TUI
+    // lifecycles. Keep the exit assertion strict while allowing that platform-specific teardown
+    // latency to settle.
+    const SHELL_EXIT_WAIT: Duration = Duration::from_secs(10);
     const CURSOR_QUERY: &[u8] = b"\x1b[6n";
     const CURSOR_RESPONSE: &[u8] = b"\x1b[1;1R";
 
@@ -344,6 +348,27 @@ mod pty_tests {
                 String::from_utf8_lossy(output).into_owned(),
             ))
         }
+
+        fn read_available(&mut self, output: &mut Vec<u8>) -> io::Result<()> {
+            loop {
+                let mut buffer = [0_u8; 8192];
+                let read = match self.master.read(&mut buffer) {
+                    Ok(0) => return Ok(()),
+                    Ok(read) => read,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+                    Err(error) => return Err(error),
+                };
+                output.extend_from_slice(&buffer[..read]);
+                let cursor_queries = output
+                    .windows(CURSOR_QUERY.len())
+                    .filter(|window| *window == CURSOR_QUERY)
+                    .count();
+                while self.answered_queries < cursor_queries {
+                    self.send(CURSOR_RESPONSE)?;
+                    self.answered_queries += 1;
+                }
+            }
+        }
     }
 
     struct ChildGuard(Child);
@@ -362,13 +387,34 @@ mod pty_tests {
         }
     }
 
-    fn wait_for_exit(child: &mut Child, timeout: Duration) -> io::Result<std::process::ExitStatus> {
+    fn wait_for_exit_while_draining(
+        child: &mut Child,
+        pty: &mut Pty,
+        output: &mut Vec<u8>,
+        timeout: Duration,
+    ) -> io::Result<std::process::ExitStatus> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             if let Some(status) = child.try_wait()? {
+                pty.read_available(output)?;
                 return Ok(status);
             }
-            thread::sleep(Duration::from_millis(10));
+            let timeout = deadline
+                .saturating_duration_since(Instant::now())
+                .as_millis()
+                .min(100) as libc::c_int;
+            let mut poll = libc::pollfd {
+                fd: pty.master.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ready = unsafe { libc::poll(&mut poll, 1, timeout) };
+            if ready == -1 {
+                return Err(io::Error::last_os_error());
+            }
+            if ready > 0 {
+                pty.read_available(output)?;
+            }
         }
         Err(io::Error::new(
             io::ErrorKind::TimedOut,
@@ -433,12 +479,13 @@ mod pty_tests {
                 >= 2
         })
         .unwrap_or_else(|error| panic!("kanban did not leave alternate screen: {error}"));
-        let status = wait_for_exit(&mut child.0, WAIT).unwrap_or_else(|error| {
-            panic!(
-                "wait pinto kanban: {error}; output: {}",
-                String::from_utf8_lossy(&output)
-            )
-        });
+        let status = wait_for_exit_while_draining(&mut child.0, &mut pty, &mut output, WAIT)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "wait pinto kanban: {error}; output: {}",
+                    String::from_utf8_lossy(&output)
+                )
+            });
         assert!(status.success(), "kanban exited with {status}");
         assert!(
             output
@@ -520,7 +567,8 @@ mod pty_tests {
                 .any(|window| window == b"\x1b[?1049l")
         })
         .unwrap_or_else(|error| panic!("kanban did not leave alternate screen: {error}"));
-        let status = wait_for_exit(&mut child.0, WAIT).expect("wait pinto kanban");
+        let status = wait_for_exit_while_draining(&mut child.0, &mut pty, &mut output, WAIT)
+            .expect("wait pinto kanban");
         assert!(status.success(), "kanban exited with {status}");
     }
 
@@ -584,12 +632,14 @@ mod pty_tests {
             .unwrap_or_else(|error| panic!("shell prompt did not return a second time: {error}"));
 
         pty.send(b"\x04").expect("exit shell");
-        let status = wait_for_exit(&mut child.0, WAIT).unwrap_or_else(|error| {
-            panic!(
-                "wait pinto shell: {error}; output: {}",
-                String::from_utf8_lossy(&output)
-            )
-        });
+        let status =
+            wait_for_exit_while_draining(&mut child.0, &mut pty, &mut output, SHELL_EXIT_WAIT)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "wait pinto shell: {error}; output: {}",
+                        String::from_utf8_lossy(&output)
+                    )
+                });
         assert!(status.success(), "shell exited with {status}");
         assert!(
             output
