@@ -5,6 +5,26 @@ All notable changes to pinto are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-07-16
+
+This patch release improves cross-platform reliability without changing the
+board file format or the existing CLI contract.
+
+### Fixed
+
+- Inline JSON automation plans are no longer rejected as invalid filesystem
+  paths on Windows. Malformed, missing, and directory sources now return
+  actionable source errors.
+- Windows board-lock identity checks use stable Win32 handle APIs, keeping lock
+  cleanup safe when the same file is opened through different handles.
+
+### Changed
+
+- CI now validates pushes to `develop` with pinned toolchains and a Cobertura-
+  based coverage gate, stabilizing macOS and Windows quality checks.
+- The installation and reproducible-release documentation now describes the
+  published 0.1.1 package and release verification flow.
+
 ## [0.1.0] - 2026-07-15
 
 This is the initial 0.x release. pinto follows Semantic Versioning, but

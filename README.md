@@ -23,8 +23,13 @@ cd pinto
 cargo install --path . --locked
 ```
 
-After publication, the crates.io package can be installed with
-`cargo install pinto-cli`; the installed binary remains `pinto`.
+The latest published release is `0.1.1`. Install it from crates.io with:
+
+```bash
+cargo install pinto-cli --version 0.1.1
+```
+
+The installed binary remains `pinto`.
 
 ## Agent skill
 

@@ -51,3 +51,26 @@ committed `release/package-files.txt`, and run tests against the extracted
 packaged crate. A deliberate runtime-file addition must update the allowlist
 and its file-list baseline together. CI also runs `cargo install --path . --locked`
 from the clean checkout as the source-install check.
+
+## Publishing a release
+
+For a patch release, update the package version in `Cargo.toml` and both
+committed lockfiles, move the relevant entries into a dated `CHANGELOG.md`
+heading, and update the published-version installation examples. Before
+publishing, run the complete local release gate and verify the package without
+uploading it:
+
+```bash
+mise run release-check
+cargo publish --dry-run --all-features --locked
+```
+
+After the release commit has passed CI and has been fast-forwarded to `main`,
+create the repository's version tag and push it together with `main`. Publish
+the same locked package to crates.io only after the tag points at that commit:
+
+```bash
+git tag 0.1.1
+git push origin main 0.1.1
+cargo publish --all-features --locked
+```
