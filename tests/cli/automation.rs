@@ -194,6 +194,23 @@ fn automate_executes_a_structured_plan_from_the_cli() {
 }
 
 #[test]
+fn automate_reads_a_plan_file_whose_name_starts_with_a_brace() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    std::fs::write(
+        dir.path().join("{plan.json"),
+        r#"{"commands":[["add","From a brace-named file"]]}"#,
+    )
+    .expect("write plan file");
+
+    pinto(dir.path())
+        .args(["automate", "--plan", "{plan.json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created T-1"));
+}
+
+#[test]
 fn automate_add_supports_parent_and_multiple_dependencies() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

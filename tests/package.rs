@@ -16,7 +16,7 @@ fn packaged_files() -> Vec<String> {
     String::from_utf8(output.stdout)
         .expect("cargo package file list is UTF-8")
         .lines()
-        .map(str::to_owned)
+        .map(|file| file.replace('\\', "/"))
         .collect()
 }
 

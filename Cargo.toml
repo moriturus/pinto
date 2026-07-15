@@ -68,6 +68,13 @@ termimad = "0.35.1"
 # The Unix PTY integration tests use libc directly; the production lock uses fs4 instead.
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+# The Windows MetadataExt file identity methods remain unstable; use the stable Win32 handle API.
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
+
 [features]
 # Enables the optional SQLite backend. It is disabled by default; enable it with
 # `cargo build --features sqlite` and select it in `config.toml`.

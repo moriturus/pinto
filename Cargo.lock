@@ -1457,6 +1457,7 @@ dependencies = [
  "toml",
  "unic-langid",
  "unicode-width 0.2.2",
+ "windows-sys",
 ]
 
 [[package]]

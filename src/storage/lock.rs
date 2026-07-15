@@ -58,17 +58,29 @@ fn identity_from_metadata(metadata: &std::fs::Metadata) -> std::io::Result<FileI
 }
 
 #[cfg(windows)]
-fn identity_from_metadata(metadata: &std::fs::Metadata) -> std::io::Result<FileIdentity> {
-    use std::os::windows::fs::MetadataExt;
-
-    let (Some(volume_serial_number), Some(file_index)) =
-        (metadata.volume_serial_number(), metadata.file_index())
-    else {
-        return Err(std::io::Error::other("lock file identity is unavailable"));
+fn identity_from_handle<T: std::os::windows::io::AsRawHandle>(
+    file: &T,
+) -> std::io::Result<FileIdentity> {
+    use std::mem::MaybeUninit;
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
     };
+
+    let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+    // SAFETY: `file` owns a live handle for the duration of this call, and the output pointer
+    // points to writable storage for the exact structure required by the Win32 API.
+    let result =
+        unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) };
+    if result == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    // SAFETY: Win32 reports success only after initializing the output structure.
+    let information = unsafe { information.assume_init() };
     Ok(FileIdentity::Windows {
-        volume_serial_number,
-        file_index,
+        volume_serial_number: information.dwVolumeSerialNumber,
+        file_index: (u64::from(information.nFileIndexHigh) << 32)
+            | u64::from(information.nFileIndexLow),
     })
 }
 
@@ -79,13 +91,38 @@ fn identity_from_metadata(_metadata: &std::fs::Metadata) -> std::io::Result<File
     ))
 }
 
+#[cfg(windows)]
+async fn file_identity(file: &tokio::fs::File) -> std::io::Result<FileIdentity> {
+    identity_from_handle(file)
+}
+
+#[cfg(not(windows))]
 async fn file_identity(file: &tokio::fs::File) -> std::io::Result<FileIdentity> {
     let metadata = file.metadata().await?;
     identity_from_metadata(&metadata)
 }
 
+#[cfg(windows)]
+async fn path_identity(path: &Path) -> std::io::Result<FileIdentity> {
+    let file = tokio::fs::File::open(path).await?;
+    identity_from_handle(&file)
+}
+
+#[cfg(not(windows))]
 async fn path_identity(path: &Path) -> std::io::Result<FileIdentity> {
     let metadata = tokio::fs::metadata(path).await?;
+    identity_from_metadata(&metadata)
+}
+
+#[cfg(windows)]
+fn sync_path_identity(path: &Path) -> std::io::Result<FileIdentity> {
+    let file = std::fs::File::open(path)?;
+    identity_from_handle(&file)
+}
+
+#[cfg(not(windows))]
+fn sync_path_identity(path: &Path) -> std::io::Result<FileIdentity> {
+    let metadata = std::fs::metadata(path)?;
     identity_from_metadata(&metadata)
 }
 
@@ -201,10 +238,7 @@ impl Drop for BoardLock {
         // Remove the path while the OS lock is still held. Releasing first would let another
         // process acquire the path before this cleanup, and then delete that process's lock.
         // Compare the file identity so a manually replaced path is never removed accidentally.
-        let same_file = std::fs::metadata(&self.path)
-            .ok()
-            .and_then(|metadata| identity_from_metadata(&metadata).ok())
-            == Some(self.identity);
+        let same_file = sync_path_identity(&self.path).ok() == Some(self.identity);
         if same_file {
             let _ = std::fs::remove_file(&self.path);
         }
@@ -227,6 +261,24 @@ mod tests {
         // Releasing the guard removes the file, so the lock can be acquired again.
         assert!(!dir.path().join(LOCK_FILE).exists());
         BoardLock::acquire(dir.path()).await.expect("reacquire");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_file_identity_matches_across_handles() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("identity");
+        let file = tokio::fs::File::create(&path)
+            .await
+            .expect("create identity file");
+        let reopened = tokio::fs::File::open(&path)
+            .await
+            .expect("reopen identity file");
+
+        assert_eq!(
+            identity_from_handle(&file).expect("failed to inspect the first handle"),
+            identity_from_handle(&reopened).expect("failed to inspect the reopened handle"),
+        );
     }
 
     #[test]

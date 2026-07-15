@@ -206,6 +206,14 @@ fn add_uses_a_plain_text_item_template() {
 fn add_with_missing_template_explains_where_to_create_it() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
+    let expected_path = dir
+        .path()
+        .join(".pinto")
+        .join("templates")
+        .join("item")
+        .join("missing.md")
+        .display()
+        .to_string();
 
     pinto(dir.path())
         .args(["add", "Item", "--template", "missing"])
@@ -213,15 +221,21 @@ fn add_with_missing_template_explains_where_to_create_it() {
         .failure()
         .code(1)
         .stderr(predicate::str::contains("template not found: item/missing"))
-        .stderr(predicate::str::contains(".pinto/templates/item/missing.md"));
+        .stderr(predicate::str::contains(expected_path));
 }
 
 #[test]
 fn add_with_unreadable_template_explains_which_file_to_fix() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
-    std::fs::create_dir_all(dir.path().join(".pinto/templates/item/broken.md"))
-        .expect("create directory in place of template");
+    let template_path = dir
+        .path()
+        .join(".pinto")
+        .join("templates")
+        .join("item")
+        .join("broken.md");
+    std::fs::create_dir_all(&template_path).expect("create directory in place of template");
+    let expected_path = template_path.display().to_string();
 
     pinto(dir.path())
         .args(["add", "Item", "--template", "broken"])
@@ -229,7 +243,7 @@ fn add_with_unreadable_template_explains_which_file_to_fix() {
         .failure()
         .code(1)
         .stderr(predicate::str::contains("template cannot be read"))
-        .stderr(predicate::str::contains(".pinto/templates/item/broken.md"));
+        .stderr(predicate::str::contains(expected_path));
 }
 
 #[cfg(unix)]

@@ -331,14 +331,21 @@ async fn read_automation_plan(source: &str) -> anyhow::Result<String> {
         return Ok(input);
     }
 
+    let inline_json = source.trim_start().starts_with('{');
     let path = Path::new(source);
-    let exists =
-        tokio::fs::try_exists(path)
-            .await
-            .map_err(|error| Error::AutomationPlanSource {
+    let exists = match tokio::fs::try_exists(path).await {
+        Ok(exists) => exists,
+        // JSON such as `{"commands": [...]}` is not a valid Windows path. Preserve the
+        // existing-file precedence while allowing the parser to report malformed inline JSON.
+        Err(_error) if inline_json => return Ok(source.to_string()),
+        Err(error) => {
+            return Err(Error::AutomationPlanSource {
                 path: path.to_path_buf(),
                 message: error.to_string(),
-            })?;
+            }
+            .into());
+        }
+    };
     if exists {
         return tokio::fs::read_to_string(path).await.map_err(|error| {
             Error::AutomationPlanSource {
@@ -348,7 +355,7 @@ async fn read_automation_plan(source: &str) -> anyhow::Result<String> {
             .into()
         });
     }
-    if source.trim_start().starts_with('{') {
+    if inline_json {
         return Ok(source.to_string());
     }
     Err(Error::AutomationPlanSource {
