@@ -196,12 +196,31 @@ mod pty_tests {
         fn open() -> io::Result<Self> {
             let mut master = -1;
             let mut slave = -1;
+            #[cfg(target_os = "linux")]
+            let window = libc::winsize {
+                ws_row: 24,
+                ws_col: 100,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            #[cfg(not(target_os = "linux"))]
             let mut window = libc::winsize {
                 ws_row: 24,
                 ws_col: 100,
                 ws_xpixel: 0,
                 ws_ypixel: 0,
             };
+            #[cfg(target_os = "linux")]
+            let result = unsafe {
+                libc::openpty(
+                    &mut master,
+                    &mut slave,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &window,
+                )
+            };
+            #[cfg(not(target_os = "linux"))]
             let result = unsafe {
                 libc::openpty(
                     &mut master,

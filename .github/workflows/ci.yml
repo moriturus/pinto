@@ -60,6 +60,8 @@ jobs:
   check:
     name: check
     runs-on: ${{ matrix.os }}
+    env:
+      MISE_AUTO_INSTALL: "false"
     strategy:
       fail-fast: false
       matrix:
@@ -71,6 +73,7 @@ jobs:
       - name: Setup pinned development toolchain
         uses: jdx/mise-action@v4.2.0
         with:
+          version: 2026.7.6
           install: true
           install_args: rust mdbook
           cache: true
@@ -94,8 +97,6 @@ jobs:
         run: git --version
 
       - name: Run pinned check (test + lint + docs + fmt)
-        env:
-          MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run check
 
   current-stable:
@@ -131,6 +132,7 @@ jobs:
       - name: Setup pinned release toolchain
         uses: jdx/mise-action@v4.2.0
         with:
+          version: 2026.7.6
           install: true
           install_args: rust
           cache: true
@@ -163,6 +165,7 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@v4.2.0
         with:
+          version: 2026.7.6
           install: true
           install_args: rust cargo:cargo-llvm-cov
           cache: true
@@ -202,6 +205,7 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@v4.2.0
         with:
+          version: 2026.7.6
           install: true
           install_args: rust cargo:cargo-audit cargo:cargo-deny
           cache: true
@@ -224,6 +228,7 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@v4.2.0
         with:
+          version: 2026.7.6
           install: true
           install_args: rust
           cache: true
