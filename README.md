@@ -3,6 +3,8 @@
 > ***Clarity, Simplicity and Humanity.***  
 > ***With or without AI.***
 
+[![CI](https://github.com/moriturus/pinto/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/moriturus/pinto/actions/workflows/ci.yml) [![Crates.io](https://img.shields.io/crates/v/pinto-cli.svg)](https://crates.io/crates/pinto-cli)
+
 **pinto** is a lightweight, local-first Scrum backlog and Kanban board for the terminal.
 It keeps Product Backlog Items (PBIs), Sprints, and board state in readable text files so that every change is easy to inspect with Git.
 
