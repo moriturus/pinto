@@ -35,7 +35,7 @@ The installed binary remains `pinto`.
 
 ## Agent skill
 
-The repository includes a `pinto-workflow` Agent Skill for backlog management, CLI dogfooding, and
+The repository includes a `pinto-workflow` Agent Skill for safe, user-facing backlog management and
 local-first Scrum workflows. See [docs/skills.md](docs/skills.md) for reproducible installation and
 usage with the official `skills` CLI.
 

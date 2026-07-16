@@ -1,9 +1,9 @@
 # Agent skills
 
-pinto ships the `pinto-workflow` skill in `skills/pinto-workflow/`. It gives coding agents a concise
-workflow for local-first backlog management, CLI dogfooding, and Git-friendly Scrum work. The
-directory follows the `SKILL.md` format consumed by the [Vercel skills CLI](https://github.com/vercel-labs/skills)
-and other Agent Skills-compatible tools.
+pinto ships the `pinto-workflow` skill in `skills/pinto-workflow/`. It gives coding agents a concise,
+user-facing workflow for safely inspecting and updating local pinto boards. The directory follows
+the `SKILL.md` format consumed by the [Vercel skills CLI](https://github.com/vercel-labs/skills) and
+other Agent Skills-compatible tools.
 
 ## Inspect the skill
 
@@ -37,8 +37,8 @@ should be available outside the current project.
 
 ## Verify the installed workflow
 
-Use the installed pinto binary for dogfooding and for other repositories; the target project does
-not need to contain pinto source code:
+Use the installed pinto binary in this project or other repositories; the target project does not
+need to contain pinto source code:
 
 ```bash
 pinto init

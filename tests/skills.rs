@@ -59,23 +59,35 @@ fn skill_has_agent_skills_metadata_and_guidance() {
 
     let body = skill_body(&skill).to_ascii_lowercase();
     for phrase in [
-        "lightweight, local-first scrum backlog and kanban board",
-        ".pinto/",
+        "manage the board in the user's current project",
+        "inspection, explanation, summarization, and status requests as read-only",
+        "do not transition a pbi merely",
+        "`link scan` writes",
+        "pinto --version",
+        ".pinto/config.toml",
         "pinto init",
-        "pinto automate --plan",
-        "outside a pinto checkout",
-        "use the installed pinto binary",
+        "pinto list --json",
         "pinto list --status todo",
+        "pinto sprint list --json",
+        "pinto automate --plan",
+        "archive by default",
+        "`planned` → `active` → `closed`",
+        "pinto interprets sprint dates as utc",
+        "sequential rather than transactional",
+    ] {
+        assert!(body.contains(phrase), "skill is missing guidance: {phrase}");
+    }
+    for development_only in [
+        "cargo run",
         "dogfooding",
         "npx skills add",
         "npx skills use",
     ] {
-        assert!(body.contains(phrase), "skill is missing guidance: {phrase}");
+        assert!(
+            !body.contains(development_only),
+            "user-facing skill must not contain development-only guidance: {development_only}"
+        );
     }
-    assert!(
-        !body.contains("cargo run"),
-        "distributable skill must use pinto commands"
-    );
     for obsolete_name in ["sboard", "pinto-core"] {
         assert!(
             !body.contains(obsolete_name),

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Pinto Workflow"
-  short_description: "Manage pinto backlogs with local-first Scrum workflows"
-  default_prompt: "Use $pinto-workflow to manage this repository with pinto."
+  display_name: "Pinto Board Workflow"
+  short_description: "Manage local pinto Scrum boards safely"
+  default_prompt: "Use $pinto-workflow to inspect and update this project's local pinto board safely."
