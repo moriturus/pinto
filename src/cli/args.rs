@@ -684,8 +684,8 @@ pub(super) struct AddArgs {
     /// Story points.
     #[arg(long, short = 'p')]
     pub(super) points: Option<u32>,
-    /// Label (multiple can be specified).
-    #[arg(long = "label", short = 'l')]
+    /// Labels to set. Multiple values can follow one option or be supplied with repeated options.
+    #[arg(long = "label", short = 'l', num_args = 1.., value_name = "LABEL")]
     pub(super) labels: Vec<String>,
     /// Assign the PBI to a sprint.
     #[arg(long, short = 'S')]
@@ -860,8 +860,9 @@ pub(super) struct EditArgs {
     /// Story points.
     #[arg(long, short = 'p')]
     pub(super) points: Option<u32>,
-    /// Labels to set; supplying any labels replaces the existing set.
-    #[arg(long = "label", short = 'l')]
+    /// Labels to set, replacing the existing set. Multiple values can follow one option or be
+    /// supplied with repeated options.
+    #[arg(long = "label", short = 'l', num_args = 1.., value_name = "LABEL")]
     pub(super) labels: Vec<String>,
     /// Assignee.
     #[arg(long, short = 'a')]

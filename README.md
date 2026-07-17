@@ -63,8 +63,8 @@ pushes to `main` and on manual dispatch.
 # Create a board in the current directory.
 pinto init
 
-# Add a Product Backlog Item (PBI).
-pinto add "Implement the parser" --points 3 --label backend
+# Add a Product Backlog Item (PBI) with multiple labels.
+pinto add "Implement the parser" --points 3 --label backend cli
 
 # Inspect and update it.
 pinto list
@@ -96,10 +96,10 @@ done (0)
 | Command | Description |
 | --- | --- |
 | `pinto init` | Initialize `.pinto/` in the current directory. It is idempotent. |
-| `pinto add <title>` | Add a PBI. Use `--points`, `--label`, `--sprint`, `--body`, `--edit`, or `--template` as needed. |
+| `pinto add <title>` | Add a PBI. Use `--label <label>...` to set one or more labels in one occurrence; repeating `--label` is equivalent. Other options include `--points`, `--sprint`, `--body`, `--edit`, and `--template`. |
 | `pinto list` | List PBIs; filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label` or `--sprint` without a value to include that column. |
 | `pinto show <id>...` | Show one or more PBIs in input order; `--plain` keeps raw Markdown and `--json` always returns an array. |
-| `pinto edit <id>` | Update PBI fields, or open `$VISUAL`/`$EDITOR` when no field is supplied. |
+| `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open `$VISUAL`/`$EDITOR`. |
 | `pinto rm <id>...` | Archive (default) or permanently delete one or more PBIs. |
 | `pinto move <id> <status>` | Move a PBI to a workflow column. |
 | `pinto reorder <id>` | Reorder a PBI with `--before`, `--after`, `--top`, or `--bottom`. |
@@ -127,7 +127,7 @@ example IDs, labels, and dates with values from your board.
 
 ```bash
 pinto init
-pinto add "Implement the parser" --points 3 --label backend
+pinto add "Implement the parser" --points 3 --label backend cli
 pinto list --status todo --long
 pinto list --status todo in-progress --json
 pinto list --label backend frontend                 # either label (OR)
@@ -136,7 +136,7 @@ pinto list --roots-only --status todo --json       # roots only, machine-readabl
 pinto show T-1
 pinto move T-1 in-progress
 pinto reorder T-1 --top
-pinto edit T-1 --title "Implement the Markdown parser"
+pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
 pinto rm T-1 T-2             # archive one or more PBIs by default
 pinto rm T-1 T-2 --force     # permanently remove several PBIs
 pinto board --sort rank

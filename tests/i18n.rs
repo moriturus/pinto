@@ -143,6 +143,22 @@ fn clap_help_uses_japanese_for_commands_arguments_and_headings() {
 }
 
 #[test]
+fn clap_help_localizes_variable_length_label_setting_options() {
+    for subcommand in ["add", "edit"] {
+        let mut command = Command::cargo_bin("pinto").expect("binary builds");
+        command
+            .args([subcommand, "--help"])
+            .env("LC_ALL", "ja_JP.UTF-8")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("--label <LABEL>..."))
+            .stdout(predicate::str::contains(
+                "1つのオプションに複数値を続けるか、オプションを繰り返し指定できる。",
+            ));
+    }
+}
+
+#[test]
 fn cli_uses_japanese_messages_for_a_japanese_locale() {
     let dir = TempDir::new().expect("temp dir");
     let mut command = Command::cargo_bin("pinto").expect("binary builds");

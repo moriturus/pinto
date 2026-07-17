@@ -43,6 +43,41 @@ fn edit_updates_fields_and_persists() {
 }
 
 #[test]
+fn edit_accepts_multiple_labels_after_one_option_and_replaces_existing_set() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["add", "Task", "--label", "old", "--label", "legacy"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["edit", "T-1", "--label", "backend", "urgent"])
+        .assert()
+        .success();
+
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(
+        item["labels"],
+        serde_json::json!(["backend", "urgent"])
+    );
+}
+
+#[test]
+fn edit_help_documents_variable_length_labels() {
+    let dir = TempDir::new().expect("temp dir");
+
+    pinto(dir.path())
+        .args(["edit", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--label <LABEL>..."))
+        .stdout(predicate::str::contains(
+            "Multiple values can follow one option or be supplied with repeated options.",
+        ));
+}
+
+#[test]
 fn edit_rejects_invalid_or_missing_sprint_without_mutating_the_item() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

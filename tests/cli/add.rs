@@ -54,6 +54,43 @@ fn add_applies_options() {
 }
 
 #[test]
+fn add_accepts_multiple_labels_after_one_option() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .args([
+            "add",
+            "Multi-label task",
+            "--label",
+            "backend",
+            "urgent",
+        ])
+        .assert()
+        .success();
+
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(
+        item["labels"],
+        serde_json::json!(["backend", "urgent"])
+    );
+}
+
+#[test]
+fn add_help_documents_variable_length_labels() {
+    let dir = TempDir::new().expect("temp dir");
+
+    pinto(dir.path())
+        .args(["add", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--label <LABEL>..."))
+        .stdout(predicate::str::contains(
+            "Multiple values can follow one option or be supplied with repeated options.",
+        ));
+}
+
+#[test]
 fn add_rejects_invalid_or_missing_sprint_before_creating_an_item() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

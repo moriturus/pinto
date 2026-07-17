@@ -22,12 +22,16 @@ in [`demos/single/cookbook`](https://github.com/moriturus/pinto/tree/main/demos/
 **Prerequisites:** an initialized board (`pinto init`).
 
 ```bash
-pinto add "Design the login form" --points 3 --label ui --label auth
-pinto add "Implement the login API" --points 5 --label api --label auth
+pinto add "Design the login form" --points 3 --label ui auth
+pinto add "Implement the login API" --points 5 --label api auth
 pinto add "Write onboarding docs" --points 2 --label docs
 pinto add "Fix the session timeout bug" --points 1 --label bug --label auth
 pinto add "Refactor the storage layer" --points 8 --label refactor
 ```
+
+One `--label` accepts all following label values until the next option. The
+repeated form used by the session-timeout item is equivalent and remains
+supported.
 
 **Verify:** each command prints the assigned ID (`Created T-1 …` through
 `T-5`). The remaining recipes assume these five PBIs.

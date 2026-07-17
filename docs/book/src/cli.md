@@ -8,12 +8,12 @@ option list. The commands below cover the normal Scrum workflow.
 | Command | Purpose |
 | --- | --- |
 | `pinto init` | Initialize a board in the current directory. |
-| `pinto add <title>` | Add a PBI; optionally set points, labels, Sprint, body, or a template. |
+| `pinto add <title>` | Add a PBI; use `--label <label>...` to set one or more labels, or optionally set points, Sprint, body, or a template. |
 | `pinto list` | List PBIs, with status, label, Sprint, search, root-only, long, and JSON filters. |
 | `pinto show <id>...` | Display one or more PBI details. |
 | `pinto move <id>... <status>` | Transition one or more PBIs to a workflow column. |
 | `pinto reorder <id>` | Reorder a PBI within its sibling group (same parent and column). |
-| `pinto edit <id>` | Update PBI fields or open the configured editor. |
+| `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open the configured editor. |
 | `pinto remove <id>...` | Archive PBIs; use the `rm` alias and `--force` only for permanent removal. |
 | `pinto board` | Render PBIs grouped by workflow column, optionally showing root PBIs only. |
 | `pinto kanban` | Open the interactive [Kanban board](kanban.md). |
@@ -21,6 +21,7 @@ option list. The commands below cover the normal Scrum workflow.
 Examples:
 
 ```bash
+pinto add "Implement the parser" --label backend cli
 pinto list --status todo in-progress --long
 pinto list --label backend frontend --all-labels
 pinto list --search "parser"
@@ -28,8 +29,12 @@ pinto list --roots-only --status todo --json
 pinto board --status in-progress review
 pinto board --roots-only --status todo --long
 pinto reorder T-1 --top
-pinto edit T-1 --title "Implement the Markdown parser"
+pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
 ```
+
+For `add` and `edit`, multiple label values may follow one `--label`; repeating
+the option once per value remains equivalent. The `list` and `board` forms are
+label filters and keep their documented OR/AND behavior.
 
 ### Display order
 
