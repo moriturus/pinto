@@ -5,6 +5,22 @@ All notable changes to pinto are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-17
+
+This minor 0.x release makes the Git commit-link command name match its
+write behavior. It is a breaking CLI and public Rust API change under the
+0.x versioning policy.
+
+### Changed
+
+- Renamed `pinto link scan` to `pinto link sync`. The command synchronizes
+  PBI commit links by matching PBI IDs in Git commit messages, and the old
+  command name is no longer accepted.
+- Renamed the public Rust service API `scan_commits` / `ScanOutcome` to
+  `sync_commits` / `SyncOutcome` so the API terminology matches the command.
+- Updated CLI help, English and Japanese localization, README, the book,
+  workflow skill guidance, and the Git-link synchronization demo.
+
 ## [0.1.1] - 2026-07-16
 
 This patch release improves cross-platform reliability without changing the

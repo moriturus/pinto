@@ -25,10 +25,10 @@ cd pinto
 cargo install --path . --locked
 ```
 
-The latest published release is `0.1.1`. Install it from crates.io with:
+The latest published release is `0.2.0`. Install it from crates.io with:
 
 ```bash
-cargo install pinto-cli --version 0.1.1
+cargo install pinto-cli --version 0.2.0
 ```
 
 The installed binary remains `pinto`.
@@ -106,7 +106,7 @@ done (0)
 | `pinto board` | Display the board (PBI by column). Filter by `--status <status>...` (or repeat `--status`) for multiple columns, Sprint, or `--label <label>...` (OR; use `--all-labels` for AND). Use `--roots-only` to omit PBIs with a parent; `--long/-l` uses the same detail columns as `pinto list --long`, with `--label` and `--sprint` available as column selectors. |
 | `pinto kanban` | Open the interactive terminal board. By default, `[tui].hidden_columns` is omitted; use `--column <status>...` (or repeat `--column`) to override the configured display columns. |
 | `pinto dep add/rm` | Add or remove item dependencies. |
-| `pinto link add/rm/scan` | Associate Git commits with PBIs, or scan commit messages for item IDs. |
+| `pinto link add/rm/sync` | Associate Git commits with PBIs, or synchronize links from commit messages containing item IDs. |
 | `pinto dod` | View, set, or clear the shared Definition of Done. |
 | `pinto sprint` | Create, edit, delete, start, close, list, assign, and report on Sprints (`burndown`, `velocity`, `capacity`). |
 | `pinto cycletime` / `pinto ct` | Report cycle and lead-time metrics. |
@@ -208,7 +208,7 @@ pinto dep add T-2 T-1        # T-2 depends on T-1
 pinto dep rm T-2 T-1
 pinto link add T-1 abc1234
 pinto link rm T-1 abc1234
-pinto link scan
+pinto link sync
 pinto dod                     # print the shared DoD
 pinto dod set "Tests pass and documentation is updated"
 pinto dod clear

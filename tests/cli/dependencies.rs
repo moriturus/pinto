@@ -236,7 +236,7 @@ fn link_rm_unlinks_by_prefix() {
 }
 
 #[test]
-fn link_scan_associates_commits_from_messages() {
+fn link_sync_associates_commits_from_messages() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "A"]).assert().success(); // T-1
@@ -256,7 +256,7 @@ fn link_scan_associates_commits_from_messages() {
     run_git(dir.path(), &["commit", "--allow-empty", "-m", "fix: B T-2"]);
 
     pinto(dir.path())
-        .args(["link", "scan"])
+        .args(["link", "sync"])
         .assert()
         .success()
         .stdout(predicate::str::contains("T-1"))
@@ -271,10 +271,22 @@ fn link_scan_associates_commits_from_messages() {
 
     // 再走査しても増えない（冪等）。
     pinto(dir.path())
-        .args(["link", "scan"])
+        .args(["link", "sync"])
         .assert()
         .success()
         .stdout(predicate::str::contains("No new commits linked."));
+}
+
+#[test]
+fn link_scan_is_rejected_after_rename() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .args(["link", "scan"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unrecognized subcommand"));
 }
 
 #[test]

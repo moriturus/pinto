@@ -28,8 +28,8 @@ use pinto::service::{
     burndown, check_wip, clear_common_dod, close_sprint, common_dod, create_sprint, cycle_time,
     delete_sprint, display_settings, edit_item, edit_sprint, init_board, item_detail,
     item_edit_template, link_commits, list_items, list_sprints, lock_board, migrate_storage,
-    move_item, rebalance, remove_dependency, remove_item, reorder_item, scan_commits,
-    set_common_dod, set_sprint_capacity, sprint_capacity, start_sprint, template_body,
+    move_item, rebalance, remove_dependency, remove_item, reorder_item, set_common_dod,
+    set_sprint_capacity, sprint_capacity, start_sprint, sync_commits, template_body,
     unassign_sprint, unlink_commits, velocity,
 };
 use std::io::{IsTerminal, Read};
@@ -418,7 +418,7 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         },
         Command::Link(args) => match &args.command {
             LinkCommand::Add { id, .. } | LinkCommand::Rm { id, .. } => vec![id],
-            LinkCommand::Scan { .. } => Vec::new(),
+            LinkCommand::Sync { .. } => Vec::new(),
         },
         Command::Sprint(args) => match &args.command {
             SprintCommand::Add { item_id, .. } => item_id.iter().collect(),
@@ -1446,9 +1446,10 @@ async fn cmd_dep(args: DepArgs) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// `pinto link [add|rm|scan]` — Associate/remove Git commit (SHA) with PBI, pick it up from history.
+/// `pinto link [add|rm|sync]` — Associate/remove Git commit (SHA) with PBI, synchronize from history.
 ///
-/// `add` / `rm` treats SHA as a plain string, so Git is not required. `scan` scans `git log`.
+/// `add` / `rm` treats SHA as a plain string, so Git is not required. `sync` reads `git log` and
+/// associates matching commits.
 /// User errors such as uninitialized, invalid ID, and absence of Git are assigned to the exit code by `main`.
 async fn cmd_link(args: LinkArgs) -> anyhow::Result<ExitCode> {
     let dir = std::env::current_dir()?;
@@ -1505,8 +1506,8 @@ async fn cmd_link(args: LinkArgs) -> anyhow::Result<ExitCode> {
                 );
             }
         }
-        LinkCommand::Scan { since } => {
-            let outcome = scan_commits(&dir, since.as_deref()).await?;
+        LinkCommand::Sync { since } => {
+            let outcome = sync_commits(&dir, since.as_deref()).await?;
             let localizer = current();
             if outcome.links.is_empty() {
                 println!("{}", localizer.text(Message::LinkNoNewCommits));
@@ -1999,8 +2000,8 @@ mod tests {
     fn automation_names_and_target_ids_cover_command_shapes() {
         assert_eq!(automation_command_name(&argv(&["dep", "add"])), "dep add");
         assert_eq!(
-            automation_command_name(&argv(&["link", "scan"])),
-            "link scan"
+            automation_command_name(&argv(&["link", "sync"])),
+            "link sync"
         );
         assert_eq!(
             automation_command_name(&argv(&["sprint", "new"])),

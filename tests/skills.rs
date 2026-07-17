@@ -62,7 +62,7 @@ fn skill_has_agent_skills_metadata_and_guidance() {
         "manage the board in the user's current project",
         "inspection, explanation, summarization, and status requests as read-only",
         "do not transition a pbi merely",
-        "`link scan` writes",
+        "`link sync` writes",
         "pinto --version",
         ".pinto/config.toml",
         "pinto init",

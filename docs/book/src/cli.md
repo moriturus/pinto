@@ -104,7 +104,7 @@ Git commit links are managed separately:
 
 ```bash
 pinto link add T-1 abc1234
-pinto link scan
+pinto link sync
 ```
 
 The Sprint commands create and manage time-boxed work:

@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-pinto = { path = ".." }
+pinto = { package = "pinto-cli", path = ".." }
 
 [[bin]]
 name = "automation_plan_parse"

@@ -54,11 +54,12 @@ from the clean checkout as the source-install check.
 
 ## Publishing a release
 
-For a patch release, update the package version in `Cargo.toml` and both
+For each release, update the package version in `Cargo.toml` and both
 committed lockfiles, move the relevant entries into a dated `CHANGELOG.md`
-heading, and update the published-version installation examples. Before
-publishing, run the complete local release gate and verify the package without
-uploading it:
+heading, and update the published-version installation examples. For a breaking change
+while pinto remains in the `0.x` series, increment the minor version as the
+`0.2.0` CLI rename demonstrates. Before publishing, run the complete local
+release gate and verify the package without uploading it:
 
 ```bash
 mise run release-check
@@ -70,7 +71,7 @@ create the repository's version tag and push it together with `main`. Publish
 the same locked package to crates.io only after the tag points at that commit:
 
 ```bash
-git tag 0.1.1
-git push origin main 0.1.1
+git tag 0.2.0
+git push origin main 0.2.0
 cargo publish --all-features --locked
 ```

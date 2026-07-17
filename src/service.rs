@@ -28,7 +28,7 @@ use crate::error::{Error, Result};
 use crate::storage::{Backend, BoardLock};
 pub use board::{Board, BoardColumn, BoardQuery, SortKey, board};
 pub use burndown::{Burndown, BurndownDay, BurndownMetric, burndown};
-pub use commits::{LinkOutcome, ScanOutcome, link_commits, scan_commits, unlink_commits};
+pub use commits::{LinkOutcome, SyncOutcome, link_commits, sync_commits, unlink_commits};
 pub use cycletime::{CycleTimeFilter, CycleTimeReport, DurationSummary, cycle_time};
 pub use dependency::{
     DependencyOutcome, ItemDetail, add_dependency, item_detail, remove_dependency,

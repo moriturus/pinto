@@ -724,7 +724,7 @@ fn automate_validates_invalid_item_ids_in_every_command_shape_before_execution()
             ["link", "add", "../outside-1", "deadbeef"],
             ["sprint", "add", "S-1", "../outside-1"],
             ["list"],
-            ["link", "scan"],
+            ["link", "sync"],
             ["sprint", "new", "S-1", "No apply"]
         ]
     })

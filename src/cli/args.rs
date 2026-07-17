@@ -517,7 +517,7 @@ pub(super) struct LinkArgs {
     pub(super) command: LinkCommand,
 }
 
-/// `link` operations (add/delete/traverse).
+/// `link` operations (add/remove/synchronize).
 #[derive(Debug, Subcommand)]
 pub(super) enum LinkCommand {
     /// Add related commit `<sha>...` to `<id>` (SHAs are plain text; Git is not required).
@@ -538,10 +538,10 @@ pub(super) enum LinkCommand {
         #[arg(required = true)]
         shas: Vec<String>,
     },
-    /// Scan `git log` and associate PBIs whose IDs appear in commit messages (requires Git).
+    /// Synchronize Git commit links by matching PBI IDs in commit messages (requires Git).
     #[command(visible_alias = "s")]
-    Scan {
-        /// Scan only within this range (`<since>..HEAD`). If omitted, full history.
+    Sync {
+        /// Synchronize only within this range (`<since>..HEAD`). If omitted, full history.
         #[arg(long, short = 's')]
         since: Option<String>,
     },

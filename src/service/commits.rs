@@ -5,7 +5,7 @@
 //!
 //! - [`link_commits`] — explicitly associate SHAs; Git is not required because they are stored as plain strings.
 //! - [`unlink_commits`] — remove recorded commits, optionally using a unique SHA prefix.
-//! - [`scan_commits`] — scan `git log` and link commits whose messages contain an item ID. This is
+//! - [`sync_commits`] — read `git log` and link commits whose messages contain an item ID. This is
 //!   the only operation that requires Git and returns [`Error::Git`] when it is unavailable.
 //!
 //! **Policy**: To avoid another crate, scanning invokes the `git` CLI through
@@ -90,21 +90,21 @@ pub async fn unlink_commits(
     Ok(LinkOutcome { item, changed })
 }
 
-/// Result of [`scan_commits`], listing new `(PBI ID, SHA)` links.
+/// Result of [`sync_commits`], listing new `(PBI ID, SHA)` links.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ScanOutcome {
+pub struct SyncOutcome {
     /// New links in oldest-commit order.
     pub links: Vec<(ItemId, String)>,
 }
 
-/// Scan `git log` and associate commits whose messages contain a PBI ID.
+/// Synchronize commit links from `git log` by associating commits whose messages contain a PBI ID.
 ///
-/// If `since` is set, scan `<since>..HEAD`; otherwise scan the full history. Match IDs as tokens,
-/// so `T-53` does not match `T-531`. Skip pinto bookkeeping commits whose subject starts with
+/// If `since` is set, use `<since>..HEAD`; otherwise use the full history. Match IDs as tokens, so
+/// `T-53` does not match `T-531`. Skip pinto bookkeeping commits whose subject starts with
 /// `pinto:` and do not duplicate existing links.
 ///
 /// Return [`Error::Git`] when Git is unavailable or the project is not a repository.
-pub async fn scan_commits(project_dir: &Path, since: Option<&str>) -> Result<ScanOutcome> {
+pub async fn sync_commits(project_dir: &Path, since: Option<&str>) -> Result<SyncOutcome> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let mut items = repo.list().await?;
     let commits = git_log(project_dir, since).await?;
@@ -112,7 +112,7 @@ pub async fn scan_commits(project_dir: &Path, since: Option<&str>) -> Result<Sca
     let mut changed = vec![false; items.len()];
     let mut links = Vec::new();
     for (sha, message) in &commits {
-        // Skip pinto's bookkeeping commits; scan only commits representing user work.
+        // Skip pinto's bookkeeping commits; synchronize only commits representing user work.
         let subject = message.lines().next().unwrap_or("");
         if subject.trim_start().starts_with("pinto:") {
             continue;
@@ -136,7 +136,7 @@ pub async fn scan_commits(project_dir: &Path, since: Option<&str>) -> Result<Sca
     if !links.is_empty() {
         repo.commit("pinto: link commits").await?;
     }
-    Ok(ScanOutcome { links })
+    Ok(SyncOutcome { links })
 }
 
 /// Determine whether `message` contains `id` as a separate token.
@@ -178,7 +178,7 @@ async fn git_log(project_dir: &Path, since: Option<&str>) -> Result<Vec<(String,
                 .to_string(),
         ));
     }
-    // A repository with no HEAD has no commits to scan.
+    // A repository with no HEAD has no commits to synchronize.
     let head = run_git(project_dir, &["rev-parse", "--verify", "--quiet", "HEAD"]).await?;
     if !head.status.success() {
         return Ok(Vec::new());
@@ -218,7 +218,7 @@ async fn run_git(project_dir: &Path, args: &[&str]) -> Result<Output> {
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 Error::Git(
-                    "`git` command not found; install git to scan commits, \
+                    "`git` command not found; install git to synchronize commits, \
                      or link SHAs manually with `pinto link add`"
                         .to_string(),
                 )
@@ -316,7 +316,7 @@ mod tests {
         assert!(!message_mentions("no id here", "T-53"));
     }
 
-    // --- scan (integration test using real `git` CLI. Requires git in execution environment)---
+    // --- sync (integration test using real `git` CLI. Requires git in execution environment)---
 
     async fn git(dir: &Path, args: &[&str]) {
         let out = Command::new("git")
@@ -338,7 +338,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_links_commits_by_item_id_in_message() {
+    async fn sync_links_commits_by_item_id_in_message() {
         let dir = init_temp().await;
         let a = add_with(dir.path(), "A", &[], None).await; // T-1
         let b = add_with(dir.path(), "B", &[], None).await; // T-2
@@ -351,7 +351,7 @@ mod tests {
         commit(dir.path(), "pinto: update T-2").await; // Exclude bookkeeping commits.
         commit(dir.path(), "fix: finish B T-2").await; // → T-2
 
-        let outcome = scan_commits(dir.path(), None).await.expect("scan");
+        let outcome = sync_commits(dir.path(), None).await.expect("sync");
         assert_eq!(outcome.links.len(), 2, "two new links");
 
         let a2 = reload(dir.path(), &a.id).await;
@@ -365,11 +365,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_without_git_repo_errors_clearly() {
+    async fn sync_without_git_repo_errors_clearly() {
         let dir = init_temp().await;
         add_with(dir.path(), "A", &[], None).await;
         // There is a `.pinto`, but it is not a Git repository.
-        let err = scan_commits(dir.path(), None).await.expect_err("no repo");
+        let err = sync_commits(dir.path(), None).await.expect_err("no repo");
         assert!(
             matches!(&err, Error::Git(m) if m.contains("not a git repository")),
             "clear guidance, got {err:?}"
@@ -377,17 +377,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_on_repo_without_commits_is_empty_not_error() {
+    async fn sync_on_repo_without_commits_is_empty_not_error() {
         let dir = init_temp().await;
         add_with(dir.path(), "A", &[], None).await;
         // A repository with no commits (no HEAD). Returns empty without revealing any raw git errors.
         git(dir.path(), &["init"]).await;
-        let outcome = scan_commits(dir.path(), None).await.expect("empty history");
+        let outcome = sync_commits(dir.path(), None).await.expect("empty history");
         assert!(outcome.links.is_empty());
     }
 
     #[tokio::test]
-    async fn scan_is_idempotent() {
+    async fn sync_is_idempotent() {
         let dir = init_temp().await;
         let a = add_with(dir.path(), "A", &[], None).await; // T-1
 
@@ -396,8 +396,8 @@ mod tests {
         git(dir.path(), &["config", "user.name", "Tester"]).await;
         commit(dir.path(), "feat: A T-1").await;
 
-        scan_commits(dir.path(), None).await.expect("scan once");
-        let second = scan_commits(dir.path(), None).await.expect("scan twice");
+        sync_commits(dir.path(), None).await.expect("sync once");
+        let second = sync_commits(dir.path(), None).await.expect("sync twice");
         assert!(second.links.is_empty(), "no new links on re-scan");
         assert_eq!(reload(dir.path(), &a.id).await.commits.len(), 1);
     }

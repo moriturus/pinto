@@ -33,6 +33,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`config-validation`](single/config-validation) — strict config schema and workflow semantic validation
   - [`file-id-integrity`](single/file-id-integrity) — filename/frontmatter IDs, duplicate detection, archive validation, and safe next-ID allocation
   - [`git-boundary`](single/git-boundary) — Git commit boundaries, staged-change isolation, and recovery
+  - [`git-link-sync`](single/git-link-sync) — synchronize Git commit links from PBI IDs in commit messages
   - [`migration-race`](single/migration-race) — backend migration lock ordering and writer visibility
   - [`quality-validation`](single/quality-validation) — Markdown parser, public API, and Kanban smoke-test data
   - [`toolchain-reproducibility`](single/toolchain-reproducibility) — pinned toolchain, locked installs, and release package checks

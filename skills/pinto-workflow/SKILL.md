@@ -12,7 +12,7 @@ Use the installed `pinto` binary to manage the board in the user's current proje
 - Treat inspection, explanation, summarization, and status requests as read-only. Do not initialize or change the board for those requests.
 - Run write commands only when the user requests a board change or the requested outcome unambiguously requires one. A dry-run authorizes only the preview, not the real write.
 - Do not transition a PBI merely because it was inspected, discussed, or implemented outside pinto. Move it only when the user's request explicitly or unambiguously includes that workflow change.
-- Treat `link scan` as a write command because it associates discovered commits with PBIs.
+- Treat `link sync` as a write command because it associates matching commits with PBIs.
 
 ## Enter the correct board
 
@@ -95,10 +95,10 @@ Record relations with their dedicated commands:
 pinto dep add T-2 T-1
 pinto dep rm T-2 T-1
 pinto link add T-1 abc1234
-pinto link scan
+pinto link sync
 ```
 
-Interpret `pinto dep add T-2 T-1` as “T-2 depends on T-1.” Remember that `link scan` writes the links it discovers; run it only for a requested link update in a Git repository, then review the result.
+Interpret `pinto dep add T-2 T-1` as “T-2 depends on T-1.” Remember that `link sync` writes the links it discovers; run it only for a requested link update in a Git repository, then review the result.
 
 Archive by default:
 

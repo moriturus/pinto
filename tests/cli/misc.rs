@@ -1248,7 +1248,7 @@ fn cli_options_have_short_forms() {
         (&["rebalance", "--help"], &["-n, --dry-run"]),
         (&["migrate", "--help"], &["-t, --to"]),
         (&["automate", "--help"], &["-p, --plan"]),
-        (&["link", "scan", "--help"], &["-s, --since"]),
+        (&["link", "sync", "--help"], &["-s, --since"]),
         (
             &["sprint", "new", "--help"],
             &["-g, --goal", "-t, --template", "-s, --start", "-e, --end"],

@@ -2,10 +2,10 @@
 
 ## Using a released package
 
-Install the latest published 0.1.1 binary with Cargo:
+Install the latest published 0.2.0 binary with Cargo:
 
 ```bash
-cargo install pinto-cli --version 0.1.1
+cargo install pinto-cli --version 0.2.0
 pinto --version
 ```
 
