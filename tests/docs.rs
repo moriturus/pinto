@@ -5,9 +5,9 @@ const BOOK_SOURCE: &str = "docs/book/src";
 
 fn repository_file(path: &str) -> String {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    fs::read_to_string(root.join(path)).unwrap_or_else(|error| {
-        panic!("expected documentation file {path}: {error}");
-    })
+    fs::read_to_string(root.join(path))
+        .map(|contents| contents.replace("\r\n", "\n"))
+        .unwrap_or_else(|error| panic!("expected documentation file {path}: {error}"))
 }
 
 #[test]

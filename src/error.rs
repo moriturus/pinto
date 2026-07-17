@@ -197,7 +197,9 @@ pub enum Error {
     },
 
     /// Board is uninitialized (`.pinto/` is missing).
-    #[error("not a pinto board: {path} not found (run `pinto init` first)")]
+    #[error(
+        "not a pinto board: {path} not found (run `pinto init` first, or use --dir PATH / PINTO_DIR)"
+    )]
     NotInitialized {
         /// The expected path of `.pinto/`.
         path: PathBuf,

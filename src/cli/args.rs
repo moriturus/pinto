@@ -3,6 +3,7 @@
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use pinto::i18n::Localizer;
+use std::path::PathBuf;
 
 /// Parse the date and time accepted by `--start` and `--end` as UTC.
 ///
@@ -41,6 +42,9 @@ fn parse_positive_usize(s: &str) -> Result<usize, String> {
 #[derive(Debug, Parser)]
 #[command(name = "pinto", version, about, long_about = None)]
 pub(super) struct Cli {
+    /// Board project directory override. `PINTO_DIR` is used when this is omitted.
+    #[arg(long, short = 'C', global = true, value_name = "PATH")]
+    pub(super) dir: Option<PathBuf>,
     #[command(subcommand)]
     pub(super) command: Command,
 }
@@ -116,7 +120,14 @@ fn localize_command(command: clap::Command, localizer: &Localizer, path: &str) -
                 Some(long_help) => arg.long_help(long_help),
                 None => arg,
             };
-            arg.help_heading(heading)
+            // Clap renders global arguments in a separate inherited group. Leaving their
+            // heading unset keeps them together with the built-in help/version options instead of
+            // producing two `Options` sections at the top level.
+            if arg.is_global_set() {
+                arg
+            } else {
+                arg.help_heading(heading)
+            }
         });
 
     command.mut_subcommands(|subcommand| {

@@ -5,6 +5,12 @@ is optional to change; a fresh board works without editing anything. Edit the
 file directly and keep the change small and reviewable — it is the one file in
 `.pinto/` that is meant to be hand-edited.
 
+The CLI discovers this board from descendant directories by walking upward to
+the nearest `.pinto/config.toml`. It checks a repository root marked by `.git`
+and then stops there, or stops at the filesystem root. Use `pinto --dir PATH`
+or `PINTO_DIR=PATH pinto ...` to select a different project (the path may be
+the project directory or `.pinto` itself).
+
 ```toml
 columns = ["todo", "in-progress", "review", "done"]
 done_column = "done"

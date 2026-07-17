@@ -211,6 +211,31 @@ fn automate_reads_a_plan_file_whose_name_starts_with_a_brace() {
 }
 
 #[test]
+fn automate_keeps_relative_plan_paths_relative_to_the_invocation_directory() {
+    let root = TempDir::new().expect("board temp dir");
+    pinto(root.path()).arg("init").assert().success();
+    let nested = root.path().join("nested");
+    std::fs::create_dir_all(&nested).expect("create nested directory");
+    std::fs::write(
+        nested.join("plan.json"),
+        r#"{"commands":[["add","Plan from nested directory"]]}"#,
+    )
+    .expect("write plan file");
+
+    pinto(&nested)
+        .args(["automate", "--plan", "plan.json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created T-1"));
+
+    pinto(root.path())
+        .args(["list", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Plan from nested directory"));
+}
+
+#[test]
 fn automate_add_supports_parent_and_multiple_dependencies() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

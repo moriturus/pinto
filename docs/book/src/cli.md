@@ -3,6 +3,27 @@
 Run `pinto --help` or `pinto <command> --help` for the complete, versioned
 option list. The commands below cover the normal Scrum workflow.
 
+## Selecting a board
+
+Board commands search the current directory first and then its ancestors for
+`.pinto/config.toml`, so they can run from a repository subdirectory. The
+search stops after checking a directory that contains `.git` (the documented
+repository boundary) or at the filesystem root. From the board root, behavior
+is unchanged.
+
+Use `--dir PATH` for scripts and agents when the board is not the nearest one;
+`PATH` may name either the project directory or its `.pinto` directory.
+`PINTO_DIR` provides the same override when the flag is omitted:
+
+```bash
+pinto --dir /work/project list --json
+PINTO_DIR=/work/project pinto list --json
+```
+
+If no board is found, pinto reports the search and these override options. The
+`init` command still initializes the current directory unless an explicit
+`--dir` or `PINTO_DIR` target is supplied.
+
 ## Board and PBI commands
 
 | Command | Purpose |

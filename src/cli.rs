@@ -10,6 +10,7 @@ mod editor;
 mod format;
 mod json;
 mod kanban;
+mod location;
 mod markdown;
 mod shell;
 
