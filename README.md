@@ -426,6 +426,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the TDD workflow and
 Stability and dependency trade-offs are recorded in
 [docs/stability.md](docs/stability.md) and [docs/dependencies.md](docs/dependencies.md).
 
+### Reproduce CI locally
+
+The [local CI guide](docs/book/src/local-ci.md) documents `nektos/act` commands
+for the host platform. macOS/Linux hosts can run the Linux `release` job without
+starting the Windows matrix; a Windows host can select the Windows matrix entry
+with `-P windows-latest=-self-hosted`.
+
 ## License
 
 Distributed under the [MIT License](LICENSE).

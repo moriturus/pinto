@@ -20,4 +20,5 @@
 
 - [Contributor guide](contributing.md)
 - [Testing and fuzzing](testing.md)
+- [Local CI with act](local-ci.md)
 - [Reproducible builds and releases](reproducibility.md)
