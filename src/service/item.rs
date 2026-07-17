@@ -5,8 +5,8 @@ mod edit;
 mod reorder;
 
 pub use crud::{
-    AddItemOutcome, ListFilter, NewItem, RemoveOutcome, add_item, add_item_with_outcome,
-    list_items, move_item, remove_item, show_item,
+    AddItemOutcome, ListFilter, MoveOutcome, NewItem, RemoveOutcome, add_item,
+    add_item_with_outcome, list_items, move_item, move_item_with_outcome, remove_item, show_item,
 };
 pub use edit::{EditOutcome, ItemEdit, apply_item_edit, edit_item, item_edit_template};
 pub use reorder::{RebalanceOutcome, ReorderTarget, rebalance, reorder_item};

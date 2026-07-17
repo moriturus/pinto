@@ -297,6 +297,9 @@ impl BoardView {
             id: item.id.clone(),
             title: item.title.clone(),
             status: item.status.clone(),
+            acceptance_criteria: pinto::backlog::AcceptanceCriteriaProgress::from_markdown(
+                &item.body,
+            ),
             rank: item.rank.clone(),
             rank_ordinal,
             points: item.points,

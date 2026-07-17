@@ -35,9 +35,10 @@ pub use dependency::{
 };
 pub use dod::{clear_common_dod, common_dod, set_common_dod};
 pub use item::{
-    AddItemOutcome, EditOutcome, ItemEdit, ListFilter, NewItem, RebalanceOutcome, RemoveOutcome,
-    ReorderTarget, add_item, add_item_with_outcome, apply_item_edit, edit_item, item_edit_template,
-    list_items, move_item, rebalance, remove_item, reorder_item, show_item,
+    AddItemOutcome, EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, RebalanceOutcome,
+    RemoveOutcome, ReorderTarget, add_item, add_item_with_outcome, apply_item_edit, edit_item,
+    item_edit_template, list_items, move_item, move_item_with_outcome, rebalance, remove_item,
+    reorder_item, show_item,
 };
 pub use lifecycle::{InitOutcome, init_board};
 pub use migrate::{MigrateOutcome, migrate_storage};

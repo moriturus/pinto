@@ -1,7 +1,7 @@
 //! Row layout for the Kanban view: flatten the parent/child tree into visible rows,
 //! and the popup content model.
 
-use pinto::backlog::{BacklogItem, ItemId};
+use pinto::backlog::{AcceptanceCriteriaProgress, BacklogItem, ItemId};
 use pinto::service::{Board, Forest, build_forest};
 use std::collections::HashSet;
 
@@ -108,6 +108,8 @@ pub(crate) struct PopupContent {
     pub(crate) id: ItemId,
     pub(crate) title: String,
     pub(crate) status: pinto::backlog::Status,
+    /// Completion of Markdown task-list items in the PBI body.
+    pub(crate) acceptance_criteria: AcceptanceCriteriaProgress,
     /// Fractional index rank string (same value stored in the frontmatter).
     pub(crate) rank: pinto::rank::Rank,
     /// 1-based ordinal within the same column in ascending rank order (display only, matches `pinto show`).

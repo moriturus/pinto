@@ -23,13 +23,13 @@ use pinto::i18n::{Localizer, Message, current};
 use pinto::service::SearchFilter;
 use pinto::service::{
     BoardQuery, CycleTimeFilter, EditOutcome, InitOutcome, ItemEdit, LabelMatch, ListFilter,
-    MigrateOutcome, NewItem, RemoveOutcome, ReorderTarget, SortKey, SprintCloseAction,
+    MigrateOutcome, MoveOutcome, NewItem, RemoveOutcome, ReorderTarget, SortKey, SprintCloseAction,
     WipViolation, add_dependency, add_item_with_outcome, apply_item_edit, assign_sprint_by_status,
     assign_sprint_raw, board, burndown, check_wip, clear_common_dod, close_sprint, common_dod,
     create_sprint, cycle_time, delete_sprint, display_settings, edit_item, edit_sprint, init_board,
     item_detail, item_edit_template, link_commits, list_items, list_sprints, lock_board,
-    migrate_storage, move_item, rebalance, remove_dependency, remove_item, reorder_item,
-    set_common_dod, set_sprint_capacity, sprint_capacity, start_sprint, sync_commits,
+    migrate_storage, move_item_with_outcome, rebalance, remove_dependency, remove_item,
+    reorder_item, set_common_dod, set_sprint_capacity, sprint_capacity, start_sprint, sync_commits,
     template_body, unassign_sprint, unlink_commits, velocity,
 };
 use std::io::{IsTerminal, Read};
@@ -1125,7 +1125,7 @@ fn combine_template_body(template: String, body: String) -> String {
 /// `pinto list` — List backlogged PBIs.
 ///
 /// `--long/-l` shows ID, title, status, points, assignee, and creation/update dates.
-/// `--label` and `--sprint` add their columns between assignee and creation date;
+/// `--label`, `--sprint`, and `--acceptance-criteria` add columns between assignee and creation date;
 /// omit their values in long mode to show the columns without filtering. Multiple labels use OR
 /// by default; `--all-labels` switches to AND. `--roots-only` omits PBIs with a persisted parent
 /// link. `--json` takes precedence because it already contains all metadata.
@@ -1158,7 +1158,9 @@ async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
             format_list_long(
                 &items,
                 terminal_width(),
-                ListLongOptions::new(show_labels, show_sprint).with_timezone(timezone),
+                ListLongOptions::new(show_labels, show_sprint)
+                    .with_acceptance_criteria(args.acceptance_criteria)
+                    .with_timezone(timezone),
             )
         );
     } else {
@@ -1211,6 +1213,21 @@ async fn cmd_show(args: ShowArgs) -> anyhow::Result<ExitCode> {
 /// `pinto move` — Transition the state (column) of PBI.
 ///
 /// User errors such as non-existent IDs, invalid ID formats, undefined columns, etc. will be assigned code 1 by `main`.
+fn acceptance_criteria_warning(outcome: &MoveOutcome) -> Option<String> {
+    if !outcome.entered_done_column || !outcome.acceptance_criteria.is_incomplete() {
+        return None;
+    }
+
+    let progress = outcome.acceptance_criteria.to_string();
+    Some(current().format(
+        Message::AcceptanceCriteriaIncomplete,
+        [
+            ("id", outcome.item.id.to_string().as_str()),
+            ("progress", progress.as_str()),
+        ],
+    ))
+}
+
 async fn cmd_move(args: MoveArgs) -> anyhow::Result<ExitCode> {
     let dir = std::env::current_dir()?;
     // `mv`-style: the last operand is the destination status, the rest are source IDs.
@@ -1231,8 +1248,9 @@ async fn cmd_move(args: MoveArgs) -> anyhow::Result<ExitCode> {
             }
         };
 
-        match move_item(&dir, &id, status).await {
-            Ok(item) => {
+        match move_item_with_outcome(&dir, &id, status).await {
+            Ok(outcome) => {
+                let item = &outcome.item;
                 println!(
                     "{}",
                     current().format(
@@ -1243,6 +1261,9 @@ async fn cmd_move(args: MoveArgs) -> anyhow::Result<ExitCode> {
                         ],
                     )
                 );
+                if let Some(warning) = acceptance_criteria_warning(&outcome) {
+                    eprintln!("{warning}");
+                }
                 moved_any = true;
             }
             Err(error) => failures.push((raw_id.clone(), error)),
@@ -1935,7 +1956,9 @@ async fn cmd_board(args: BoardArgs) -> anyhow::Result<ExitCode> {
             format_board_long(
                 &board,
                 width,
-                ListLongOptions::new(show_labels, show_sprint).with_timezone(timezone),
+                ListLongOptions::new(show_labels, show_sprint)
+                    .with_acceptance_criteria(args.acceptance_criteria)
+                    .with_timezone(timezone),
             )
         );
     } else {

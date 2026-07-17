@@ -766,6 +766,41 @@ fn show_displays_all_fields_and_body() {
 }
 
 #[test]
+fn acceptance_criteria_progress_is_available_in_details_and_opt_in_long_columns() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "add",
+            "Acceptance task",
+            "--body",
+            "# Acceptance Criteria\n\n- [x] shipped\n- [ ] documented",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["show", "T-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Acceptance Criteria: 1/2"));
+
+    pinto(dir.path())
+        .args(["list", "--long", "--acceptance-criteria"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ACCEPTANCE"))
+        .stdout(predicate::str::contains("1/2"));
+
+    pinto(dir.path())
+        .args(["board", "--long", "--acceptance-criteria"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ACCEPTANCE"))
+        .stdout(predicate::str::contains("1/2"));
+}
+
+#[test]
 fn show_renders_markdown_body_by_default_and_plain_opts_out() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

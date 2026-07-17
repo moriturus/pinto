@@ -8,6 +8,7 @@ examples/rank_bench.rs
 locales/en-US.ftl
 locales/ja-JP.ftl
 src/automation.rs
+src/backlog/acceptance.rs
 src/backlog/graph.rs
 src/backlog/item.rs
 src/backlog/item_id.rs
@@ -31,6 +32,7 @@ src/cli/kanban/tests.rs
 src/cli/kanban/text.rs
 src/cli/kanban/view.rs
 src/cli/kanban.rs
+src/cli/location.rs
 src/cli/markdown.rs
 src/cli/shell.rs
 src/cli.rs

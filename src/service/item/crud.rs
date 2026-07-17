@@ -1,6 +1,6 @@
 //! CRUD operations for backlog items: add, list, show, move, and remove.
 
-use crate::backlog::{BacklogItem, ItemId, Status, Workflow};
+use crate::backlog::{AcceptanceCriteriaProgress, BacklogItem, ItemId, Status, Workflow};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
 use crate::service::relations::{validate_dependencies, validate_parent};
@@ -227,15 +227,44 @@ pub async fn show_item(project_dir: &Path, id: &ItemId) -> Result<BacklogItem> {
 /// [`Error::UnknownStatus`] without changing the item. Return [`Error::NotInitialized`] for an
 /// uninitialized board or [`Error::NotFound`] when the ID does not exist.
 pub async fn move_item(project_dir: &Path, id: &ItemId, to: &str) -> Result<BacklogItem> {
+    Ok(move_item_with_outcome(project_dir, id, to).await?.item)
+}
+
+/// Result of moving a PBI, including the computed Acceptance Criteria progress.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveOutcome {
+    /// The saved PBI after the transition.
+    pub item: BacklogItem,
+    /// Progress parsed from the item's unchanged Markdown body.
+    pub acceptance_criteria: AcceptanceCriteriaProgress,
+    /// Whether the requested destination is the configured completion column.
+    pub entered_done_column: bool,
+}
+
+/// Move PBI `id` and return the metadata needed by user interfaces for transition warnings.
+///
+/// The transition is persisted before the outcome is returned. Acceptance Criteria are computed
+/// from the existing body and are never written back to the item.
+pub async fn move_item_with_outcome(
+    project_dir: &Path,
+    id: &ItemId,
+    to: &str,
+) -> Result<MoveOutcome> {
     let (_board_dir, repo, config, _lock) = open_board_locked(project_dir).await?;
     let workflow = Workflow::new(config.columns.iter().map(Status::new));
 
     let mut item = repo.load(id).await?;
     item.transition_to(Status::new(to), &workflow, Utc::now())?;
+    let acceptance_criteria = AcceptanceCriteriaProgress::from_markdown(&item.body);
+    let entered_done_column = to == config.done_column;
 
     repo.save(&item).await?;
     repo.commit(&format!("pinto: update {}", item.id)).await?;
-    Ok(item)
+    Ok(MoveOutcome {
+        item,
+        acceptance_criteria,
+        entered_done_column,
+    })
 }
 /// Result of [`remove_item`].
 #[derive(Debug, Clone, PartialEq, Eq)]

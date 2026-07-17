@@ -330,6 +330,9 @@ pub(super) struct BoardArgs {
     /// Display the same detailed columns as `list --long` for each board column.
     #[arg(long, short = 'l')]
     pub(super) long: bool,
+    /// Include Acceptance Criteria completion as a column in `--long` output.
+    #[arg(long = "acceptance-criteria", short = 'A', requires = "long")]
+    pub(super) acceptance_criteria: bool,
     /// Display the full text of long sentences without omitting them (disable truncation to fit the terminal width).
     #[arg(long = "no-truncate", short = 'f', visible_alias = "full")]
     pub(super) no_truncate: bool,
@@ -679,9 +682,13 @@ pub(super) struct ListArgs {
     #[arg(long = "all-labels", short = 'a', requires = "label")]
     pub(super) all_labels: bool,
     /// Display ID, title, status, points, assignee, and creation/update dates in a table.
-    /// Add LABELS or SPRINT with the corresponding option. Ignored with `--json`.
+    /// Add LABELS, SPRINT, or Acceptance Criteria with the corresponding option. Ignored with
+    /// `--json`.
     #[arg(long, short = 'l')]
     pub(super) long: bool,
+    /// Include Acceptance Criteria completion as a column in `--long` output.
+    #[arg(long = "acceptance-criteria", short = 'A', requires = "long")]
+    pub(super) acceptance_criteria: bool,
     /// Output machine-readable JSON instead of human-readable formatting.
     #[arg(long, short = 'j')]
     pub(super) json: bool,

@@ -4,6 +4,7 @@ already-initialized = Already initialized: { $path } already exists
 created = Created { $id } { $title }
 no-backlog-items = No backlog items.
 moved = Moved { $id } to { $status }
+acceptance-criteria-incomplete = warning: { $id } moved to the done column with incomplete Acceptance Criteria ({ $progress })
 reordered = Reordered { $id }
 updated = Updated { $id } { $title }
 no-changes-to = No changes to { $id }

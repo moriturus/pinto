@@ -97,13 +97,13 @@ done (0)
 | --- | --- |
 | `pinto init` | Initialize `.pinto/` in the current directory. It is idempotent. |
 | `pinto add <title>` | Add a PBI. Use `--label <label>...` to set one or more labels in one occurrence; repeating `--label` is equivalent. Other options include `--points`, `--sprint`, `--body`, `--edit`, and `--template`. |
-| `pinto list` | List PBIs; filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label` or `--sprint` without a value to include that column. |
-| `pinto show <id>...` | Show one or more PBIs in input order; `--plain` keeps raw Markdown and `--json` always returns an array. |
+| `pinto list` | List PBIs; filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label`, `--sprint`, or `--acceptance-criteria/-A` to include the corresponding column. |
+| `pinto show <id>...` | Show one or more PBIs in input order, including Acceptance Criteria progress; `--plain` keeps raw Markdown and `--json` always returns an array. |
 | `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open `$VISUAL`/`$EDITOR`. |
 | `pinto rm <id>...` | Archive (default) or permanently delete one or more PBIs. |
-| `pinto move <id> <status>` | Move a PBI to a workflow column. |
+| `pinto move <id> <status>` | Move a PBI to a workflow column; moving to `done_column` warns when Acceptance Criteria are incomplete but still succeeds. |
 | `pinto reorder <id>` | Reorder a PBI with `--before`, `--after`, `--top`, or `--bottom`. |
-| `pinto board` | Display the board (PBI by column). Filter by `--status <status>...` (or repeat `--status`) for multiple columns, Sprint, or `--label <label>...` (OR; use `--all-labels` for AND). Use `--roots-only` to omit PBIs with a parent; `--long/-l` uses the same detail columns as `pinto list --long`, with `--label` and `--sprint` available as column selectors. |
+| `pinto board` | Display the board (PBI by column). Filter by `--status <status>...` (or repeat `--status`) for multiple columns, Sprint, or `--label <label>...` (OR; use `--all-labels` for AND). Use `--roots-only` to omit PBIs with a parent; `--long/-l` uses the same detail columns as `pinto list --long`, with `--label`, `--sprint`, and `--acceptance-criteria/-A` available as column selectors. |
 | `pinto kanban` | Open the interactive terminal board. By default, `[tui].hidden_columns` is omitted; use `--column <status>...` (or repeat `--column`) to override the configured display columns. |
 | `pinto dep add/rm` | Add or remove item dependencies. |
 | `pinto link add/rm/sync` | Associate Git commits with PBIs, or synchronize links from commit messages containing item IDs. |
@@ -129,6 +129,7 @@ example IDs, labels, and dates with values from your board.
 pinto init
 pinto add "Implement the parser" --points 3 --label backend cli
 pinto list --status todo --long
+pinto list --status todo --long --acceptance-criteria
 pinto list --status todo in-progress --json
 pinto list --label backend frontend                 # either label (OR)
 pinto list --label backend frontend --all-labels    # both labels (AND)
@@ -141,9 +142,19 @@ pinto rm T-1 T-2             # archive one or more PBIs by default
 pinto rm T-1 T-2 --force     # permanently remove several PBIs
 pinto board --sort rank
 pinto board --roots-only --status todo --long
+pinto board --long --acceptance-criteria
 pinto kanban --column in-progress
 pinto rebalance --dry-run
 ```
+
+### Acceptance Criteria progress
+
+Pinto counts Markdown task-list checkboxes in each PBI body and displays the result as
+`completed/total` in `show` and the Kanban details popup. Use `--acceptance-criteria` (or `-A`)
+with `list --long` or `board --long` to add the same value as a table column. The count is
+computed at read time, so it does not add a frontmatter field or rewrite the body. Moving an item
+to the configured `done_column` prints a warning when any counted checkbox remains unchecked; the
+move is still successful.
 
 `kanban` opens the interactive terminal board. Its footer keeps the five primary
 operations visible: cursor movement, expand, details, normal quit, and help. Press

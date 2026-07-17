@@ -20,6 +20,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`remove-multiple`](single/remove-multiple) — remove multiple PBIs, including partial failures and `--force`
   - [`move-multiple`](single/move-multiple) — move multiple PBIs at once (`mv`-style), batch WIP warning, partial failures
   - [`board-view`](single/board-view) — board columns, sorting, filtering, and truncation
+  - [`acceptance-criteria`](single/acceptance-criteria) — Markdown checkbox progress, long-form columns, and completion warnings
   - [`kanban-keybindings`](single/kanban-keybindings) — configurable Kanban keys, modifiers, and aliases
   - [`tui-lifecycle`](single/tui-lifecycle) — terminal restore, resize, quit, and editor handoff
   - [`editor-buffer-security`](single/editor-buffer-security) — secure temporary editor buffers and RAII cleanup

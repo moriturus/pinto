@@ -4,7 +4,7 @@ use super::dependency_display::{
     DEP_ID_LIMIT, DepSummary, DependencyIndex, dependency_legend, format_ids as format_dep_ids,
 };
 use chrono::Duration;
-use pinto::backlog::{BacklogItem, ItemId};
+use pinto::backlog::{AcceptanceCriteriaProgress, BacklogItem, ItemId};
 use pinto::service::{Burndown, CycleTimeReport, DurationSummary, ItemDetail};
 use pinto::timezone::DisplayTimezone;
 use std::collections::{HashMap, HashSet};
@@ -59,6 +59,7 @@ pub(super) fn format_list(items: &[BacklogItem]) -> String {
 pub(crate) struct ListLongOptions {
     pub(crate) show_labels: bool,
     pub(crate) show_sprint: bool,
+    pub(crate) show_acceptance_criteria: bool,
     pub(crate) timezone: DisplayTimezone,
 }
 
@@ -67,8 +68,15 @@ impl ListLongOptions {
         Self {
             show_labels,
             show_sprint,
+            show_acceptance_criteria: false,
             timezone: DisplayTimezone::Local,
         }
+    }
+
+    /// Include the computed Acceptance Criteria completion column.
+    pub(crate) const fn with_acceptance_criteria(mut self, show: bool) -> Self {
+        self.show_acceptance_criteria = show;
+        self
     }
 
     /// Set the timezone used by the created/updated columns.
@@ -81,7 +89,7 @@ impl ListLongOptions {
 /// Format the PBI list into the detailed Scrum overview table.
 ///
 /// The stable base order is ID, TITLE, STATUS, POINTS, ASSIGNEE, CREATED, and UPDATED.
-/// LABELS and SPRINT are inserted between ASSIGNEE and CREATED only when selected.
+/// LABELS, SPRINT, and ACCEPTANCE are inserted between ASSIGNEE and CREATED only when selected.
 pub(super) fn format_list_long(
     items: &[BacklogItem],
     max_width: usize,
@@ -99,6 +107,9 @@ pub(super) fn format_list_long(
         "ASSIGNEE".to_string(),
     ];
     let title_index = 1;
+    if options.show_acceptance_criteria {
+        headers.push("ACCEPTANCE".to_string());
+    }
     let labels_index = options.show_labels.then(|| {
         headers.push("LABELS".to_string());
         headers.len() - 1
@@ -125,6 +136,9 @@ pub(super) fn format_list_long(
                     .unwrap_or_else(|| "-".to_string()),
                 or_dash(it.assignee.as_deref()),
             ];
+            if options.show_acceptance_criteria {
+                cells.push(AcceptanceCriteriaProgress::from_markdown(&it.body).to_string());
+            }
             if options.show_labels {
                 cells.push(if it.labels.is_empty() {
                     "-".to_string()
@@ -481,7 +495,13 @@ pub(super) fn format_detail(
 
     /// Format one label/value row with values aligned to the longest label.
     fn row(label: &str, value: impl AsRef<str>) -> String {
-        format!("{:<WIDTH$}{}\n", format!("{label}:"), value.as_ref())
+        let label = format!("{label}:");
+        if label.len() >= WIDTH {
+            // Long labels cannot use the shared alignment width, but still need a separator.
+            format!("{label} {}\n", value.as_ref())
+        } else {
+            format!("{label:<WIDTH$}{}\n", value.as_ref())
+        }
     }
 
     /// Display `-` for an unset optional field.
@@ -510,6 +530,10 @@ pub(super) fn format_detail(
     out.push_str(&row("Labels", labels));
     out.push_str(&row("Assignee", or_dash(item.assignee.as_deref())));
     out.push_str(&row("Sprint", or_dash(item.sprint.as_deref())));
+    out.push_str(&row(
+        "Acceptance Criteria",
+        AcceptanceCriteriaProgress::from_markdown(&item.body).to_string(),
+    ));
     out.push_str(&row(
         "Parent",
         item.parent

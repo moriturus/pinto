@@ -559,6 +559,29 @@ async fn move_transitions_to_valid_column_and_persists() {
 }
 
 #[tokio::test]
+async fn move_outcome_reports_incomplete_acceptance_criteria_for_done_column() {
+    let dir = init_temp().await;
+    let added = add_item(
+        dir.path(),
+        "Incomplete",
+        NewItem {
+            body: "- [x] shipped\n- [ ] documented".to_string(),
+            ..NewItem::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let outcome = move_item_with_outcome(dir.path(), &added.id, "done")
+        .await
+        .expect("move succeeds");
+
+    assert!(outcome.entered_done_column);
+    assert!(outcome.acceptance_criteria.is_incomplete());
+    assert_eq!(outcome.acceptance_criteria.to_string(), "1/2");
+}
+
+#[tokio::test]
 async fn move_to_unknown_column_is_rejected_and_unchanged() {
     let dir = init_temp().await;
     let added = add_item(dir.path(), "Stay", NewItem::default())

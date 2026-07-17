@@ -10,9 +10,9 @@ use pinto::backlog::ItemId;
 use pinto::i18n::{Message, current};
 use pinto::kanban_keys::{KeyAction, KeyBindings};
 use pinto::service::{
-    Board, BoardQuery, EditOutcome, ItemEdit, NewItem, SearchFilter, SearchMode, add_dependency,
-    add_item_with_outcome, apply_item_edit, board, check_wip, edit_item, item_edit_template,
-    move_item, remove_dependency, reorder_item,
+    Board, BoardQuery, EditOutcome, ItemEdit, MoveOutcome, NewItem, SearchFilter, SearchMode,
+    add_dependency, add_item_with_outcome, apply_item_edit, board, check_wip, edit_item,
+    item_edit_template, move_item_with_outcome, remove_dependency, reorder_item,
 };
 use pinto::timezone::DisplayTimezone;
 use ratatui::Frame;
@@ -941,14 +941,18 @@ fn transition(handle: &Handle, dir: &Path, view: &mut BoardView, delta: isize) -
     let Some((id, status)) = view.move_target(delta) else {
         return Ok(());
     };
-    handle.block_on(move_item(dir, &id, &status))?;
+    let outcome = handle.block_on(move_item_with_outcome(dir, &id, &status))?;
     rebuild(handle, dir, view, &id)?;
+    let mut warnings = Vec::new();
+    if let Some(warning) = acceptance_criteria_warning(&outcome) {
+        warnings.push(warning);
+    }
     if let Some(v) = handle
         .block_on(check_wip(dir))?
         .into_iter()
         .find(|v| v.column == status)
     {
-        view.set_status_message(format!(
+        warnings.push(format!(
             "{} {} has {} item(s) (limit {})",
             current().text(Message::KanbanWipExceeded),
             v.column,
@@ -956,7 +960,25 @@ fn transition(handle: &Handle, dir: &Path, view: &mut BoardView, delta: isize) -
             v.limit
         ));
     }
+    if !warnings.is_empty() {
+        view.set_status_message(warnings.join(" | "));
+    }
     Ok(())
+}
+
+fn acceptance_criteria_warning(outcome: &MoveOutcome) -> Option<String> {
+    if !outcome.entered_done_column || !outcome.acceptance_criteria.is_incomplete() {
+        return None;
+    }
+
+    let progress = outcome.acceptance_criteria.to_string();
+    Some(current().format(
+        Message::AcceptanceCriteriaIncomplete,
+        [
+            ("id", outcome.item.id.to_string().as_str()),
+            ("progress", progress.as_str()),
+        ],
+    ))
 }
 
 /// Sort selected PBIs within the same column and reload to follow selection.
@@ -1940,10 +1962,15 @@ fn popup_lines_with_timezone(
             .unwrap_or_else(|| "-".to_string())
     }
 
-    let mut lines = Vec::new();
-    lines.push(field("ID", content.id.to_string()));
-    lines.push(field("Title", content.title.clone()));
-    lines.push(field("Status", content.status.to_string()));
+    let mut lines = vec![
+        field("ID", content.id.to_string()),
+        field("Title", content.title.clone()),
+        field("Status", content.status.to_string()),
+        field(
+            "Acceptance Criteria",
+            content.acceptance_criteria.to_string(),
+        ),
+    ];
     // Rank shows the sibling-local ordinal with the internal fractional index
     // (as in `pinto show`); a child names its parent so the number is clearly
     // the order among that parent's children, not the whole column.
@@ -2449,6 +2476,7 @@ mod popup_lines_tests {
             id: "T-1".parse().expect("id"),
             title: "Task".to_string(),
             status: Status::new("todo"),
+            acceptance_criteria: pinto::backlog::AcceptanceCriteriaProgress::from_markdown(body),
             rank: Rank::between(None, None).expect("open bounds produce a rank"),
             rank_ordinal: 1,
             points: None,
@@ -2523,6 +2551,23 @@ mod popup_lines_tests {
                 "empty body placeholder (markdown={markdown}): {text:?}"
             );
         }
+    }
+
+    #[test]
+    fn displays_acceptance_criteria_progress() {
+        let content = content_with_body("- [x] shipped\n- [ ] documented");
+        let text = joined(&popup_lines_with_timezone(
+            &content,
+            60,
+            false,
+            DisplayTimezone::Local,
+        ));
+
+        assert!(
+            text.contains("Acceptance Criteria"),
+            "shows progress label: {text:?}"
+        );
+        assert!(text.contains("1/2"), "shows completed over total: {text:?}");
     }
 
     #[test]

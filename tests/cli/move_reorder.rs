@@ -76,6 +76,53 @@ fn move_records_start_and_done_timestamps() {
 }
 
 #[test]
+fn move_to_done_warns_about_unchecked_acceptance_criteria_without_changing_body() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "add",
+            "Incomplete task",
+            "--body=- [x] shipped\n- [ ] documented",
+        ])
+        .assert()
+        .success();
+    let before = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("done"))
+        .stderr(predicate::str::contains("Acceptance Criteria"))
+        .stderr(predicate::str::contains("1/2"));
+
+    let after = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(after["status"], "done");
+    assert_eq!(after["body"], before["body"]);
+}
+
+#[test]
+fn move_to_done_with_completed_acceptance_criteria_is_silent() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "add",
+            "Complete task",
+            "--body=- [x] shipped\n- [X] documented",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
 fn reorder_before_reference_updates_list_order() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

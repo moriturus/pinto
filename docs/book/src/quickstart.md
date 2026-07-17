@@ -29,11 +29,13 @@ pinto list
 pinto show T-1
 ```
 
-Use `--long` for status, points, assignee, and timestamps, or `--json` when a
-script needs machine-readable output:
+Use `--long` for status, points, assignee, and timestamps. Add
+`--acceptance-criteria` when you want the Markdown checklist progress, or use
+`--json` when a script needs machine-readable output:
 
 ```bash
 pinto list --status todo --long
+pinto list --status todo --long --acceptance-criteria
 pinto show T-1 --json
 ```
 

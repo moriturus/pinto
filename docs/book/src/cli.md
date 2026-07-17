@@ -44,6 +44,7 @@ Examples:
 ```bash
 pinto add "Implement the parser" --label backend cli
 pinto list --status todo in-progress --long
+pinto list --status todo --long --acceptance-criteria
 pinto list --label backend frontend --all-labels
 pinto list --search "parser"
 pinto list --roots-only --status todo --json
@@ -110,6 +111,18 @@ search filter.
 
 The [`parent-child` demo](https://github.com/moriturus/pinto/tree/main/demos/single/parent-child)
 contains a reproducible hierarchy for trying these commands.
+
+### Acceptance Criteria progress
+
+Pinto derives a `completed/total` value from Markdown task-list checkboxes in the PBI body. The
+value appears in `pinto show` and the Kanban details popup. Add `--acceptance-criteria` (or `-A`)
+to `list --long` or `board --long` to include it as a column. No progress field is persisted and
+the body is not rewritten.
+
+When a move enters the configured `done_column`, an item with unchecked task-list boxes produces a
+warning on stderr but the transition remains successful. An item with no task-list boxes does not
+produce this warning. See the [Acceptance Criteria demo](https://github.com/moriturus/pinto/tree/main/demos/single/acceptance-criteria)
+for a runnable example.
 
 `pinto reorder` (and Kanban `K` / `J`) moves a PBI only **within its sibling
 group** — `--top` / `--bottom` go to the front/back of that group, and
