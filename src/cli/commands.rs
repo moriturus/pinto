@@ -23,14 +23,14 @@ use pinto::i18n::{Localizer, Message, current};
 use pinto::service::SearchFilter;
 use pinto::service::{
     BoardQuery, CycleTimeFilter, EditOutcome, InitOutcome, ItemEdit, LabelMatch, ListFilter,
-    MigrateOutcome, NewItem, RemoveOutcome, ReorderTarget, SortKey, WipViolation, add_dependency,
-    add_item_with_outcome, apply_item_edit, assign_sprint_by_status, assign_sprint_raw, board,
-    burndown, check_wip, clear_common_dod, close_sprint, common_dod, create_sprint, cycle_time,
-    delete_sprint, display_settings, edit_item, edit_sprint, init_board, item_detail,
-    item_edit_template, link_commits, list_items, list_sprints, lock_board, migrate_storage,
-    move_item, rebalance, remove_dependency, remove_item, reorder_item, set_common_dod,
-    set_sprint_capacity, sprint_capacity, start_sprint, sync_commits, template_body,
-    unassign_sprint, unlink_commits, velocity,
+    MigrateOutcome, NewItem, RemoveOutcome, ReorderTarget, SortKey, SprintCloseAction,
+    WipViolation, add_dependency, add_item_with_outcome, apply_item_edit, assign_sprint_by_status,
+    assign_sprint_raw, board, burndown, check_wip, clear_common_dod, close_sprint, common_dod,
+    create_sprint, cycle_time, delete_sprint, display_settings, edit_item, edit_sprint, init_board,
+    item_detail, item_edit_template, link_commits, list_items, list_sprints, lock_board,
+    migrate_storage, move_item, rebalance, remove_dependency, remove_item, reorder_item,
+    set_common_dod, set_sprint_capacity, sprint_capacity, start_sprint, sync_commits,
+    template_body, unassign_sprint, unlink_commits, velocity,
 };
 use std::io::{IsTerminal, Read};
 
@@ -1684,9 +1684,20 @@ async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                 )
             );
         }
-        SprintCommand::Close { id } => {
+        SprintCommand::Close {
+            id,
+            rollover,
+            release,
+        } => {
             let id: SprintId = id.parse()?;
-            let sprint = close_sprint(&dir, &id).await?;
+            let action = if let Some(target) = rollover {
+                SprintCloseAction::Rollover(target.parse()?)
+            } else if release {
+                SprintCloseAction::Release
+            } else {
+                SprintCloseAction::Retain
+            };
+            let sprint = close_sprint(&dir, &id, action).await?;
             println!(
                 "{}",
                 current().format(

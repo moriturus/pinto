@@ -3,7 +3,7 @@
 use super::open_board;
 use crate::backlog::BacklogItem;
 use crate::error::Result;
-use crate::sprint::SprintId;
+use crate::sprint::{SprintId, SprintSpillover, SprintState};
 use crate::storage::{BacklogItemRepository, SprintRepository};
 use rayon::prelude::*;
 use std::path::Path;
@@ -23,6 +23,8 @@ pub struct VelocitySprint {
     pub unestimated_completed_items: usize,
     /// Number of incomplete PBIs in the sprint.
     pub incomplete_items: usize,
+    /// Close-time unfinished-work snapshot, excluded from velocity calculations.
+    pub spillover: SprintSpillover,
 }
 
 /// Velocity summary for the selected recent sprints.
@@ -39,9 +41,11 @@ pub struct VelocityReport {
 
 /// Aggregate velocity for the most recent `recent` sprints in `project_dir`.
 ///
-/// Count only completed PBIs (`done_at` is set) with points in the total. Return unestimated and
-/// incomplete counts separately. Compare the latest sprint with the average of the preceding
-/// selected sprints; return no percentage when the baseline is zero or unavailable.
+/// Count only completed PBIs (`done_at` is set) with points in the total. For a Sprint with an
+/// actual close time, exclude PBIs completed later so retained spillover cannot change historical
+/// velocity. Return unestimated, incomplete, and close-time spillover counts separately. Compare
+/// the latest sprint with the average of the preceding selected sprints; return no percentage when
+/// the baseline is zero or unavailable.
 pub async fn velocity(project_dir: &Path, recent: usize) -> Result<VelocityReport> {
     let (_board_dir, repo, _config) = open_board(project_dir).await?;
     let (sprints, items) = tokio::try_join!(
@@ -68,18 +72,25 @@ fn compute_velocity(
             let (points, completed_items, unestimated_completed_items, incomplete_items) = relevant
                 .fold((0_u32, 0_usize, 0_usize, 0_usize), |acc, item| {
                     let (points, completed, unestimated, incomplete) = acc;
-                    if item.done_at.is_some() {
-                        match item.points {
-                            Some(value) => (
-                                points.saturating_add(value),
-                                completed + 1,
-                                unestimated,
-                                incomplete,
-                            ),
-                            None => (points, completed + 1, unestimated + 1, incomplete),
+                    match item.done_at {
+                        Some(done_at)
+                            if sprint.state != SprintState::Closed
+                                || sprint
+                                    .closed_at
+                                    .is_none_or(|closed_at| done_at <= closed_at) =>
+                        {
+                            match item.points {
+                                Some(value) => (
+                                    points.saturating_add(value),
+                                    completed + 1,
+                                    unestimated,
+                                    incomplete,
+                                ),
+                                None => (points, completed + 1, unestimated + 1, incomplete),
+                            }
                         }
-                    } else {
-                        (points, completed, unestimated, incomplete + 1)
+                        Some(_) => (points, completed, unestimated, incomplete),
+                        None => (points, completed, unestimated, incomplete + 1),
                     }
                 });
             VelocitySprint {
@@ -89,6 +100,7 @@ fn compute_velocity(
                 completed_items,
                 unestimated_completed_items,
                 incomplete_items,
+                spillover: sprint.spillover,
             }
         })
         .collect();
@@ -202,5 +214,51 @@ mod tests {
         let report = compute_velocity(&sprints, &items, 5);
 
         assert_eq!(report.change_percent, None);
+    }
+
+    #[test]
+    fn reports_spillover_separately_without_adding_it_to_velocity() {
+        let mut source = sprint("S-1");
+        source.spillover = crate::sprint::SprintSpillover {
+            points: 8,
+            items: 2,
+            unestimated_items: 1,
+        };
+        let sprints = [source, sprint("S-2")];
+        let items = [item(1, "S-1", Some(3), true)];
+
+        let report = compute_velocity(&sprints, &items, 2);
+
+        assert_eq!(report.sprints[0].points, 3);
+        assert_eq!(report.sprints[0].spillover.points, 8);
+        assert_eq!(report.average_points, 1.5);
+        assert_eq!(report.change_percent, Some(-100.0));
+    }
+
+    #[test]
+    fn excludes_retained_spillover_completed_after_the_sprint_closed() {
+        let mut source = sprint("S-1");
+        source.state = crate::sprint::SprintState::Active;
+        source
+            .close(
+                now() + chrono::Duration::seconds(10),
+                crate::sprint::SprintSpillover {
+                    points: 5,
+                    items: 1,
+                    unestimated_items: 0,
+                },
+            )
+            .expect("close sprint");
+        let mut completed_in_sprint = item(1, "S-1", Some(3), true);
+        completed_in_sprint.done_at = Some(now() + chrono::Duration::seconds(5));
+        let mut completed_after_close = item(2, "S-1", Some(5), true);
+        completed_after_close.done_at = Some(now() + chrono::Duration::seconds(20));
+
+        let report = compute_velocity(&[source], &[completed_in_sprint, completed_after_close], 1);
+
+        assert_eq!(report.sprints[0].points, 3);
+        assert_eq!(report.sprints[0].completed_items, 1);
+        assert_eq!(report.sprints[0].spillover.points, 5);
+        assert_eq!(report.average_points, 3.0);
     }
 }

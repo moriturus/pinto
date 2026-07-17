@@ -95,6 +95,20 @@ impl FromStr for SprintState {
     }
 }
 
+/// Unfinished work captured when a sprint is closed.
+///
+/// This is retrospective context only. It is deliberately separate from completed points so
+/// velocity remains the amount of work that reached Done during the sprint.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SprintSpillover {
+    /// Estimated points on unfinished PBIs.
+    pub points: u32,
+    /// Number of unfinished PBIs, including unestimated work.
+    pub items: u32,
+    /// Number of unfinished PBIs without an estimate.
+    pub unestimated_items: u32,
+}
+
 /// A sprint that groups PBIs into a time-boxed work period.
 ///
 /// `start` and `end` are planned dates independent of state transitions; editing sets the schedule
@@ -117,8 +131,12 @@ pub struct Sprint {
     pub holiday_days: Option<u32>,
     /// Fraction of daily capacity retained after meetings and interruptions (`0.0..=1.0`).
     pub deduction_factor: Option<f64>,
+    /// Snapshot of unfinished work when this sprint was closed.
+    pub spillover: SprintSpillover,
     /// Current state (`planned`, `active`, or `closed`).
     pub state: SprintState,
+    /// Actual close timestamp, used to keep closed-sprint velocity immutable.
+    pub closed_at: Option<DateTime<Utc>>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
 }
@@ -141,7 +159,9 @@ impl Sprint {
             daily_work_hours: None,
             holiday_days: None,
             deduction_factor: None,
+            spillover: SprintSpillover::default(),
             state: SprintState::Planned,
+            closed_at: None,
             created: now,
             updated: now,
         })
@@ -200,11 +220,14 @@ impl Sprint {
         self.transition(SprintState::Active, now)
     }
 
-    /// Close a sprint (`active` → `closed`) and update `updated`.
+    /// Close a sprint (`active` → `closed`), recording the actual time and spillover snapshot.
     ///
     /// Return [`Error::InvalidSprintTransition`] for any other state without changing it.
-    pub fn close(&mut self, now: DateTime<Utc>) -> Result<()> {
-        self.transition(SprintState::Closed, now)
+    pub fn close(&mut self, now: DateTime<Utc>, spillover: SprintSpillover) -> Result<()> {
+        self.transition(SprintState::Closed, now)?;
+        self.closed_at = Some(now);
+        self.spillover = spillover;
+        Ok(())
     }
 
     /// Update settings for capacity calculations.
@@ -373,8 +396,10 @@ mod tests {
         assert_eq!(s.daily_work_hours, None);
         assert_eq!(s.holiday_days, None);
         assert_eq!(s.deduction_factor, None);
+        assert_eq!(s.spillover, SprintSpillover::default());
         assert_eq!(s.capacity(), None);
         assert_eq!(s.state, SprintState::Planned);
+        assert_eq!(s.closed_at, None);
         assert_eq!(s.created, epoch());
         assert_eq!(s.updated, epoch());
     }
@@ -523,10 +548,17 @@ mod tests {
         s.start(epoch()).unwrap();
         let later = epoch() + chrono::Duration::seconds(120);
 
-        s.close(later).unwrap();
+        let spillover = SprintSpillover {
+            points: 5,
+            items: 2,
+            unestimated_items: 1,
+        };
+        s.close(later, spillover).unwrap();
 
         assert_eq!(s.state, SprintState::Closed);
         assert_eq!(s.updated, later);
+        assert_eq!(s.closed_at, Some(later));
+        assert_eq!(s.spillover, spillover);
     }
 
     #[test]
@@ -549,7 +581,17 @@ mod tests {
     #[test]
     fn close_from_planned_is_rejected() {
         let mut s = Sprint::new(sid("S-1"), "Sprint 1", epoch()).unwrap();
-        let err = s.close(epoch()).unwrap_err();
+        let original = s.clone();
+        let err = s
+            .close(
+                epoch(),
+                SprintSpillover {
+                    points: 5,
+                    items: 1,
+                    unestimated_items: 0,
+                },
+            )
+            .unwrap_err();
         assert_eq!(
             err,
             Error::InvalidSprintTransition {
@@ -557,6 +599,6 @@ mod tests {
                 to: SprintState::Closed,
             }
         );
-        assert_eq!(s.state, SprintState::Planned);
+        assert_eq!(s, original, "failed close does not store spillover");
     }
 }

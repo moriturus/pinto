@@ -415,6 +415,12 @@ pub(super) enum SprintCommand {
     Close {
         /// ID of the sprint to close.
         id: String,
+        /// Move unfinished PBIs to this planned or active sprint.
+        #[arg(long, short = 'r', value_name = "TARGET", conflicts_with = "release")]
+        rollover: Option<String>,
+        /// Clear sprint assignment from unfinished PBIs.
+        #[arg(long, short = 'u', conflicts_with = "rollover")]
+        release: bool,
     },
     /// Assign a PBI to a sprint, or assign ranked PBIs from a workflow status in bulk.
     #[command(visible_alias = "a")]

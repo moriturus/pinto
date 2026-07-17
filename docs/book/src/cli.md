@@ -122,7 +122,8 @@ pinto sprint add S-1 T-1
 pinto sprint add S-1 --status todo --limit 3
 pinto sprint add S-1 --status todo             # omit --limit to assign all matches
 pinto sprint list
-pinto sprint close S-1
+pinto sprint close S-1 --rollover S-2          # move unfinished PBIs to S-2
+# pinto sprint close S-1 --release             # alternative: clear their Sprint assignment
 pinto sprint remove S-1
 ```
 
@@ -132,7 +133,13 @@ Reports include `pinto sprint burndown`, `pinto sprint velocity`,
 Use `pinto sprint edit` to add a goal or change a planned period before
 starting a Sprint. Removing a Sprint releases its assigned PBIs without
 deleting them. Assign new PBIs only to `planned` or `active` Sprints; use
-`pinto sprint unassign` to correct an assignment that remains after a Sprint closes.
+`pinto sprint unassign` to correct an assignment that remains after a Sprint closes. Close changes
+only unfinished PBIs. `--rollover` and `--release` are mutually exclusive, while omitting both
+retains assignments. Completed PBIs remain untouched.
+
+Velocity totals, averages, and changes count only PBIs completed by the actual close time.
+Close-time unfinished points and item counts are displayed separately as spillover and never added
+to velocity, even if retained work reaches Done later.
 
 ## Definition of Done
 

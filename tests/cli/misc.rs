@@ -1257,6 +1257,10 @@ fn cli_options_have_short_forms() {
             &["sprint", "edit", "--help"],
             &["-t, --title", "-g, --goal", "-s, --start", "-e, --end"],
         ),
+        (
+            &["sprint", "close", "--help"],
+            &["-r, --rollover <TARGET>", "-u, --release"],
+        ),
         (&["sprint", "remove", "--help"], &["Remove a sprint"]),
         (
             &["sprint", "unassign", "--help"],

@@ -244,6 +244,41 @@ fn every_persisted_demo_board_passes_read_only_cli_smoke_checks() {
 }
 
 #[test]
+fn sprint_lifecycle_demo_persists_rollover_and_separate_spillover() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let demo = root.join("demos/single/sprint-lifecycle");
+    let sprints = json_output(
+        "single/sprint-lifecycle",
+        &demo,
+        &["sprint", "list", "--json"],
+    );
+    let source = sprints
+        .as_array()
+        .expect("sprint list is an array")
+        .iter()
+        .find(|sprint| sprint["id"] == "S-2")
+        .expect("S-2 exists");
+    assert_eq!(source["state"], "closed");
+    assert_eq!(source["spillover_points"], 8);
+    assert_eq!(source["spillover_items"], 2);
+    assert_eq!(source["unestimated_spillover_items"], 0);
+
+    let target_items = json_output(
+        "single/sprint-lifecycle",
+        &demo,
+        &["list", "--sprint", "S-3", "--json"],
+    );
+    let ids = target_items
+        .as_array()
+        .expect("item list is an array")
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&"T-3"));
+    assert!(ids.contains(&"T-5"));
+}
+
+#[test]
 fn intentional_error_demos_are_registered_and_keep_user_error_contracts() {
     let demos = discovered_demos();
     for name in INTENTIONAL_ERROR_DEMOS {

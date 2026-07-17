@@ -85,8 +85,8 @@ pinto sprint start S-1
 to assign every match, or pass a single ID (`pinto sprint add S-1 T-5`)
 instead of `--status`. `pinto sprint list` now reports `S-1` as `active`.
 
-The close-out recipe moves the sprint PBIs to `done` before closing the Sprint,
-then runs the reports; see
+The close-out recipe completes one Sprint PBI, rolls the unfinished PBI into the next Sprint while
+closing, then runs the reports; see
 [Close out and report](#close-out-and-report).
 
 ## Unix text-stream recipes
@@ -291,14 +291,16 @@ arithmetic expression (`2+1`), and `bc` evaluates it.
 and `T-4` to `in-progress`.
 
 ```bash
-pinto move T-3 T-4 done
-pinto sprint close S-1
+pinto sprint new S-2 "Next Sprint"
+pinto move T-3 done
+pinto sprint close S-1 --rollover S-2
 pinto sprint velocity
 pinto sprint burndown S-1
 pinto cycletime --sprint S-1
 ```
 
-**Verify:** `pinto sprint velocity` reports completed points per sprint
-(3 points for `S-1` with the seed data), `burndown` draws a chart over the
-planned period, and `cycletime` lists lead and cycle times for the completed
-PBIs.
+**Verify:** `pinto sprint velocity` reports 2 completed points for `S-1` and separately reports
+1 spillover point in 1 item. `T-4` is now assigned to `S-2`; its point is not included in the
+velocity average or change. `burndown` draws a chart over the planned period, and `cycletime`
+lists lead and cycle times for completed PBIs. Use `--release` instead of `--rollover S-2` when
+unfinished work should return to the unassigned backlog.

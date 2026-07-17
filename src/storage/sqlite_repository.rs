@@ -31,9 +31,9 @@
 //! ├── item_commits ── Git commits associated with items (multi-valued)
 //! │ └─ (item_id → items.id, sha, position) PK(item_id, sha) (duplicate SHA prohibited)
 //! ├── sprints ── sprint records
-//!       └─ id, title, goal, state, start, end, capacity settings, created, updated  PK(id)
+//!       └─ id, title, goal, state, close time, schedule, capacity, spillover, timestamps  PK(id)
 //! └── metadata ── extensible key/value metadata
-//!       └─ schema_version = "1", format = "pinto-sqlite"
+//!       └─ schema_version = "2", format = "pinto-sqlite"
 //! ```
 //!
 //! - **Referential integrity**: related tables reference `items.id` with `ON DELETE CASCADE`, so
@@ -50,7 +50,7 @@ use super::repository::{BacklogItemRepository, SprintRepository};
 use crate::backlog::{BacklogItem, ItemId, Status};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
-use crate::sprint::{Sprint, SprintId, SprintState};
+use crate::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::collections::HashMap;
@@ -64,14 +64,14 @@ pub struct SqliteRepository {
 }
 
 /// Current SQLite schema understood by this build.
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 const SCHEMA_VERSION_KEY: &str = "schema_version";
 const FORMAT_KEY: &str = "format";
 const FORMAT_VALUE: &str = "pinto-sqlite";
 
 /// Schema definition, applied when creating a new database (`IF NOT EXISTS`).
 ///
-/// The database is created at version 1 for the initial release. The constraints cover values
+/// The database is created at version 2. The constraints cover values
 /// that SQLite can validate directly; the loader below validates domain relationships that require
 /// parsing or date arithmetic.
 const SCHEMA: &str = r#"
@@ -116,11 +116,15 @@ CREATE TABLE IF NOT EXISTS sprints (
   title TEXT NOT NULL CHECK (length(trim(title)) > 0),
   goal TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('planned', 'active', 'closed')),
+  closed_at TEXT CHECK (closed_at IS NULL OR length(trim(closed_at)) > 0),
   start_at TEXT CHECK (start_at IS NULL OR length(trim(start_at)) > 0),
   end_at TEXT CHECK (end_at IS NULL OR length(trim(end_at)) > 0),
   daily_work_hours REAL CHECK (daily_work_hours IS NULL OR daily_work_hours >= 0),
   holiday_days INTEGER CHECK (holiday_days IS NULL OR holiday_days BETWEEN 0 AND 4294967295),
   deduction_factor REAL CHECK (deduction_factor IS NULL OR (deduction_factor >= 0 AND deduction_factor <= 1)),
+  spillover_points INTEGER NOT NULL DEFAULT 0 CHECK (spillover_points BETWEEN 0 AND 4294967295),
+  spillover_items INTEGER NOT NULL DEFAULT 0 CHECK (spillover_items BETWEEN 0 AND 4294967295),
+  unestimated_spillover_items INTEGER NOT NULL DEFAULT 0 CHECK (unestimated_spillover_items BETWEEN 0 AND 4294967295),
   created TEXT NOT NULL CHECK (length(trim(created)) > 0),
   updated TEXT NOT NULL CHECK (length(trim(updated)) > 0),
   CHECK ((start_at IS NULL) = (end_at IS NULL)),
@@ -758,14 +762,19 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
     }
     let goal: String = column(db, row, 2, "sprint goal")?;
     let state: String = column(db, row, 3, "sprint state")?;
-    let start: Option<String> = column(db, row, 4, "sprint start_at")?;
-    let end: Option<String> = column(db, row, 5, "sprint end_at")?;
-    let daily_work_hours: Option<f64> = column(db, row, 6, "daily_work_hours")?;
-    let holiday_raw: Option<i64> = column(db, row, 7, "holiday_days")?;
-    let deduction_factor: Option<f64> = column(db, row, 8, "deduction_factor")?;
-    let created: String = column(db, row, 9, "sprint created")?;
-    let updated: String = column(db, row, 10, "sprint updated")?;
+    let closed_at: Option<String> = column(db, row, 4, "sprint closed_at")?;
+    let start: Option<String> = column(db, row, 5, "sprint start_at")?;
+    let end: Option<String> = column(db, row, 6, "sprint end_at")?;
+    let daily_work_hours: Option<f64> = column(db, row, 7, "daily_work_hours")?;
+    let holiday_raw: Option<i64> = column(db, row, 8, "holiday_days")?;
+    let deduction_factor: Option<f64> = column(db, row, 9, "deduction_factor")?;
+    let spillover_points_raw: i64 = column(db, row, 10, "spillover_points")?;
+    let spillover_items_raw: i64 = column(db, row, 11, "spillover_items")?;
+    let unestimated_spillover_items_raw: i64 = column(db, row, 12, "unestimated_spillover_items")?;
+    let created: String = column(db, row, 13, "sprint created")?;
+    let updated: String = column(db, row, 14, "sprint updated")?;
     let parse_dt_opt = |s: Option<String>| s.map(|v| dt_from_str(db, &v)).transpose();
+    let closed_at = parse_dt_opt(closed_at)?;
     let start = parse_dt_opt(start)?;
     let end = parse_dt_opt(end)?;
     match (start, end) {
@@ -788,6 +797,22 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
             u32::try_from(days).map_err(|_| corrupt(db, format!("invalid holiday days {days}")))
         })
         .transpose()?;
+    let spillover = SprintSpillover {
+        points: u32::try_from(spillover_points_raw).map_err(|_| {
+            corrupt(
+                db,
+                format!("invalid spillover points {spillover_points_raw}"),
+            )
+        })?,
+        items: u32::try_from(spillover_items_raw)
+            .map_err(|_| corrupt(db, format!("invalid spillover items {spillover_items_raw}")))?,
+        unestimated_items: u32::try_from(unestimated_spillover_items_raw).map_err(|_| {
+            corrupt(
+                db,
+                format!("invalid unestimated spillover items {unestimated_spillover_items_raw}"),
+            )
+        })?,
+    };
     if let Some(hours) = daily_work_hours
         && (!hours.is_finite() || hours < 0.0)
     {
@@ -834,16 +859,18 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
         daily_work_hours,
         holiday_days,
         deduction_factor,
+        spillover,
         state: state
             .parse::<SprintState>()
             .map_err(|e| corrupt(db, format!("invalid sprint state {state:?}: {e}")))?,
+        closed_at,
         created: dt_from_str(db, &created)?,
         updated: dt_from_str(db, &updated)?,
     })
 }
 
 /// A `SELECT` list containing the columns read by [`sprint_from`] in that order.
-const SPRINT_COLUMNS: &str = "id, title, goal, state, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, created, updated";
+const SPRINT_COLUMNS: &str = "id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated";
 
 impl SprintRepository for SqliteRepository {
     async fn save(&self, sprint: &Sprint) -> Result<()> {
@@ -852,23 +879,29 @@ impl SprintRepository for SqliteRepository {
         tokio::task::spawn_blocking(move || {
             let conn = open_conn(&db)?;
             conn.execute(
-                "INSERT INTO sprints (id, title, goal, state, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, created, updated) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
+                "INSERT INTO sprints (id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
                  ON CONFLICT(id) DO UPDATE SET \
-                  title = excluded.title, goal = excluded.goal, state = excluded.state, \
+                  title = excluded.title, goal = excluded.goal, state = excluded.state, closed_at = excluded.closed_at, \
                   start_at = excluded.start_at, end_at = excluded.end_at, \
                   daily_work_hours = excluded.daily_work_hours, holiday_days = excluded.holiday_days, deduction_factor = excluded.deduction_factor, \
+                  spillover_points = excluded.spillover_points, spillover_items = excluded.spillover_items, \
+                  unestimated_spillover_items = excluded.unestimated_spillover_items, \
                   created = excluded.created, updated = excluded.updated",
                 params![
                     sprint.id.as_str(),
                     sprint.title,
                     sprint.goal,
                     sprint.state.as_str(),
+                    sprint.closed_at.map(dt_to_str),
                     sprint.start.map(dt_to_str),
                     sprint.end.map(dt_to_str),
                     sprint.daily_work_hours,
                     sprint.holiday_days.map(i64::from),
                     sprint.deduction_factor,
+                    i64::from(sprint.spillover.points),
+                    i64::from(sprint.spillover.items),
+                    i64::from(sprint.spillover.unestimated_items),
                     dt_to_str(sprint.created),
                     dt_to_str(sprint.updated),
                 ],
@@ -1042,7 +1075,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("format metadata");
-        assert_eq!(version, "1");
+        assert_eq!(version, "2");
         assert_eq!(format, "pinto-sqlite");
     }
 
@@ -1102,7 +1135,7 @@ mod tests {
             .await
             .expect_err("schema metadata is required for an existing database");
         assert!(err.to_string().contains("found version \"missing\""));
-        assert!(err.to_string().contains("version 1"));
+        assert!(err.to_string().contains("version 2"));
         let conn = raw(&repo);
         let metadata_exists: bool = conn
             .query_row(
@@ -1151,7 +1184,7 @@ mod tests {
         BacklogItemRepository::list(&repo)
             .await
             .expect("initialize");
-        for found in ["99", "not-a-version"] {
+        for found in ["1", "99", "not-a-version"] {
             let conn = raw(&repo);
             conn.execute(
                 "UPDATE metadata SET value = ?1 WHERE key = 'schema_version'",
@@ -1169,7 +1202,7 @@ mod tests {
                 "reports stored version {found:?}: {message}"
             );
             assert!(
-                message.contains("version 1"),
+                message.contains("version 2"),
                 "reports supported version: {message}"
             );
             assert!(
@@ -1353,9 +1386,15 @@ mod tests {
         let (_dir, repo) = repo();
         let mut s = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint One", ts(1_000)).unwrap();
         s.goal = "Ship the MVP\nwith tests".to_string();
-        s.state = crate::sprint::SprintState::Active;
+        s.state = crate::sprint::SprintState::Closed;
+        s.closed_at = Some(ts(4_000));
         s.start = Some(ts(1_000));
         s.end = Some(ts(9_000));
+        s.spillover = crate::sprint::SprintSpillover {
+            points: 8,
+            items: 2,
+            unestimated_items: 1,
+        };
         s.updated = ts(5_000);
         SprintRepository::save(&repo, &s).await.expect("save");
         let loaded = SprintRepository::load(&repo, &s.id).await.expect("load");
@@ -1376,6 +1415,20 @@ mod tests {
             cols.iter().any(|c| c == "state"),
             "state 列を持つ: {cols:?}"
         );
+        assert!(
+            cols.iter().any(|column| column == "closed_at"),
+            "closed_at column exists: {cols:?}"
+        );
+        for expected in [
+            "spillover_points",
+            "spillover_items",
+            "unestimated_spillover_items",
+        ] {
+            assert!(
+                cols.iter().any(|column| column == expected),
+                "spillover column {expected} exists: {cols:?}"
+            );
+        }
     }
 
     #[tokio::test]

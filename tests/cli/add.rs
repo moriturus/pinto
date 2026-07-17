@@ -59,21 +59,12 @@ fn add_accepts_multiple_labels_after_one_option() {
     pinto(dir.path()).arg("init").assert().success();
 
     pinto(dir.path())
-        .args([
-            "add",
-            "Multi-label task",
-            "--label",
-            "backend",
-            "urgent",
-        ])
+        .args(["add", "Multi-label task", "--label", "backend", "urgent"])
         .assert()
         .success();
 
     let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
-    assert_eq!(
-        item["labels"],
-        serde_json::json!(["backend", "urgent"])
-    );
+    assert_eq!(item["labels"], serde_json::json!(["backend", "urgent"]));
 }
 
 #[test]

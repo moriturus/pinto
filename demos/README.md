@@ -43,7 +43,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`parent-child`](single/parent-child) — parent/child hierarchy
   - [`child-points`](single/child-points) — opt-in recursive parent point aggregation
   - [`labels`](single/labels) — labels and label filters
-  - [`sprint-lifecycle`](single/sprint-lifecycle) — sprint new/start/close/add/rm/list
+  - [`sprint-lifecycle`](single/sprint-lifecycle) — sprint close rollover and spillover reporting
   - [`sprint-edit-delete`](single/sprint-edit-delete) — edit a goal-less Sprint, start it, and delete a Sprint while retaining PBIs
   - [`sprint-closed-assignment`](single/sprint-closed-assignment) — reject new assignments to closed Sprints while preserving the rm correction path
   - [`sprint-assignment-validation`](single/sprint-assignment-validation) — validate Sprint IDs and existence consistently across add/edit/sprint add

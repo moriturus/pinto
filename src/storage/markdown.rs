@@ -3,7 +3,7 @@
 use crate::backlog::{BacklogItem, ItemId, Status};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
-use crate::sprint::{Sprint, SprintId, SprintState};
+use crate::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -176,6 +176,8 @@ struct SprintFrontmatter {
     title: String,
     state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    closed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     start: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     end: Option<DateTime<Utc>>,
@@ -185,6 +187,12 @@ struct SprintFrontmatter {
     holiday_days: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     deduction_factor: Option<f64>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    spillover_points: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    spillover_items: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    unestimated_spillover_items: u32,
     created: DateTime<Utc>,
     updated: DateTime<Utc>,
 }
@@ -195,11 +203,15 @@ impl SprintFrontmatter {
             id: sprint.id.to_string(),
             title: sprint.title.clone(),
             state: sprint.state.to_string(),
+            closed_at: sprint.closed_at,
             start: sprint.start,
             end: sprint.end,
             daily_work_hours: sprint.daily_work_hours,
             holiday_days: sprint.holiday_days,
             deduction_factor: sprint.deduction_factor,
+            spillover_points: sprint.spillover.points,
+            spillover_items: sprint.spillover.items,
+            unestimated_spillover_items: sprint.spillover.unestimated_items,
             created: sprint.created,
             updated: sprint.updated,
         }
@@ -222,11 +234,21 @@ impl SprintFrontmatter {
             daily_work_hours: self.daily_work_hours,
             holiday_days: self.holiday_days,
             deduction_factor: self.deduction_factor,
+            spillover: SprintSpillover {
+                points: self.spillover_points,
+                items: self.spillover_items,
+                unestimated_items: self.unestimated_spillover_items,
+            },
             state,
+            closed_at: self.closed_at,
             created: self.created,
             updated: self.updated,
         })
     }
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 /// Format the sprint into a Markdown string with a structured title and a Markdown goal body.
@@ -374,14 +396,38 @@ updated = \"1970-01-01T00:00:00Z\"
         )
         .expect("valid sprint");
         sprint.goal = "Ship the MVP\nwith tests".to_string();
-        sprint.state = SprintState::Active;
+        sprint.state = SprintState::Closed;
+        sprint.closed_at = Some(epoch() + Duration::seconds(20));
         sprint.start = Some(epoch());
         sprint.end = Some(epoch() + Duration::days(14));
+        sprint.spillover = crate::sprint::SprintSpillover {
+            points: 8,
+            items: 2,
+            unestimated_items: 1,
+        };
         sprint.updated = epoch() + Duration::seconds(30);
 
         let text = sprint_to_markdown(&sprint).expect("serialize");
         let parsed = sprint_from_markdown(&text, Path::new("sprint-1.md")).expect("parse");
         assert_eq!(parsed, sprint);
+    }
+
+    #[test]
+    fn sprint_markdown_without_spillover_fields_defaults_to_zero() {
+        let text = "\
++++
+id = \"S-1\"
+title = \"Sprint One\"
+state = \"closed\"
+created = \"1970-01-01T00:00:00Z\"
+updated = \"1970-01-01T00:00:00Z\"
++++
+";
+
+        let sprint = sprint_from_markdown(text, Path::new("S-1.md")).expect("parse sprint");
+
+        assert_eq!(sprint.closed_at, None);
+        assert_eq!(sprint.spillover, crate::sprint::SprintSpillover::default());
     }
 
     #[test]

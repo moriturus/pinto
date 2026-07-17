@@ -57,10 +57,7 @@ fn edit_accepts_multiple_labels_after_one_option_and_replaces_existing_set() {
         .success();
 
     let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
-    assert_eq!(
-        item["labels"],
-        serde_json::json!(["backend", "urgent"])
-    );
+    assert_eq!(item["labels"], serde_json::json!(["backend", "urgent"]));
 }
 
 #[test]

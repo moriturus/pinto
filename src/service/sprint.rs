@@ -7,9 +7,10 @@
 use super::{open_board, open_board_locked};
 use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
-use crate::sprint::{Sprint, SprintCapacity, SprintId, SprintState};
+use crate::sprint::{Sprint, SprintCapacity, SprintId, SprintSpillover, SprintState};
 use crate::storage::{Backend, BacklogItemRepository, SprintRepository};
 use chrono::{DateTime, Utc};
+use rayon::prelude::*;
 use std::path::Path;
 
 /// Create a sprint on the board in `project_dir` and return the saved [`Sprint`].
@@ -113,16 +114,102 @@ pub async fn start_sprint(project_dir: &Path, id: &SprintId) -> Result<Sprint> {
     transition_sprint(project_dir, id, Sprint::start).await
 }
 
-/// Close the sprint (`active` → `closed`). Returns the saved [`Sprint`].
-///
-/// Return [`Error::NotInitialized`] when the board is uninitialized or
-/// [`Error::SprintNotFound`] when no sprint with `id` exists. Closing from anything other than
-/// `active` returns [`Error::InvalidSprintTransition`].
-pub async fn close_sprint(project_dir: &Path, id: &SprintId) -> Result<Sprint> {
-    transition_sprint(project_dir, id, Sprint::close).await
+/// How unfinished PBIs are handled when their sprint closes.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum SprintCloseAction {
+    /// Keep unfinished PBIs assigned to the closed sprint.
+    #[default]
+    Retain,
+    /// Reassign unfinished PBIs to a planned or active sprint.
+    Rollover(SprintId),
+    /// Clear the sprint assignment from unfinished PBIs.
+    Release,
 }
 
-/// Load the sprint, apply `transition` ([`Sprint::start`] / [`Sprint::close`]) and save.
+/// Close the sprint (`active` → `closed`) and return the saved [`Sprint`].
+///
+/// A rollover target is validated before the first write. Only unfinished PBIs are reassigned or
+/// released; completed PBIs remain byte-for-byte equivalent at the domain level. The sprint stores
+/// the actual close time and a snapshot of unfinished estimated points and item counts for
+/// retrospective display, separate from velocity.
+pub async fn close_sprint(
+    project_dir: &Path,
+    id: &SprintId,
+    action: SprintCloseAction,
+) -> Result<Sprint> {
+    let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
+    let original_sprint = SprintRepository::load(&repo, id).await?;
+    if original_sprint.state != SprintState::Active {
+        return Err(Error::InvalidSprintTransition {
+            from: original_sprint.state,
+            to: SprintState::Closed,
+        });
+    }
+
+    if let SprintCloseAction::Rollover(target) = &action {
+        if target == id {
+            return Err(Error::InvalidFilterOption(
+                "a sprint cannot roll unfinished PBIs over to itself".to_string(),
+            ));
+        }
+        validate_sprint_assignment(&repo, target.as_str()).await?;
+    }
+
+    let original_items = BacklogItemRepository::list(&repo)
+        .await?
+        .into_par_iter()
+        .filter(|item| item.sprint.as_deref() == Some(id.as_str()) && item.done_at.is_none())
+        .collect::<Vec<_>>();
+    let spillover = original_items
+        .par_iter()
+        .map(|item| SprintSpillover {
+            points: item.points.unwrap_or(0),
+            items: 1,
+            unestimated_items: u32::from(item.points.is_none()),
+        })
+        .reduce(SprintSpillover::default, |left, right| SprintSpillover {
+            points: left.points.saturating_add(right.points),
+            items: left.items.saturating_add(right.items),
+            unestimated_items: left
+                .unestimated_items
+                .saturating_add(right.unestimated_items),
+        });
+
+    let now = Utc::now();
+    let mut sprint = original_sprint.clone();
+    sprint.close(now, spillover)?;
+    let mut updated_items = if action == SprintCloseAction::Retain {
+        Vec::new()
+    } else {
+        original_items.clone()
+    };
+    for item in &mut updated_items {
+        match &action {
+            SprintCloseAction::Retain => {}
+            SprintCloseAction::Rollover(target) => item.sprint = Some(target.to_string()),
+            SprintCloseAction::Release => item.sprint = None,
+        }
+        item.updated = now;
+    }
+
+    for (index, item) in updated_items.iter().enumerate() {
+        if let Err(error) = BacklogItemRepository::save(&repo, item).await {
+            rollback_sprint_close(&repo, &original_sprint, &original_items[..=index], &error)
+                .await?;
+            return Err(error);
+        }
+    }
+    if let Err(error) = SprintRepository::save(&repo, &sprint).await {
+        rollback_sprint_close(&repo, &original_sprint, &original_items, &error).await?;
+        return Err(error);
+    }
+    // Match the repository-wide Git failure contract: once durable files are saved, a commit
+    // failure leaves them available for inspection and manual recovery.
+    repo.commit(&format!("pinto: update {}", sprint.id)).await?;
+    Ok(sprint)
+}
+
+/// Load the sprint, apply a state transition, and save.
 ///
 /// The domain layer validates the transition before the updated sprint is saved, so failures leave
 /// the on-disk state unchanged.
@@ -137,6 +224,28 @@ async fn transition_sprint(
     SprintRepository::save(&repo, &sprint).await?;
     repo.commit(&format!("pinto: update {}", sprint.id)).await?;
     Ok(sprint)
+}
+
+/// Restore sprint and unfinished-PBI contents after a failed close persistence operation.
+async fn rollback_sprint_close(
+    repo: &Backend,
+    original_sprint: &Sprint,
+    original_items: &[BacklogItem],
+    operation_error: &Error,
+) -> Result<()> {
+    for item in original_items.iter().rev() {
+        if let Err(rollback_error) = BacklogItemRepository::save(repo, item).await {
+            return Err(Error::task(format!(
+                "{operation_error}; failed to roll back sprint close: {rollback_error}"
+            )));
+        }
+    }
+    if let Err(rollback_error) = SprintRepository::save(repo, original_sprint).await {
+        return Err(Error::task(format!(
+            "{operation_error}; failed to roll back sprint close: {rollback_error}"
+        )));
+    }
+    Ok(())
 }
 
 /// Validate a raw sprint assignment while the caller holds the board write lock.
@@ -361,7 +470,9 @@ mod tests {
         .await
         .unwrap();
         start_sprint(dir.path(), &sid("S-2")).await.unwrap();
-        close_sprint(dir.path(), &sid("S-2")).await.unwrap();
+        close_sprint(dir.path(), &sid("S-2"), SprintCloseAction::Retain)
+            .await
+            .unwrap();
         let repo = Backend::File(FileRepository::new(dir.path().join(".pinto")));
 
         assert_eq!(
@@ -552,8 +663,181 @@ mod tests {
         .unwrap();
         start_sprint(dir.path(), &sid("S-1")).await.unwrap();
 
-        let closed = close_sprint(dir.path(), &sid("S-1")).await.unwrap();
+        let closed = close_sprint(dir.path(), &sid("S-1"), SprintCloseAction::Retain)
+            .await
+            .unwrap();
         assert_eq!(closed.state, SprintState::Closed);
+    }
+
+    #[tokio::test]
+    async fn close_rollover_moves_only_unfinished_items_and_snapshots_spillover() {
+        let dir = init_temp().await;
+        create_sprint(
+            dir.path(),
+            &sid("S-1"),
+            "Source",
+            Some("Ship it".to_string()),
+            None,
+        )
+        .await
+        .unwrap();
+        create_sprint(dir.path(), &sid("S-2"), "Target", None, None)
+            .await
+            .unwrap();
+        let completed = add_item(
+            dir.path(),
+            "Completed",
+            NewItem {
+                points: Some(3),
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .unwrap();
+        let unfinished = add_item(
+            dir.path(),
+            "Unfinished",
+            NewItem {
+                points: Some(5),
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .unwrap();
+        let unestimated = add_item(
+            dir.path(),
+            "Unestimated",
+            NewItem {
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .unwrap();
+        let completed = move_item(dir.path(), &completed.id, "done").await.unwrap();
+        start_sprint(dir.path(), &sid("S-1")).await.unwrap();
+
+        let closed = close_sprint(
+            dir.path(),
+            &sid("S-1"),
+            SprintCloseAction::Rollover(sid("S-2")),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            closed.spillover,
+            SprintSpillover {
+                points: 5,
+                items: 2,
+                unestimated_items: 1,
+            }
+        );
+        let repo = FileRepository::new(dir.path().join(".pinto"));
+        assert_eq!(
+            BacklogItemRepository::load(&repo, &completed.id)
+                .await
+                .unwrap(),
+            completed,
+            "completed PBI is not rewritten"
+        );
+        assert_eq!(
+            BacklogItemRepository::load(&repo, &unfinished.id)
+                .await
+                .unwrap()
+                .sprint
+                .as_deref(),
+            Some("S-2")
+        );
+        assert_eq!(
+            BacklogItemRepository::load(&repo, &unestimated.id)
+                .await
+                .unwrap()
+                .sprint
+                .as_deref(),
+            Some("S-2")
+        );
+    }
+
+    #[tokio::test]
+    async fn close_rejects_invalid_rollover_targets_before_mutation() {
+        let dir = init_temp().await;
+        for (id, title) in [("S-1", "Source"), ("S-2", "Closed target")] {
+            create_sprint(
+                dir.path(),
+                &sid(id),
+                title,
+                Some("Ship it".to_string()),
+                None,
+            )
+            .await
+            .unwrap();
+        }
+        let item = add_item(
+            dir.path(),
+            "Unfinished",
+            NewItem {
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .unwrap();
+        start_sprint(dir.path(), &sid("S-1")).await.unwrap();
+        start_sprint(dir.path(), &sid("S-2")).await.unwrap();
+        close_sprint(dir.path(), &sid("S-2"), SprintCloseAction::Retain)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            close_sprint(
+                dir.path(),
+                &sid("S-1"),
+                SprintCloseAction::Rollover(sid("S-404")),
+            )
+            .await
+            .unwrap_err(),
+            Error::SprintNotFound(sid("S-404"))
+        );
+        assert!(matches!(
+            close_sprint(
+                dir.path(),
+                &sid("S-1"),
+                SprintCloseAction::Rollover(sid("S-1")),
+            )
+            .await
+            .unwrap_err(),
+            Error::InvalidFilterOption(message) if message.contains("itself")
+        ));
+        assert_eq!(
+            close_sprint(
+                dir.path(),
+                &sid("S-1"),
+                SprintCloseAction::Rollover(sid("S-2")),
+            )
+            .await
+            .unwrap_err(),
+            Error::SprintClosed(sid("S-2"))
+        );
+
+        let repo = FileRepository::new(dir.path().join(".pinto"));
+        assert_eq!(
+            SprintRepository::load(&repo, &sid("S-1"))
+                .await
+                .unwrap()
+                .state,
+            SprintState::Active
+        );
+        assert_eq!(
+            BacklogItemRepository::load(&repo, &item.id)
+                .await
+                .unwrap()
+                .sprint
+                .as_deref(),
+            Some("S-1")
+        );
     }
 
     #[tokio::test]
@@ -563,7 +847,9 @@ mod tests {
             .await
             .unwrap();
 
-        let err = close_sprint(dir.path(), &sid("S-1")).await.unwrap_err();
+        let err = close_sprint(dir.path(), &sid("S-1"), SprintCloseAction::Retain)
+            .await
+            .unwrap_err();
         assert!(
             matches!(err, Error::InvalidSprintTransition { .. }),
             "got {err:?}"
@@ -841,7 +1127,9 @@ mod tests {
         .await
         .unwrap();
         start_sprint(dir.path(), &sid("S-1")).await.unwrap();
-        close_sprint(dir.path(), &sid("S-1")).await.unwrap();
+        close_sprint(dir.path(), &sid("S-1"), SprintCloseAction::Retain)
+            .await
+            .unwrap();
         assert_eq!(
             assign_sprint_by_status(dir.path(), &sid("S-1"), "todo", None)
                 .await

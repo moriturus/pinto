@@ -96,6 +96,10 @@ struct SprintJson {
     goal: String,
     start: Option<String>,
     end: Option<String>,
+    closed_at: Option<String>,
+    spillover_points: u32,
+    spillover_items: u32,
+    unestimated_spillover_items: u32,
     created: String,
     updated: String,
 }
@@ -109,6 +113,10 @@ impl SprintJson {
             goal: sprint.goal.clone(),
             start: sprint.start.map(|d| d.to_rfc3339()),
             end: sprint.end.map(|d| d.to_rfc3339()),
+            closed_at: sprint.closed_at.map(|d| d.to_rfc3339()),
+            spillover_points: sprint.spillover.points,
+            spillover_items: sprint.spillover.items,
+            unestimated_spillover_items: sprint.spillover.unestimated_items,
             created: sprint.created.to_rfc3339(),
             updated: sprint.updated.to_rfc3339(),
         }

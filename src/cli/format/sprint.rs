@@ -9,12 +9,15 @@ pub(crate) fn format_velocity(report: &VelocityReport, recent: usize) -> String 
     let mut out = format!("Velocity (last {recent} sprints)\n");
     for row in &report.sprints {
         out.push_str(&format!(
-            "{}  {} points  completed: {}  unestimated: {}  incomplete: {}\n",
+            "{}  {} points  completed: {}  unestimated: {}  incomplete: {}  spillover: {} points ({} items, {} unestimated)\n",
             row.sprint_id,
             row.points,
             row.completed_items,
             row.unestimated_completed_items,
             row.incomplete_items,
+            row.spillover.points,
+            row.spillover.items,
+            row.spillover.unestimated_items,
         ));
     }
     out.push_str(&format!("Average: {:.1} points\n", report.average_points));

@@ -30,6 +30,15 @@ pinto sprint list --json
 Do not parse the human-oriented table or board output when `--json` is
 available.
 
+## Sprint close fields
+
+Every object from `sprint list --json` includes `closed_at`,
+`spillover_points`, `spillover_items`, and `unestimated_spillover_items`.
+`closed_at` is an RFC 3339 timestamp or `null` until the Sprint closes. The spillover fields are
+zero until close, then preserve the estimated points and item counts that were unfinished at that
+moment. They are retrospective context and are not included in velocity points, averages, or
+change percentages.
+
 `automate --json` returns an object with `status`, `dry_run`, and a `commands`
 array. Each command entry includes its one-based `index`, command name, status
 (`valid`, `succeeded`, `failed`, or `skipped`), `created_ids`, `updated_ids`,

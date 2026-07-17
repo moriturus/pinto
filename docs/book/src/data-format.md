@@ -41,6 +41,15 @@ Statuses must be columns in the configured workflow. The rank is a fractional
 index used to keep ordering changes small. Completion and start timestamps are
 recorded when a PBI crosses the configured workflow boundaries.
 
+## Sprint files
+
+A Sprint uses the same TOML-frontmatter/Markdown-body shape under `.pinto/sprints/`. Its title,
+state, planned dates, capacity settings, and timestamps are structured fields; its goal is the
+Markdown body. Closing a Sprint writes `closed_at` plus `spillover_points`, `spillover_items`, and
+`unestimated_spillover_items`. Zero spillover values and an unset close time are omitted before
+close. These fields preserve retrospective context after unfinished PBIs are rolled over or
+released, while velocity continues to count completed work only.
+
 ## Configuration
 
 `.pinto/config.toml` controls the workflow and presentation settings. The

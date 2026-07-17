@@ -186,6 +186,10 @@ fn sprint_list_json_outputs_sprint_schema() {
     assert_eq!(sprint["goal"], "Ship MVP");
     assert_eq!(sprint["start"], serde_json::Value::Null);
     assert_eq!(sprint["end"], serde_json::Value::Null);
+    assert_eq!(sprint["closed_at"], serde_json::Value::Null);
+    assert_eq!(sprint["spillover_points"], 0);
+    assert_eq!(sprint["spillover_items"], 0);
+    assert_eq!(sprint["unestimated_spillover_items"], 0);
     assert!(sprint["created"].is_string(), "created is RFC3339 string");
 }
 
@@ -566,6 +570,214 @@ fn sprint_start_then_close_transitions_state() {
             .contains("state = \"closed\""),
         "close moves to closed"
     );
+}
+
+fn init_active_sprint_with_unfinished_items(dir: &Path) {
+    pinto(dir).arg("init").assert().success();
+    pinto(dir)
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Source",
+            "--goal",
+            "Ship the sprint",
+        ])
+        .assert()
+        .success();
+    pinto(dir)
+        .args(["sprint", "new", "S-2", "Target"])
+        .assert()
+        .success();
+    pinto(dir)
+        .args(["add", "Completed", "--points", "3", "--sprint", "S-1"])
+        .assert()
+        .success();
+    pinto(dir)
+        .args([
+            "add",
+            "Estimated unfinished",
+            "--points",
+            "5",
+            "--sprint",
+            "S-1",
+        ])
+        .assert()
+        .success();
+    pinto(dir)
+        .args(["add", "Unestimated unfinished", "--sprint", "S-1"])
+        .assert()
+        .success();
+    pinto(dir).args(["move", "T-1", "done"]).assert().success();
+    pinto(dir)
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn sprint_close_rollover_moves_only_unfinished_items_and_keeps_velocity_done_only() {
+    let dir = TempDir::new().expect("temp dir");
+    init_active_sprint_with_unfinished_items(dir.path());
+    let completed_before = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1", "--rollover", "S-2"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Closed sprint S-1"));
+
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-1", "--json"])),
+        completed_before,
+        "completed PBIs are not rewritten"
+    );
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-2", "--json"]))["sprint"],
+        "S-2"
+    );
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-3", "--json"]))["sprint"],
+        "S-2"
+    );
+
+    let sprints = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    let source = sprints
+        .as_array()
+        .expect("sprint list is an array")
+        .iter()
+        .find(|sprint| sprint["id"] == "S-1")
+        .expect("source sprint");
+    assert_eq!(source["state"], "closed");
+    assert!(source["closed_at"].is_string());
+    assert_eq!(source["spillover_points"], 5);
+    assert_eq!(source["spillover_items"], 2);
+    assert_eq!(source["unestimated_spillover_items"], 1);
+
+    pinto(dir.path())
+        .args(["sprint", "velocity", "--recent", "2"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("S-1  3 points"))
+        .stdout(predicate::str::contains(
+            "spillover: 5 points (2 items, 1 unestimated)",
+        ))
+        .stdout(predicate::str::contains("Average: 1.5 points"));
+}
+
+#[test]
+fn sprint_close_release_unassigns_only_unfinished_items() {
+    let dir = TempDir::new().expect("temp dir");
+    init_active_sprint_with_unfinished_items(dir.path());
+    let completed_before = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1", "--release"])
+        .assert()
+        .success();
+
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-1", "--json"])),
+        completed_before
+    );
+    assert!(show_json(pinto(dir.path()).args(["show", "T-2", "--json"]))["sprint"].is_null());
+    assert!(show_json(pinto(dir.path()).args(["show", "T-3", "--json"]))["sprint"].is_null());
+
+    let sprints = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(sprints[0]["spillover_points"], 5);
+    assert_eq!(sprints[0]["spillover_items"], 2);
+    assert_eq!(sprints[0]["unestimated_spillover_items"], 1);
+}
+
+#[test]
+fn sprint_close_retained_spillover_completed_later_does_not_change_velocity() {
+    let dir = TempDir::new().expect("temp dir");
+    init_active_sprint_with_unfinished_items(dir.path());
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["move", "T-2", "done"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "velocity", "--recent", "2"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("S-1  3 points"))
+        .stdout(predicate::str::contains(
+            "spillover: 5 points (2 items, 1 unestimated)",
+        ))
+        .stdout(predicate::str::contains("Average: 1.5 points"));
+}
+
+#[test]
+fn sprint_close_rejects_invalid_or_conflicting_rollover_without_mutation() {
+    let dir = TempDir::new().expect("temp dir");
+    init_active_sprint_with_unfinished_items(dir.path());
+    let items_before = json_stdout(pinto(dir.path()).args(["list", "--json"]));
+    let sprints_before = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1", "--rollover", "S-404"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("S-404"));
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"])),
+        items_before
+    );
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"])),
+        sprints_before
+    );
+
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1", "--rollover", "S-2", "--release"])
+        .assert()
+        .failure();
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"])),
+        items_before
+    );
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"])),
+        sprints_before
+    );
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn sprint_close_rollover_persists_across_the_sqlite_backend() {
+    let dir = TempDir::new().expect("temp dir");
+    init_active_sprint_with_unfinished_items(dir.path());
+    pinto(dir.path())
+        .args(["migrate", "--to", "sqlite"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1", "--rollover", "S-2"])
+        .assert()
+        .success();
+
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-2", "--json"]))["sprint"],
+        "S-2"
+    );
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-3", "--json"]))["sprint"],
+        "S-2"
+    );
+    let sprints = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(sprints[0]["state"], "closed");
+    assert_eq!(sprints[0]["spillover_points"], 5);
+    assert_eq!(sprints[0]["spillover_items"], 2);
+    assert_eq!(sprints[0]["unestimated_spillover_items"], 1);
 }
 
 #[test]

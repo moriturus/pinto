@@ -37,7 +37,10 @@ Markdown body. A board stores each PBI separately. Sprints have an ID, title,
 state, goal, schedule, and capacity inputs. A goal may be added while
 planned, but a Sprint cannot start until its goal is non-blank. The title is
 stored in frontmatter and the goal is stored as the Markdown body after
-frontmatter.
+frontmatter. Closing records the actual close time and a snapshot of unfinished estimated points,
+item count, and unestimated item count. Rollover and release change only unfinished assignments;
+completed PBIs are left untouched. Velocity remains completed work only, with the spillover
+snapshot exposed separately for retrospectives.
 
 The default workflow is `todo`, `in-progress`, `review`, and `done`. A board
 can configure its columns and the name of its done column. Invalid legacy

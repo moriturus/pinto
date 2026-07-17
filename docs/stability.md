@@ -62,17 +62,21 @@ decision only if a long-running local process is introduced.
 
 ## SQLite schema metadata
 
-The current SQLite schema version is `1`. Every newly created database contains an extensible
+The current SQLite schema version is `2`. Every newly created database contains an extensible
 `metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)` table with these reserved
 entries:
 
-- `schema_version = "1"` identifies the normalized table layout.
+- `schema_version = "2"` identifies the normalized table layout, including close-time Sprint
+  spillover columns.
 - `format = "pinto-sqlite"` identifies the pinto SQLite storage format.
 
 Opening a new database stamps these entries. Existing databases with missing,
 unknown, or malformed schema metadata fail with an actionable compatibility
-error. Pinto does not migrate, convert, downgrade, or promise that an older
-database layout can be read by this first release. A future schema change must
+error. Schema version 1 is not opened by a version 2 binary. To preserve such a board, use a
+version 1-compatible pinto binary to run `pinto migrate --to file`, upgrade pinto, and optionally
+run `pinto migrate --to sqlite` to create a version 2 database. Otherwise, recreate the SQLite
+board from its source data. Pinto does not automatically migrate, convert, or downgrade an older
+database layout. A future schema change must
 increment the version, document the new metadata, add an explicit migration
 plan, and update the compatibility check and tests together.
 

@@ -363,11 +363,14 @@ fn cookbook_tail_recipe_matches_noninteractive_list_output() {
 #[test]
 fn cookbook_describes_the_sprint_close_sequence_accurately() {
     let cookbook = repository_file("docs/book/src/cookbook.md");
-    assert!(cookbook.contains("moves the sprint PBIs to `done` before closing the Sprint"));
+    assert!(cookbook.contains(
+        "completes one Sprint PBI, rolls the unfinished PBI into the next Sprint while\nclosing"
+    ));
     assert!(
         !cookbook
             .contains("Closing out the sprint moves PBIs to `done` and changes the board state")
     );
+    assert!(!cookbook.contains("moves the sprint PBIs to `done` before closing the Sprint"));
 }
 
 #[test]

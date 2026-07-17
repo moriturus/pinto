@@ -232,7 +232,15 @@ pinto sprint velocity
 pinto cycletime --sprint S-1
 ```
 
-Close a completed sprint with `pinto sprint close S-1`. The `burndown`,
+Close a completed sprint with `pinto sprint close S-1`. When unfinished work remains, choose
+`pinto sprint close S-1 --rollover S-2` to move it to a planned or active Sprint, or
+`pinto sprint close S-1 --release` to clear its Sprint assignment. The options are mutually
+exclusive; omitting both keeps the existing assignments. Completed PBIs are never reassigned or
+rewritten by close.
+
+Velocity points, averages, and changes include only work completed no later than the Sprint's
+actual close time. Close-time unfinished points and counts appear separately as `spillover`, so
+later completion cannot inflate a past Sprint's velocity. The `burndown`,
 `velocity`, and `cycletime` reports can also emit JSON with `--json` where
 available, making them easy to use in scripts.
 
