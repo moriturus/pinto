@@ -99,6 +99,24 @@ impl BacklogItemRepository for Backend {
         }
     }
 
+    async fn list_archived(&self) -> Result<Vec<BacklogItem>> {
+        match self {
+            Backend::File(r) => BacklogItemRepository::list_archived(r).await,
+            Backend::Git(r) => BacklogItemRepository::list_archived(r).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(r) => BacklogItemRepository::list_archived(r).await,
+        }
+    }
+
+    async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
+        match self {
+            Backend::File(r) => BacklogItemRepository::load_archived(r, id).await,
+            Backend::Git(r) => BacklogItemRepository::load_archived(r, id).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(r) => BacklogItemRepository::load_archived(r, id).await,
+        }
+    }
+
     async fn delete(&self, id: &ItemId) -> Result<()> {
         match self {
             Backend::File(r) => BacklogItemRepository::delete(r, id).await,
@@ -114,6 +132,15 @@ impl BacklogItemRepository for Backend {
             Backend::Git(r) => r.archive(id).await,
             #[cfg(feature = "sqlite")]
             Backend::Sqlite(r) => r.archive(id).await,
+        }
+    }
+
+    async fn restore(&self, id: &ItemId) -> Result<()> {
+        match self {
+            Backend::File(r) => BacklogItemRepository::restore(r, id).await,
+            Backend::Git(r) => BacklogItemRepository::restore(r, id).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(r) => BacklogItemRepository::restore(r, id).await,
         }
     }
 

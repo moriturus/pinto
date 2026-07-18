@@ -19,6 +19,13 @@ pub trait BacklogItemRepository {
     /// `docs/DESIGN.md` §3.4).
     fn list(&self) -> impl Future<Output = Result<Vec<BacklogItem>>>;
 
+    /// Return all archived backlog items in lexicographic rank order, using the ID as a tie-breaker.
+    fn list_archived(&self) -> impl Future<Output = Result<Vec<BacklogItem>>>;
+
+    /// Load an archived backlog item by ID. Return [`crate::error::Error::NotFound`] when it does
+    /// not exist in the archive.
+    fn load_archived(&self, id: &ItemId) -> impl Future<Output = Result<BacklogItem>>;
+
     /// Delete a backlog item by ID. Return [`crate::error::Error::NotFound`] when it does not exist.
     fn delete(&self, id: &ItemId) -> impl Future<Output = Result<()>>;
 
@@ -27,6 +34,12 @@ pub trait BacklogItemRepository {
     /// This is the non-destructive alternative to [`Self::delete`]. Return
     /// [`crate::error::Error::NotFound`] when the item does not exist.
     fn archive(&self, id: &ItemId) -> impl Future<Output = Result<PathBuf>>;
+
+    /// Restore an archived backlog item to the active item store.
+    ///
+    /// Implementations must refuse an active item with the same ID without overwriting either
+    /// copy. Return [`crate::error::Error::NotFound`] when the archived item does not exist.
+    fn restore(&self, id: &ItemId) -> impl Future<Output = Result<()>>;
 
     /// Return the next never-issued ID for `prefix`: one greater than the maximum issued or
     /// existing number, or `1` when no such ID exists.

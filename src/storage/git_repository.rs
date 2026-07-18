@@ -495,12 +495,24 @@ impl BacklogItemRepository for GitRepository {
         BacklogItemRepository::list(&self.file).await
     }
 
+    async fn list_archived(&self) -> Result<Vec<BacklogItem>> {
+        BacklogItemRepository::list_archived(&self.file).await
+    }
+
+    async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
+        BacklogItemRepository::load_archived(&self.file, id).await
+    }
+
     async fn delete(&self, id: &ItemId) -> Result<()> {
         BacklogItemRepository::delete(&self.file, id).await
     }
 
     async fn archive(&self, id: &ItemId) -> Result<PathBuf> {
         self.file.archive(id).await
+    }
+
+    async fn restore(&self, id: &ItemId) -> Result<()> {
+        BacklogItemRepository::restore(&self.file, id).await
     }
 
     async fn next_id(&self, prefix: &str) -> Result<ItemId> {

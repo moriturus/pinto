@@ -98,11 +98,12 @@ done (0)
 | --- | --- |
 | `pinto init` | Initialize `.pinto/` in the current directory. It is idempotent. |
 | `pinto add <title>` | Add a PBI. Use `--label <label>...` to set one or more labels in one occurrence; repeating `--label` is equivalent. Other options include `--points`, `--sprint`, `--body`, `--edit`, and `--template`. |
-| `pinto list` | List PBIs; filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label`, `--sprint`, or `--acceptance-criteria/-A` to include the corresponding column. |
+| `pinto list` | List active PBIs; use `--archived` for archived PBIs. Filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label`, `--sprint`, or `--acceptance-criteria/-A` to include the corresponding column. |
 | `pinto next` | Show up to one highest-ranked unstarted PBI whose dependencies are complete; use `--count/-n`, `--sprint/-S`, or `--json/-j` to adjust the result. |
-| `pinto show <id>...` | Show one or more PBIs in input order, including Acceptance Criteria progress; `--plain` keeps raw Markdown and `--json` always returns an array. |
+| `pinto show <id>...` | Show one or more active PBIs in input order; use `--archived` for archived details. `--plain` keeps raw Markdown and `--json` always returns an array. |
+| `pinto restore <id>` | Restore an archived PBI to the active backlog without changing its ID or content. |
 | `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open `$VISUAL`/`$EDITOR`. |
-| `pinto rm <id>...` | Archive (default) or permanently delete one or more PBIs. |
+| `pinto rm <id>...` | Archive (default) or permanently delete one or more PBIs; use `list --archived` and `show --archived` to inspect archived records. |
 | `pinto move <id> <status>` | Move a PBI to a workflow column; moving to `done_column` warns when Acceptance Criteria are incomplete but still succeeds. |
 | `pinto reorder <id>` | Reorder a PBI with `--before`, `--after`, `--top`, or `--bottom`. |
 | `pinto board` | Display the board (PBI by column). Filter by `--status <status>...` (or repeat `--status`) for multiple columns, Sprint, or `--label <label>...` (OR; use `--all-labels` for AND). Use `--roots-only` to omit PBIs with a parent; `--long/-l` uses the same detail columns as `pinto list --long`, with `--label`, `--sprint`, and `--acceptance-criteria/-A` available as column selectors. |
@@ -136,9 +137,12 @@ pinto list --status todo in-progress --json
 pinto list --label backend frontend                 # either label (OR)
 pinto list --label backend frontend --all-labels    # both labels (AND)
 pinto list --roots-only --status todo --json       # roots only, machine-readable
+pinto list --archived --json                        # archived PBIs only
 pinto next                                           # highest-ranked actionable PBI
 pinto next -n 3 --sprint S-1 --json                  # several candidates for one Sprint
 pinto show T-1
+pinto show T-1 --archived                            # inspect an archived PBI
+pinto restore T-1                                    # return it to the active backlog
 pinto move T-1 in-progress
 pinto reorder T-1 --top
 pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
@@ -385,6 +389,9 @@ default `[tui.key_bindings]` table written by `pinto init`.
 
 `pinto rm` archives one or more PBIs to `.pinto/archive/` by default. Use
 `--force` only when permanent deletion is intended.
+Use `pinto list --archived` and `pinto show <id> --archived` to inspect archived
+PBIs, then `pinto restore <id>` to return one to the active task store. Restore
+refuses an active ID collision without overwriting either copy.
 
 ## Sprints and reports
 

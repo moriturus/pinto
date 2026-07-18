@@ -10,6 +10,7 @@ reordered = { $id } を並べ替えました
 updated = { $id } { $title } を更新しました
 no-changes-to = { $id } に変更はありません
 archived = アーカイブしました
+restored = 復元しました
 deleted = 削除しました
 created-sprint = スプリント { $id } { $title } を作成しました
 updated-sprint = スプリント { $id } を更新しました

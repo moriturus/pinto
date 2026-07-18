@@ -10,6 +10,7 @@ reordered = Reordered { $id }
 updated = Updated { $id } { $title }
 no-changes-to = No changes to { $id }
 archived = Archived
+restored = Restored
 deleted = Deleted
 created-sprint = Created sprint { $id } { $title }
 updated-sprint = Updated sprint { $id }

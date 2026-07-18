@@ -247,6 +247,27 @@ fn documentation_demo_contains_a_reproducible_board_and_guide() {
 }
 
 #[test]
+fn archive_recovery_demo_documents_listing_and_restore() {
+    let readme = repository_file("demos/single/archive-recovery/README.md");
+    for command in [
+        "list --archived",
+        "show T-1 --archived",
+        "restore T-1",
+        "does not overwrite either record",
+    ] {
+        assert!(
+            readme.contains(command),
+            "archive recovery demo omits {command}"
+        );
+    }
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let board = root.join("demos/single/archive-recovery/.pinto");
+    assert!(board.join("tasks/T-2.md").is_file());
+    assert!(board.join("archive/T-1.md").is_file());
+}
+
+#[test]
 fn parent_child_demo_documents_root_only_views() {
     let readme = repository_file("demos/single/parent-child/README.md");
     for command in [

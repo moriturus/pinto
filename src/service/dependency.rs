@@ -115,8 +115,25 @@ fn rank_ordinal(items: &[BacklogItem], target: &BacklogItem) -> usize {
 /// dependents. Return [`Error::NotInitialized`] for an uninitialized board or [`Error::NotFound`]
 /// when `id` does not exist.
 pub async fn item_detail(project_dir: &Path, id: &ItemId) -> Result<ItemDetail> {
+    item_detail_from_store(project_dir, id, false).await
+}
+
+/// Load archived PBI `id` with bidirectional links.
+pub async fn archived_item_detail(project_dir: &Path, id: &ItemId) -> Result<ItemDetail> {
+    item_detail_from_store(project_dir, id, true).await
+}
+
+async fn item_detail_from_store(
+    project_dir: &Path,
+    id: &ItemId,
+    archived: bool,
+) -> Result<ItemDetail> {
     let (_board_dir, repo, config) = open_board(project_dir).await?;
     let mut items = repo.list().await?; // Ascending rank order.
+    if archived {
+        items.extend(repo.list_archived().await?);
+        items.sort_by(BacklogItem::backlog_cmp);
+    }
     super::apply_effective_points(
         &mut items,
         config.points.aggregate_children,
@@ -261,6 +278,40 @@ mod tests {
             .expect("detail succeeds");
         assert_eq!(detail.children, [s1.id, s2.id], "children in rank order");
         assert_eq!(detail.dependents, [other.id], "reverse dependency edge");
+    }
+
+    #[tokio::test]
+    async fn archived_item_detail_reports_links_to_active_items() {
+        let dir = init_temp().await;
+        let parent = add_item(dir.path(), "Archived parent", NewItem::default())
+            .await
+            .unwrap();
+        let child = add_item(
+            dir.path(),
+            "Active child",
+            NewItem {
+                parent: Some(parent.id.clone()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .unwrap();
+        let dependent = add_item(dir.path(), "Active dependent", NewItem::default())
+            .await
+            .unwrap();
+        add_dependency(dir.path(), &dependent.id, &parent.id)
+            .await
+            .expect("dependency");
+        crate::service::remove_item(dir.path(), &parent.id, false)
+            .await
+            .expect("archive parent");
+
+        let detail = archived_item_detail(dir.path(), &parent.id)
+            .await
+            .expect("archived detail");
+        assert_eq!(detail.item, parent);
+        assert_eq!(detail.children, [child.id]);
+        assert_eq!(detail.dependents, [dependent.id]);
     }
 
     #[tokio::test]

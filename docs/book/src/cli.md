@@ -35,9 +35,10 @@ tasks/archive filename collisions with a location and repair direction.
 | --- | --- |
 | `pinto init` | Initialize a board in the current directory. |
 | `pinto add <title>` | Add a PBI; use `--label <label>...` to set one or more labels, or optionally set points, Sprint, body, or a template. |
-| `pinto list` | List PBIs, with status, label, Sprint, search, root-only, long, and JSON filters. |
+| `pinto list` | List active PBIs, with status, label, Sprint, search, root-only, long, and JSON filters. Use `--archived` to select archived PBIs. |
 | `pinto next` | Show ranked unstarted PBIs whose dependencies are complete. |
-| `pinto show <id>...` | Display one or more PBI details. |
+| `pinto show <id>...` | Display one or more active PBI details. Use `--archived` to display archived details. |
+| `pinto restore <id>` | Restore an archived PBI to the active task store without changing its ID or content. |
 | `pinto move <id>... <status>` | Transition one or more PBIs to a workflow column. |
 | `pinto reorder <id>` | Reorder a PBI within its sibling group (same parent and column). |
 | `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open the configured editor. |
@@ -53,6 +54,7 @@ pinto list --status todo in-progress --long
 pinto list --status todo --long --acceptance-criteria
 pinto list --label backend frontend --all-labels
 pinto list --search "parser"
+pinto list --archived --json
 pinto list --roots-only --status todo --json
 pinto next
 pinto next --count 3 --sprint S-1 --json
@@ -60,6 +62,8 @@ pinto board --status in-progress review
 pinto board --roots-only --status todo --long
 pinto reorder T-1 --top
 pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
+pinto show T-1 --archived
+pinto restore T-1
 ```
 
 For `add` and `edit`, multiple label values may follow one `--label`; repeating
@@ -119,6 +123,22 @@ search filter.
 
 The [`parent-child` demo](https://github.com/moriturus/pinto/tree/main/demos/single/parent-child)
 contains a reproducible hierarchy for trying these commands.
+
+### Archived PBIs
+
+`pinto rm` archives a PBI in `.pinto/archive/` by default. Archived records are
+excluded from normal `list`, `board`, and `show` views. Select them explicitly
+when reviewing recovery candidates:
+
+```bash
+pinto list --archived
+pinto show T-1 --archived
+pinto restore T-1
+```
+
+Restore preserves the archived Markdown, ID, rank, and relationships. It checks
+the active task store first and refuses an ID collision without overwriting
+either record.
 
 ### Actionable candidates
 

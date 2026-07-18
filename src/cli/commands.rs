@@ -25,13 +25,13 @@ use pinto::service::{
     BoardQuery, CycleTimeFilter, EditOutcome, InitOutcome, ItemEdit, LabelMatch, ListFilter,
     MigrateOutcome, MoveOutcome, NewItem, NextFilter, RemoveOutcome, ReorderTarget, SortKey,
     SprintCloseAction, WipViolation, add_dependency, add_item_with_outcome, apply_item_edit,
-    assign_sprint_by_status, assign_sprint_raw, board, burndown, check_wip, clear_common_dod,
-    close_sprint, common_dod, create_sprint, cycle_time, delete_sprint, display_settings,
-    edit_item, edit_sprint, init_board, item_detail, item_edit_template, link_commits, list_items,
-    list_sprints, lock_board, migrate_storage, move_item_with_outcome, next_items, rebalance,
-    remove_dependency, remove_item, reorder_item, set_common_dod, set_sprint_capacity,
-    sprint_capacity, start_sprint, sync_commits, template_body, unassign_sprint, unlink_commits,
-    velocity,
+    archived_item_detail, assign_sprint_by_status, assign_sprint_raw, board, burndown, check_wip,
+    clear_common_dod, close_sprint, common_dod, create_sprint, cycle_time, delete_sprint,
+    display_settings, edit_item, edit_sprint, init_board, item_detail, item_edit_template,
+    link_commits, list_items, list_sprints, lock_board, migrate_storage, move_item_with_outcome,
+    next_items, rebalance, remove_dependency, remove_item, reorder_item, restore_item,
+    set_common_dod, set_sprint_capacity, sprint_capacity, start_sprint, sync_commits,
+    template_body, unassign_sprint, unlink_commits, velocity,
 };
 use std::io::{IsTerminal, Read};
 
@@ -116,6 +116,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
         Command::Reorder(args) => cmd_reorder(args).await,
         Command::Edit(args) => cmd_edit(args).await,
         Command::Remove(args) => cmd_rm(args).await,
+        Command::Restore(args) => cmd_restore(args).await,
         Command::Dep(args) => cmd_dep(args).await,
         Command::Link(args) => cmd_link(args).await,
         Command::Dod(args) => cmd_dod(args).await,
@@ -464,6 +465,7 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
             ids
         }
         Command::Remove(args) => args.ids.iter().collect(),
+        Command::Restore(args) => vec![&args.id],
         Command::Dep(args) => match &args.command {
             DepCommand::Add { id, depends_on } | DepCommand::Rm { id, depends_on } => {
                 vec![id, depends_on]
@@ -1229,6 +1231,7 @@ async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
     let sprint = resolve_optional_filter("--sprint", args.sprint, long)?;
     let filter = ListFilter {
         roots_only: args.roots_only,
+        archived: args.archived,
         status: args.status,
         sprint,
         labels,
@@ -1292,7 +1295,11 @@ async fn cmd_show(args: ShowArgs) -> anyhow::Result<ExitCode> {
         .collect::<Result<_, _>>()?;
     let mut details = Vec::with_capacity(ids.len());
     for id in &ids {
-        details.push(item_detail(&dir, id).await?);
+        details.push(if args.archived {
+            archived_item_detail(&dir, id).await?
+        } else {
+            item_detail(&dir, id).await?
+        });
     }
     if args.json {
         println!("{}", detail_json(&details)?);
@@ -1785,6 +1792,15 @@ async fn cmd_rm(args: RemoveArgs) -> anyhow::Result<ExitCode> {
     }
 
     report_failures(failures, "remove")
+}
+
+/// `pinto restore` — Restore an archived PBI to the active backlog.
+async fn cmd_restore(args: RestoreArgs) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    let id: ItemId = args.id.parse()?;
+    let item = restore_item(&dir, &id).await?;
+    println!("{} {}", current().text(Message::Restored), item.id);
+    Ok(ExitCode::SUCCESS)
 }
 
 /// `pinto sprint <sub>` — Sprint creation, editing, deletion, state transition, assignment, and list.

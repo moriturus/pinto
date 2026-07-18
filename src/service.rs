@@ -33,7 +33,8 @@ pub use burndown::{Burndown, BurndownDay, BurndownMetric, burndown};
 pub use commits::{LinkOutcome, SyncOutcome, link_commits, sync_commits, unlink_commits};
 pub use cycletime::{CycleTimeFilter, CycleTimeReport, DurationSummary, cycle_time};
 pub use dependency::{
-    DependencyOutcome, ItemDetail, add_dependency, item_detail, remove_dependency,
+    DependencyOutcome, ItemDetail, add_dependency, archived_item_detail, item_detail,
+    remove_dependency,
 };
 pub use doctor::{DoctorFix, DoctorIssue, DoctorIssueKind, DoctorReport, doctor};
 pub use dod::{clear_common_dod, common_dod, set_common_dod};
@@ -41,7 +42,7 @@ pub use item::{
     AddItemOutcome, EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, RebalanceOutcome,
     RemoveOutcome, ReorderTarget, add_item, add_item_with_outcome, apply_item_edit, edit_item,
     item_edit_template, list_items, move_item, move_item_with_outcome, rebalance, remove_item,
-    reorder_item, show_item,
+    reorder_item, restore_item, show_archived_item, show_item,
 };
 pub use lifecycle::{InitOutcome, init_board};
 pub use migrate::{MigrateOutcome, migrate_storage};

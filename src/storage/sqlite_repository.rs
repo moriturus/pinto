@@ -147,6 +147,93 @@ impl SqliteRepository {
     pub(crate) fn db_path(&self) -> PathBuf {
         self.root.join("board.sqlite3")
     }
+
+    async fn load_item(&self, id: &ItemId, archived: bool) -> Result<BacklogItem> {
+        let want = id.clone();
+        let key = id.to_string();
+        let db = self.db_path();
+        let archived = if archived { 1 } else { 0 };
+        tokio::task::spawn_blocking(move || {
+            let conn = open_conn(&db)?;
+            let sql =
+                format!("SELECT {ITEM_COLUMNS} FROM items WHERE id = ?1 AND archived = {archived}");
+            let scalar = conn
+                .query_row(&sql, [&key], |row| Ok(item_row_from(&db, row)))
+                .optional()
+                .map_err(|e| sqlite_err(&db, &e))?;
+            let Some(scalar) = scalar else {
+                return Err(Error::NotFound(want));
+            };
+            let scalar = scalar?;
+            let (labels, depends_on, commits) = load_relations(&db, &conn, &key)?;
+            Ok(assemble_item(scalar, labels, depends_on, commits))
+        })
+        .await
+        .map_err(Error::task)?
+    }
+
+    async fn list_items(&self, archived: bool) -> Result<Vec<BacklogItem>> {
+        let db = self.db_path();
+        let archived = if archived { 1 } else { 0 };
+        let mut items = tokio::task::spawn_blocking(move || {
+            let conn = open_conn(&db)?;
+            let sql = format!("SELECT {ITEM_COLUMNS} FROM items WHERE archived = {archived}");
+            let mut stmt = conn.prepare(&sql).map_err(|e| sqlite_err(&db, &e))?;
+            let scalars = stmt
+                .query_map([], |row| Ok(item_row_from(&db, row)))
+                .map_err(|e| sqlite_err(&db, &e))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| sqlite_err(&db, &e))?
+                .into_iter()
+                .collect::<Result<Vec<_>>>()?;
+
+            let labels = collect_relation(
+                &db,
+                &conn,
+                &format!(
+                    "SELECT item_id, label, position FROM item_labels WHERE item_id IN (SELECT id FROM items WHERE archived = {archived}) ORDER BY item_id, position"
+                ),
+                "label",
+            )?;
+            let mut deps_raw = collect_relation(
+                &db,
+                &conn,
+                &format!(
+                    "SELECT item_id, depends_on, position FROM item_dependencies WHERE item_id IN (SELECT id FROM items WHERE archived = {archived}) ORDER BY item_id, position"
+                ),
+                "depends_on",
+            )?;
+            let mut commits = collect_relation(
+                &db,
+                &conn,
+                &format!(
+                    "SELECT item_id, sha, position FROM item_commits WHERE item_id IN (SELECT id FROM items WHERE archived = {archived}) ORDER BY item_id, position"
+                ),
+                "commit sha",
+            )?;
+
+            let mut items = Vec::with_capacity(scalars.len());
+            for scalar in scalars {
+                let key = scalar.id.to_string();
+                let item_labels = labels.get(&key).cloned().unwrap_or_default();
+                let depends_on = deps_raw
+                    .remove(&key)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|d| d.parse::<ItemId>())
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(|e| corrupt(&db, format!("invalid depends_on id: {e}")))?;
+                let item_commits = commits.remove(&key).unwrap_or_default();
+                items.push(assemble_item(scalar, item_labels, depends_on, item_commits));
+            }
+            Ok::<_, Error>(items)
+        })
+        .await
+        .map_err(Error::task)??;
+
+        items.sort_by(BacklogItem::backlog_cmp);
+        Ok(items)
+    }
 }
 
 /// Map a `rusqlite` error to [`Error::Io`] using the database path.
@@ -569,85 +656,19 @@ impl BacklogItemRepository for SqliteRepository {
     }
 
     async fn load(&self, id: &ItemId) -> Result<BacklogItem> {
-        let want = id.clone();
-        let key = id.to_string();
-        let db = self.db_path();
-        tokio::task::spawn_blocking(move || {
-            let conn = open_conn(&db)?;
-            // Archived (archived=1) is not subject to load (same as reading only `tasks/` of file).
-            let sql = format!("SELECT {ITEM_COLUMNS} FROM items WHERE id = ?1 AND archived = 0");
-            let scalar = conn
-                .query_row(&sql, [&key], |row| Ok(item_row_from(&db, row)))
-                .optional()
-                .map_err(|e| sqlite_err(&db, &e))?;
-            let Some(scalar) = scalar else {
-                return Err(Error::NotFound(want));
-            };
-            let scalar = scalar?;
-            let (labels, depends_on, commits) = load_relations(&db, &conn, &key)?;
-            Ok(assemble_item(scalar, labels, depends_on, commits))
-        })
-        .await
-        .map_err(Error::task)?
+        self.load_item(id, false).await
+    }
+
+    async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
+        self.load_item(id, true).await
     }
 
     async fn list(&self) -> Result<Vec<BacklogItem>> {
-        let db = self.db_path();
-        let mut items = tokio::task::spawn_blocking(move || {
-            let conn = open_conn(&db)?;
-            // Collect scalar rows of active PBI.
-            let sql = format!("SELECT {ITEM_COLUMNS} FROM items WHERE archived = 0");
-            let mut stmt = conn.prepare(&sql).map_err(|e| sqlite_err(&db, &e))?;
-            let scalars = stmt
-                .query_map([], |row| Ok(item_row_from(&db, row)))
-                .map_err(|e| sqlite_err(&db, &e))?
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(|e| sqlite_err(&db, &e))?
-                .into_iter()
-                .collect::<Result<Vec<_>>>()?;
+        self.list_items(false).await
+    }
 
-            // Pull labels and dependencies together in one query, and bundle them by item_id (N+1 avoidance).
-            let labels = collect_relation(
-                &db,
-                &conn,
-                "SELECT item_id, label, position FROM item_labels WHERE item_id IN (SELECT id FROM items WHERE archived = 0) ORDER BY item_id, position",
-                "label",
-            )?;
-            let mut deps_raw = collect_relation(
-                &db,
-                &conn,
-                "SELECT item_id, depends_on, position FROM item_dependencies WHERE item_id IN (SELECT id FROM items WHERE archived = 0) ORDER BY item_id, position",
-                "depends_on",
-            )?;
-            let mut commits = collect_relation(
-                &db,
-                &conn,
-                "SELECT item_id, sha, position FROM item_commits WHERE item_id IN (SELECT id FROM items WHERE archived = 0) ORDER BY item_id, position",
-                "commit sha",
-            )?;
-
-            let mut items = Vec::with_capacity(scalars.len());
-            for scalar in scalars {
-                let key = scalar.id.to_string();
-                let item_labels = labels.get(&key).cloned().unwrap_or_default();
-                let depends_on = deps_raw
-                    .remove(&key)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|d| d.parse::<ItemId>())
-                    .collect::<std::result::Result<Vec<_>, _>>()
-                    .map_err(|e| corrupt(&db, format!("invalid depends_on id: {e}")))?;
-                let item_commits = commits.remove(&key).unwrap_or_default();
-                items.push(assemble_item(scalar, item_labels, depends_on, item_commits));
-            }
-            Ok::<_, Error>(items)
-        })
-        .await
-        .map_err(Error::task)??;
-
-        // Canonical backlog order (rank asc, ID tie-break) shared with the file backend and every view.
-        items.sort_by(BacklogItem::backlog_cmp);
-        Ok(items)
+    async fn list_archived(&self) -> Result<Vec<BacklogItem>> {
+        self.list_items(true).await
     }
 
     async fn delete(&self, id: &ItemId) -> Result<()> {
@@ -694,6 +715,47 @@ impl BacklogItemRepository for SqliteRepository {
         .map_err(Error::task)??;
         record(&self.root, id).await?;
         Ok(destination)
+    }
+
+    async fn restore(&self, id: &ItemId) -> Result<()> {
+        let want = id.clone();
+        let key = id.to_string();
+        let db = self.db_path();
+        tokio::task::spawn_blocking(move || {
+            let conn = open_conn(&db)?;
+            let state = conn
+                .query_row(
+                    "SELECT archived FROM items WHERE id = ?1",
+                    [&key],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+                .map_err(|e| sqlite_err(&db, &e))?;
+            match state {
+                None => Err(Error::NotFound(want)),
+                Some(0) => Err(Error::parse(
+                    &db,
+                    format!(
+                        "cannot restore `{key}`: active item already exists; restore the archived copy only after resolving the ID collision"
+                    ),
+                )),
+                Some(1) => {
+                    conn.execute(
+                        "UPDATE items SET archived = 0 WHERE id = ?1 AND archived = 1",
+                        [&key],
+                    )
+                    .map_err(|e| sqlite_err(&db, &e))?;
+                    Ok(())
+                }
+                Some(other) => Err(corrupt(
+                    &db,
+                    format!("invalid archived flag {other} for item {key}"),
+                )),
+            }
+        })
+        .await
+        .map_err(Error::task)??;
+        Ok(())
     }
 
     async fn next_id(&self, prefix: &str) -> Result<ItemId> {
@@ -1348,6 +1410,44 @@ mod tests {
             })
             .expect("row still present");
         assert_eq!(archived, 1, "アーカイブ状態は archived 列で表現される");
+    }
+
+    #[tokio::test]
+    async fn archived_items_can_be_listed_loaded_and_restored_without_changes() {
+        let (_dir, repo) = repo();
+        let it = full_item();
+        BacklogItemRepository::save(&repo, &it).await.expect("save");
+        BacklogItemRepository::archive(&repo, &it.id)
+            .await
+            .expect("archive");
+
+        assert_eq!(
+            BacklogItemRepository::list_archived(&repo)
+                .await
+                .expect("list archived"),
+            vec![it.clone()]
+        );
+        assert_eq!(
+            BacklogItemRepository::load_archived(&repo, &it.id)
+                .await
+                .expect("load archived"),
+            it
+        );
+        BacklogItemRepository::restore(&repo, &it.id)
+            .await
+            .expect("restore");
+        assert_eq!(
+            BacklogItemRepository::load(&repo, &it.id)
+                .await
+                .expect("load restored"),
+            it
+        );
+        assert!(
+            BacklogItemRepository::list_archived(&repo)
+                .await
+                .expect("list archived after restore")
+                .is_empty()
+        );
     }
 
     #[tokio::test]

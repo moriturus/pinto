@@ -316,6 +316,104 @@ fn rm_archives_by_default() {
 }
 
 #[test]
+fn archived_list_show_and_restore_roundtrip() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "add",
+            "Recover me",
+            "--points",
+            "5",
+            "--label",
+            "recovery",
+            "--body",
+            "original body",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["rm", "T-1"]).assert().success();
+
+    let archived = json_stdout(pinto(dir.path()).args(["list", "--archived", "--json"]));
+    assert_eq!(archived.as_array().expect("archived list array").len(), 1);
+    assert_eq!(archived[0]["id"], "T-1");
+    assert_eq!(archived[0]["title"], "Recover me");
+    assert_eq!(archived[0]["body"], "original body");
+
+    let details = show_json(pinto(dir.path()).args(["show", "T-1", "--archived", "--json"]));
+    assert_eq!(details["id"], "T-1");
+    assert_eq!(details["body"], "original body");
+
+    pinto(dir.path())
+        .args(["list", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("[]\n"));
+    pinto(dir.path())
+        .args(["board", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"items\": []"));
+    pinto(dir.path())
+        .args(["show", "T-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("not found"));
+
+    pinto(dir.path())
+        .args(["restore", "T-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Restored T-1"));
+    let restored = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(restored["id"], "T-1");
+    assert_eq!(restored["title"], "Recover me");
+    assert_eq!(restored["body"], "original body");
+    assert!(
+        json_stdout(pinto(dir.path()).args(["list", "--archived", "--json"]))
+            .as_array()
+            .expect("archived list array")
+            .is_empty()
+    );
+}
+
+#[test]
+fn restore_rejects_an_active_id_collision_without_overwriting_either_copy() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["add", "Archived copy", "--body", "archived body"])
+        .assert()
+        .success();
+    pinto(dir.path()).args(["rm", "T-1"]).assert().success();
+
+    let archive_path = dir.path().join(".pinto/archive/T-1.md");
+    let active_path = dir.path().join(".pinto/tasks/T-1.md");
+    std::fs::copy(&archive_path, &active_path).expect("create active collision");
+    let mut active_text = std::fs::read_to_string(&active_path).expect("read active collision");
+    active_text = active_text.replace("title = \"Archived copy\"", "title = \"Active copy\"");
+    std::fs::write(&active_path, active_text).expect("write active collision");
+
+    pinto(dir.path())
+        .args(["restore", "T-1"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("already exists"));
+    assert!(
+        std::fs::read_to_string(&archive_path)
+            .expect("archived copy remains")
+            .contains("title = \"Archived copy\"")
+    );
+    assert!(
+        std::fs::read_to_string(&active_path)
+            .expect("active copy remains")
+            .contains("title = \"Active copy\"")
+    );
+}
+
+#[test]
 fn rm_force_deletes_permanently() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

@@ -14,6 +14,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
 - [`single/`](single) — **single-feature** datasets for one command or feature at a time.
   - [`doctor`](single/doctor) — board integrity diagnostics and conservative safe repairs
   - [`backlog-crud`](single/backlog-crud) — add / list / show / edit / remove (archive)
+  - [`archive-recovery`](single/archive-recovery) — list, inspect, and restore archived PBIs
   - [`ancestor-discovery`](single/ancestor-discovery) — discover the nearest ancestor board and use explicit directory overrides
   - [`cookbook`](single/cookbook) — seed board for the Cookbook chapter's Unix text-stream pipeline recipes
   - [`cli-test-layout`](single/cli-test-layout) — feature-oriented CLI integration-test fixtures

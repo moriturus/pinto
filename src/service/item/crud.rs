@@ -119,6 +119,8 @@ pub async fn add_item_with_outcome(
 pub struct ListFilter {
     /// Include only PBIs whose persisted parent link is unset.
     pub roots_only: bool,
+    /// Read archived PBIs instead of active PBIs.
+    pub archived: bool,
     /// Exact workflow statuses to match. An empty list includes every status.
     pub status: Vec<String>,
     /// Exact assigned sprint ID to match.
@@ -183,7 +185,11 @@ pub async fn list_items(project_dir: &Path, filter: &ListFilter) -> Result<Vec<B
             return Err(Error::UnknownStatus(status.clone()));
         }
     }
-    let mut items = repo.list().await?;
+    let mut items = if filter.archived {
+        repo.list_archived().await?
+    } else {
+        repo.list().await?
+    };
     apply_effective_points(
         &mut items,
         config.points.aggregate_children,
@@ -208,8 +214,25 @@ pub async fn list_items(project_dir: &Path, filter: &ListFilter) -> Result<Vec<B
 /// Return [`Error::NotInitialized`] for an uninitialized board or [`Error::NotFound`] when the ID
 /// does not exist.
 pub async fn show_item(project_dir: &Path, id: &ItemId) -> Result<BacklogItem> {
+    show_item_from_store(project_dir, id, false).await
+}
+
+/// Load archived PBI `id` from the board in `project_dir`.
+pub async fn show_archived_item(project_dir: &Path, id: &ItemId) -> Result<BacklogItem> {
+    show_item_from_store(project_dir, id, true).await
+}
+
+async fn show_item_from_store(
+    project_dir: &Path,
+    id: &ItemId,
+    archived: bool,
+) -> Result<BacklogItem> {
     let (_board_dir, repo, config) = open_board(project_dir).await?;
-    let mut items = repo.list().await?;
+    let mut items = if archived {
+        repo.list_archived().await?
+    } else {
+        repo.list().await?
+    };
     apply_effective_points(
         &mut items,
         config.points.aggregate_children,
@@ -322,4 +345,12 @@ pub async fn remove_item(
         repo.commit(&format!("pinto: archive {id}")).await?;
         Ok(RemoveOutcome::Archived(dest))
     }
+}
+
+/// Restore archived PBI `id` to the active backlog and return the unchanged item.
+pub async fn restore_item(project_dir: &Path, id: &ItemId) -> Result<BacklogItem> {
+    let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
+    repo.restore(id).await?;
+    repo.commit(&format!("pinto: restore {id}")).await?;
+    repo.load(id).await
 }

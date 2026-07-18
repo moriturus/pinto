@@ -172,6 +172,9 @@ pub(super) enum Command {
     /// Archive (default) or physically delete PBI.
     #[command(visible_alias = "rm")]
     Remove(RemoveArgs),
+    /// Restore an archived PBI to the active backlog.
+    #[command(visible_alias = "rs")]
+    Restore(RestoreArgs),
     /// Set and release dependencies between PBIs.
     #[command(visible_alias = "d")]
     Dep(DepArgs),
@@ -615,6 +618,9 @@ pub(super) struct ShowArgs {
     /// Output machine-readable JSON instead of human-readable formatting.
     #[arg(long, short = 'j')]
     pub(super) json: bool,
+    /// Show archived PBIs instead of active PBIs.
+    #[arg(long, short = 'a')]
+    pub(super) archived: bool,
     /// Show the raw Markdown body instead of the rendered display (opt out of
     /// Markdown rendering for this invocation).
     #[arg(long, short = 'p')]
@@ -680,6 +686,9 @@ pub(super) struct ListArgs {
     /// Display only PBIs without a parent; child PBIs are omitted.
     #[arg(long, short = 'P')]
     pub(super) roots_only: bool,
+    /// List archived PBIs instead of active PBIs.
+    #[arg(long, short = 'x')]
+    pub(super) archived: bool,
     /// Filter by status (column). Multiple values can follow one option or be supplied with
     /// repeated options.
     #[arg(long, short = 's', num_args = 1..)]
@@ -942,4 +951,11 @@ pub(super) struct RemoveArgs {
     /// Physically delete without saving archives (irreversible).
     #[arg(long, short = 'f')]
     pub(super) force: bool,
+}
+
+/// Arguments for the `restore` subcommand.
+#[derive(Debug, Args)]
+pub(super) struct RestoreArgs {
+    /// ID of the archived PBI to restore (e.g. `T-1`).
+    pub(super) id: String,
 }

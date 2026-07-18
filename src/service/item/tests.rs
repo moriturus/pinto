@@ -852,6 +852,107 @@ async fn remove_archives_by_default_and_hides_from_list() {
 }
 
 #[tokio::test]
+async fn archived_items_are_listed_and_restored_with_their_original_content() {
+    let dir = init_temp().await;
+    let archived = add_item(
+        dir.path(),
+        "Keep all fields",
+        NewItem {
+            points: Some(5),
+            labels: vec!["archive".to_string()],
+            body: "original body".to_string(),
+            ..NewItem::default()
+        },
+    )
+    .await
+    .expect("add");
+    remove_item(dir.path(), &archived.id, false)
+        .await
+        .expect("archive");
+
+    let archived_items = list_items(
+        dir.path(),
+        &ListFilter {
+            archived: true,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("list archived");
+    assert_eq!(archived_items.as_slice(), std::slice::from_ref(&archived));
+    assert_eq!(
+        show_archived_item(dir.path(), &archived.id)
+            .await
+            .expect("show archived"),
+        archived
+    );
+    assert!(
+        list_items(dir.path(), &ListFilter::default())
+            .await
+            .expect("active list")
+            .is_empty()
+    );
+
+    let restored = restore_item(dir.path(), &archived.id)
+        .await
+        .expect("restore");
+    assert_eq!(restored, archived);
+    assert_eq!(
+        list_items(dir.path(), &ListFilter::default())
+            .await
+            .expect("active list after restore"),
+        [archived]
+    );
+    assert!(
+        list_items(
+            dir.path(),
+            &ListFilter {
+                archived: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("archived list after restore")
+        .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn restore_refuses_an_active_id_collision() {
+    let dir = init_temp().await;
+    let archived = add_item(dir.path(), "Archived copy", NewItem::default())
+        .await
+        .expect("add");
+    remove_item(dir.path(), &archived.id, false)
+        .await
+        .expect("archive");
+
+    let active_path = dir.path().join(".pinto/tasks").join("T-1.md");
+    let mut active = archived.clone();
+    active.title = "Active collision".to_string();
+    fs::create_dir_all(active_path.parent().expect("tasks parent"))
+        .await
+        .expect("create tasks");
+    fs::write(
+        &active_path,
+        crate::storage::item_to_markdown(&active).expect("serialize active collision"),
+    )
+    .await
+    .expect("write active collision");
+
+    let err = restore_item(dir.path(), &archived.id)
+        .await
+        .expect_err("restore must reject collision");
+    assert!(err.to_string().contains("already exists"), "got {err}");
+    assert_eq!(
+        fs::read_to_string(&active_path)
+            .await
+            .expect("active copy remains"),
+        crate::storage::item_to_markdown(&active).expect("serialize active collision")
+    );
+}
+
+#[tokio::test]
 async fn remove_with_force_deletes_permanently() {
     let dir = init_temp().await;
     let a = add_item(dir.path(), "Bye", NewItem::default())

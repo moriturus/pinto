@@ -112,6 +112,24 @@ impl BacklogItemRepository for FileRepository {
         Ok(items)
     }
 
+    async fn list_archived(&self) -> Result<Vec<BacklogItem>> {
+        let (_, archived) = self.read_all_item_records().await?;
+        let mut items = archived
+            .into_iter()
+            .map(|(_, item)| item)
+            .collect::<Vec<_>>();
+        items.sort_by(BacklogItem::backlog_cmp);
+        Ok(items)
+    }
+
+    async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
+        let (_, archived) = self.read_all_item_records().await?;
+        archived
+            .into_iter()
+            .find_map(|(_, item)| (item.id == *id).then_some(item))
+            .ok_or_else(|| Error::NotFound(id.clone()))
+    }
+
     async fn delete(&self, id: &ItemId) -> Result<()> {
         self.read_all_item_records().await?;
         let path = self.path_for(id)?;
@@ -156,6 +174,43 @@ impl BacklogItemRepository for FileRepository {
                 record(&self.root, id).await?;
                 Ok(dest)
             }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Err(Error::NotFound(id.clone())),
+            Err(e) => Err(Error::io(&src, &e)),
+        }
+    }
+
+    async fn restore(&self, id: &ItemId) -> Result<()> {
+        let src = self.archive_path_for(id)?;
+        let source_exists = fs::try_exists(&src)
+            .await
+            .map_err(|e| Error::io(&src, &e))?;
+        if !source_exists {
+            return Err(Error::NotFound(id.clone()));
+        }
+
+        let dest = self.path_for(id)?;
+        let destination_exists = fs::try_exists(&dest)
+            .await
+            .map_err(|e| Error::io(&dest, &e))?;
+        if destination_exists {
+            return Err(Error::parse(
+                &dest,
+                format!(
+                    "cannot restore `{id}`: active item already exists at {}; remove or rename the active copy before retrying",
+                    dest.display()
+                ),
+            ));
+        }
+
+        // Validate both stores before moving the archive. The destination check above deliberately
+        // happens first so a collision is reported without letting duplicate IDs obscure it.
+        self.read_all_item_records().await?;
+        let tasks_dir = self.tasks_dir();
+        fs::create_dir_all(&tasks_dir)
+            .await
+            .map_err(|e| Error::io(&tasks_dir, &e))?;
+        match fs::rename(&src, &dest).await {
+            Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Err(Error::NotFound(id.clone())),
             Err(e) => Err(Error::io(&src, &e)),
         }
@@ -732,6 +787,93 @@ mod tests {
                 .await
                 .expect_err("already archived"),
             Error::NotFound(item.id)
+        );
+    }
+
+    #[tokio::test]
+    async fn archived_items_can_be_listed_loaded_and_restored_without_changes() {
+        let (_dir, repo) = repo();
+        let item = sample_item();
+        BacklogItemRepository::save(&repo, &item)
+            .await
+            .expect("save succeeds");
+        BacklogItemRepository::archive(&repo, &item.id)
+            .await
+            .expect("archive succeeds");
+
+        assert_eq!(
+            BacklogItemRepository::list_archived(&repo)
+                .await
+                .expect("list archived succeeds"),
+            vec![item.clone()]
+        );
+        assert_eq!(
+            BacklogItemRepository::load_archived(&repo, &item.id)
+                .await
+                .expect("load archived succeeds"),
+            item
+        );
+
+        BacklogItemRepository::restore(&repo, &item.id)
+            .await
+            .expect("restore succeeds");
+        assert_eq!(
+            BacklogItemRepository::load(&repo, &item.id)
+                .await
+                .expect("restored item loads"),
+            item
+        );
+        assert!(
+            BacklogItemRepository::list_archived(&repo)
+                .await
+                .expect("list archived after restore")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_refuses_an_active_destination_without_overwriting_either_copy() {
+        let (_dir, repo) = repo();
+        let archived = sample_item();
+        BacklogItemRepository::save(&repo, &archived)
+            .await
+            .expect("save archived fixture");
+        BacklogItemRepository::archive(&repo, &archived.id)
+            .await
+            .expect("archive fixture");
+        let archive_path = repo.archive_dir().join("T-1.md");
+        let archived_contents = fs::read(&archive_path)
+            .await
+            .expect("read archived fixture before collision");
+
+        let mut active = archived.clone();
+        active.title = "Active collision".to_string();
+        let active_path = repo.tasks_dir().join("T-1.md");
+        fs::create_dir_all(repo.tasks_dir())
+            .await
+            .expect("create tasks directory");
+        fs::write(
+            &active_path,
+            crate::storage::markdown::to_markdown(&active).expect("serialize active collision"),
+        )
+        .await
+        .expect("write active collision");
+
+        let err = BacklogItemRepository::restore(&repo, &archived.id)
+            .await
+            .expect_err("restore collision must fail");
+        assert!(err.to_string().contains("already exists"), "got {err}");
+        assert_eq!(
+            fs::read_to_string(&active_path)
+                .await
+                .expect("active copy remains"),
+            crate::storage::markdown::to_markdown(&active).expect("serialize active collision")
+        );
+        assert_eq!(
+            fs::read(&archive_path)
+                .await
+                .expect("archived copy remains"),
+            archived_contents
         );
     }
 
