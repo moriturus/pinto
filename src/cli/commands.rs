@@ -23,14 +23,15 @@ use pinto::i18n::{Localizer, Message, current};
 use pinto::service::SearchFilter;
 use pinto::service::{
     BoardQuery, CycleTimeFilter, EditOutcome, InitOutcome, ItemEdit, LabelMatch, ListFilter,
-    MigrateOutcome, MoveOutcome, NewItem, RemoveOutcome, ReorderTarget, SortKey, SprintCloseAction,
-    WipViolation, add_dependency, add_item_with_outcome, apply_item_edit, assign_sprint_by_status,
-    assign_sprint_raw, board, burndown, check_wip, clear_common_dod, close_sprint, common_dod,
-    create_sprint, cycle_time, delete_sprint, display_settings, edit_item, edit_sprint, init_board,
-    item_detail, item_edit_template, link_commits, list_items, list_sprints, lock_board,
-    migrate_storage, move_item_with_outcome, rebalance, remove_dependency, remove_item,
-    reorder_item, set_common_dod, set_sprint_capacity, sprint_capacity, start_sprint, sync_commits,
-    template_body, unassign_sprint, unlink_commits, velocity,
+    MigrateOutcome, MoveOutcome, NewItem, NextFilter, RemoveOutcome, ReorderTarget, SortKey,
+    SprintCloseAction, WipViolation, add_dependency, add_item_with_outcome, apply_item_edit,
+    assign_sprint_by_status, assign_sprint_raw, board, burndown, check_wip, clear_common_dod,
+    close_sprint, common_dod, create_sprint, cycle_time, delete_sprint, display_settings,
+    edit_item, edit_sprint, init_board, item_detail, item_edit_template, link_commits, list_items,
+    list_sprints, lock_board, migrate_storage, move_item_with_outcome, next_items, rebalance,
+    remove_dependency, remove_item, reorder_item, set_common_dod, set_sprint_capacity,
+    sprint_capacity, start_sprint, sync_commits, template_body, unassign_sprint, unlink_commits,
+    velocity,
 };
 use std::io::{IsTerminal, Read};
 
@@ -109,6 +110,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
         Command::Init => cmd_init().await,
         Command::Add(args) => cmd_add(args).await,
         Command::List(args) => cmd_list(args).await,
+        Command::Next(args) => cmd_next(args).await,
         Command::Show(args) => cmd_show(args).await,
         Command::Move(args) => cmd_move(args).await,
         Command::Reorder(args) => cmd_reorder(args).await,
@@ -485,6 +487,7 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         },
         Command::Init
         | Command::List(_)
+        | Command::Next(_)
         | Command::Dod(_)
         | Command::Board(_)
         | Command::CycleTime(_)
@@ -1163,6 +1166,27 @@ async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
                     .with_timezone(timezone),
             )
         );
+    } else {
+        print!("{}", format_list(&items));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `pinto next` — Display PBIs that can be started immediately.
+async fn cmd_next(args: NextArgs) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    let items = next_items(
+        &dir,
+        &NextFilter {
+            count: args.count,
+            sprint: args.sprint,
+        },
+    )
+    .await?;
+    if args.json {
+        println!("{}", list_json(&items)?);
+    } else if items.is_empty() {
+        println!("{}", current().text(Message::NoActionableItems));
     } else {
         print!("{}", format_list(&items));
     }

@@ -12,6 +12,7 @@ Use commands such as these from the repository root:
 cargo run --quiet -- list --status todo --long --json
 cargo run --quiet -- show <ID-from-list>
 cargo run --quiet -- board
+cargo run --quiet -- next --json
 ```
 
 Replace `<ID-from-list>` and `<ID>` with IDs returned by the board commands.

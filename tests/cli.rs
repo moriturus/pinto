@@ -25,5 +25,7 @@ mod list_show;
 mod misc;
 #[path = "cli/move_reorder.rs"]
 mod move_reorder;
+#[path = "cli/next.rs"]
+mod next;
 #[path = "cli/sprint.rs"]
 mod sprint;

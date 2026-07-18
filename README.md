@@ -70,6 +70,7 @@ pinto add "Implement the parser" --points 3 --label backend cli
 pinto list
 pinto show T-1
 pinto move T-1 in-progress
+pinto next
 
 # Render the board.
 pinto board
@@ -98,6 +99,7 @@ done (0)
 | `pinto init` | Initialize `.pinto/` in the current directory. It is idempotent. |
 | `pinto add <title>` | Add a PBI. Use `--label <label>...` to set one or more labels in one occurrence; repeating `--label` is equivalent. Other options include `--points`, `--sprint`, `--body`, `--edit`, and `--template`. |
 | `pinto list` | List PBIs; filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label`, `--sprint`, or `--acceptance-criteria/-A` to include the corresponding column. |
+| `pinto next` | Show up to one highest-ranked unstarted PBI whose dependencies are complete; use `--count/-n`, `--sprint/-S`, or `--json/-j` to adjust the result. |
 | `pinto show <id>...` | Show one or more PBIs in input order, including Acceptance Criteria progress; `--plain` keeps raw Markdown and `--json` always returns an array. |
 | `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open `$VISUAL`/`$EDITOR`. |
 | `pinto rm <id>...` | Archive (default) or permanently delete one or more PBIs. |
@@ -134,6 +136,8 @@ pinto list --status todo in-progress --json
 pinto list --label backend frontend                 # either label (OR)
 pinto list --label backend frontend --all-labels    # both labels (AND)
 pinto list --roots-only --status todo --json       # roots only, machine-readable
+pinto next                                           # highest-ranked actionable PBI
+pinto next -n 3 --sprint S-1 --json                  # several candidates for one Sprint
 pinto show T-1
 pinto move T-1 in-progress
 pinto reorder T-1 --top
@@ -146,6 +150,12 @@ pinto board --long --acceptance-criteria
 pinto kanban --column in-progress
 pinto rebalance --dry-run
 ```
+
+`pinto next` is read-only. It considers PBIs in the first configured workflow column as
+unstarted, excludes the configured `done_column`, and returns only items whose declared
+dependencies all exist and are in that completion column. Results use the same canonical
+backlog order as `list`; a missing dependency keeps an item blocked. `--count` defaults to `1`,
+and `--sprint` applies an exact Sprint filter.
 
 ### Acceptance Criteria progress
 

@@ -31,6 +31,7 @@ If no board is found, pinto reports the search and these override options. The
 | `pinto init` | Initialize a board in the current directory. |
 | `pinto add <title>` | Add a PBI; use `--label <label>...` to set one or more labels, or optionally set points, Sprint, body, or a template. |
 | `pinto list` | List PBIs, with status, label, Sprint, search, root-only, long, and JSON filters. |
+| `pinto next` | Show ranked unstarted PBIs whose dependencies are complete. |
 | `pinto show <id>...` | Display one or more PBI details. |
 | `pinto move <id>... <status>` | Transition one or more PBIs to a workflow column. |
 | `pinto reorder <id>` | Reorder a PBI within its sibling group (same parent and column). |
@@ -48,6 +49,8 @@ pinto list --status todo --long --acceptance-criteria
 pinto list --label backend frontend --all-labels
 pinto list --search "parser"
 pinto list --roots-only --status todo --json
+pinto next
+pinto next --count 3 --sprint S-1 --json
 pinto board --status in-progress review
 pinto board --roots-only --status todo --long
 pinto reorder T-1 --top
@@ -111,6 +114,26 @@ search filter.
 
 The [`parent-child` demo](https://github.com/moriturus/pinto/tree/main/demos/single/parent-child)
 contains a reproducible hierarchy for trying these commands.
+
+### Actionable candidates
+
+Use `pinto next` to find work that can start immediately. An item is unstarted when it is in the
+first configured workflow column, and it is actionable when every declared dependency exists and
+is in `done_column`. Items already in progress, in review, or in the completion column are not
+returned; a missing or unfinished dependency keeps an item blocked.
+
+The command is read-only and follows the canonical backlog order. `--count` (or `-n`) limits the
+number of candidates and defaults to `1`; `--sprint` (or `-S`) restricts the exact Sprint ID;
+`--json` emits the same PBI object array used by `list --json`:
+
+```bash
+pinto next
+pinto next --count 3
+pinto next --sprint S-1 --json
+```
+
+The [`next` demo](https://github.com/moriturus/pinto/tree/main/demos/single/next) contains blocked,
+ready, completed, and already-started examples.
 
 ### Acceptance Criteria progress
 
@@ -228,6 +251,7 @@ Read commands support `--json`:
 pinto list --json
 pinto show T-1 T-2 --json
 pinto board --json
+pinto next --json
 pinto sprint list --json
 ```
 

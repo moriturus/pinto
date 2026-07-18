@@ -54,6 +54,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`cycletime`](single/cycletime) — cycle time and lead time
   - [`burndown`](single/burndown) — sprint burndown
   - [`velocity`](single/velocity) — sprint velocity
+  - [`next`](single/next) — actionable backlog candidates and dependency readiness
 - [`combined/`](combined) — **combined-feature** datasets that resemble real workflows.
   - [`full-scrum-flow`](combined/full-scrum-flow) — one sprint covering epics, dependencies,
     labels, WIP, and every status

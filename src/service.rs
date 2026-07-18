@@ -11,6 +11,7 @@ mod dod;
 mod item;
 mod lifecycle;
 mod migrate;
+mod next;
 mod order;
 mod points;
 mod relations;
@@ -42,6 +43,7 @@ pub use item::{
 };
 pub use lifecycle::{InitOutcome, init_board};
 pub use migrate::{MigrateOutcome, migrate_storage};
+pub use next::{NextFilter, next_items};
 pub use order::{Forest, build_forest, hierarchical, hierarchical_order};
 pub(crate) use points::apply_effective_points;
 pub use search::{SearchFilter, SearchMode};

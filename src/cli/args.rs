@@ -27,7 +27,7 @@ fn parse_utc_datetime(s: &str) -> Result<chrono::DateTime<chrono::Utc>, String> 
     ))
 }
 
-/// Interpret a count of 1 or more (to provide early guidance on specifying 0 for `--recent`).
+/// Interpret a count of 1 or more (to provide early guidance on specifying 0 for count options).
 fn parse_positive_usize(s: &str) -> Result<usize, String> {
     let value = s
         .parse::<usize>()
@@ -154,6 +154,9 @@ pub(super) enum Command {
     /// List PBIs in the backlog.
     #[command(visible_alias = "ls")]
     List(ListArgs),
+    /// Display the highest-ranked actionable PBIs that are ready to start.
+    #[command(visible_alias = "n")]
+    Next(NextArgs),
     /// View PBI details for a given ID.
     #[command(visible_alias = "s")]
     Show(ShowArgs),
@@ -698,6 +701,20 @@ pub(super) struct ListArgs {
     /// Interpret `--search` as a regular expression.
     #[arg(long, short = 'R', requires = "search")]
     pub(super) regex: bool,
+}
+
+/// `next` Subcommand arguments.
+#[derive(Debug, Args)]
+pub(super) struct NextArgs {
+    /// Maximum number of actionable PBIs to display.
+    #[arg(long, short = 'n', default_value_t = 1, value_parser = parse_positive_usize)]
+    pub(super) count: usize,
+    /// Restrict candidates to the specified Sprint ID.
+    #[arg(long, short = 'S')]
+    pub(super) sprint: Option<String>,
+    /// Output machine-readable JSON instead of human-readable formatting.
+    #[arg(long, short = 'j')]
+    pub(super) json: bool,
 }
 
 /// Arguments for the `add` subcommand.
