@@ -53,6 +53,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`sprint-assignment-validation`](single/sprint-assignment-validation) — validate Sprint IDs and existence consistently across add/edit/sprint add
   - [`sprint-bulk-assignment`](single/sprint-bulk-assignment) — assign ranked PBIs by status with an optional count limit
   - [`sprint-capacity`](single/sprint-capacity) — sprint capacity calculation
+  - [`sprint-load-warning`](single/sprint-load-warning) — non-blocking Sprint capacity and velocity warnings
   - [`cycletime`](single/cycletime) — cycle time and lead time
   - [`burndown`](single/burndown) — sprint burndown
   - [`velocity`](single/velocity) — sprint velocity

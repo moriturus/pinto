@@ -56,7 +56,7 @@ pub async fn velocity(project_dir: &Path, recent: usize) -> Result<VelocityRepor
 }
 
 /// Calculate velocity from already loaded sprints and PBIs.
-fn compute_velocity(
+pub(crate) fn compute_velocity(
     sprints: &[crate::sprint::Sprint],
     items: &[BacklogItem],
     recent: usize,

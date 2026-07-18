@@ -53,8 +53,9 @@ pub use search::{SearchFilter, SearchMode};
 pub use settings::{DisplaySettings, TuiSettings, display_settings, tui_settings};
 pub(crate) use sprint::validate_sprint_assignment;
 pub use sprint::{
-    SprintCloseAction, assign_sprint, assign_sprint_by_status, assign_sprint_raw, close_sprint,
-    create_sprint, delete_sprint, edit_sprint, list_sprints, set_sprint_capacity, sprint_capacity,
+    SprintCloseAction, SprintLoadWarning, SprintLoadWarningKind, assign_sprint,
+    assign_sprint_by_status, assign_sprint_raw, close_sprint, create_sprint, delete_sprint,
+    edit_sprint, list_sprints, set_sprint_capacity, sprint_capacity, sprint_load_warnings,
     start_sprint, unassign_sprint,
 };
 use std::path::{Path, PathBuf};

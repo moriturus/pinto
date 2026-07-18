@@ -40,6 +40,7 @@ migration-backend-updated = Storage backend is now { $backend } (updated .pinto/
 migration-already-using = Already using { $backend }; nothing to migrate.
 migration-sqlite-unavailable = this binary was built without the sqlite backend; rebuild with `--features sqlite`
 wip-limit-exceeded = warning: WIP limit exceeded in '{ $column }': { $count } item(s) > limit { $limit }; move items out, raise the limit in config.toml, or pass --no-wip-check
+sprint-load-warning = warning: sprint { $sprint } has { $points } assigned points, exceeding { $kind } threshold of { $threshold }
 orphaned-items-warning = warning: { $count } item(s) are in columns not defined in config.toml ({ $ids }); move them to a valid column or add the column to `columns`
 rebalance-already-balanced = Ranks already balanced ({ $count } item(s), max rank length { $max_length }).
 rebalance-dry-run = Would rebalance { $changed }/{ $total } item(s) (max rank length { $before } -> { $after }).

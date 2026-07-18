@@ -263,6 +263,11 @@ pinto sprint velocity
 pinto cycletime --sprint S-1
 ```
 
+After a successful `sprint start` or `sprint add`, pinto warns on stderr (without blocking the
+operation) when estimated assigned points exceed the configured capacity-hours value or the
+average completed points from the five most recent closed predecessor Sprints. Unestimated items
+are excluded, equality is within the limit, and an unavailable comparison produces no warning.
+
 Close a completed sprint with `pinto sprint close S-1`. When unfinished work remains, choose
 `pinto sprint close S-1 --rollover S-2` to move it to a planned or active Sprint, or
 `pinto sprint close S-1 --release` to clear its Sprint assignment. The options are mutually

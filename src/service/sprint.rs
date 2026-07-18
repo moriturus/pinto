@@ -13,6 +13,119 @@ use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use std::path::Path;
 
+const VELOCITY_WARNING_RECENT: usize = 5;
+
+/// The source of a non-blocking Sprint load warning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SprintLoadWarningKind {
+    /// The assigned point total is above the configured capacity-hours threshold.
+    Capacity,
+    /// The assigned point total is above the historical velocity threshold.
+    Velocity,
+}
+
+impl SprintLoadWarningKind {
+    /// Return the short label used in localized CLI warning messages.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Capacity => "capacity",
+            Self::Velocity => "velocity",
+        }
+    }
+
+    /// Return the unit attached to the numeric threshold in CLI output.
+    #[must_use]
+    pub const fn unit(self) -> &'static str {
+        match self {
+            Self::Capacity => "hours",
+            Self::Velocity => "points",
+        }
+    }
+}
+
+/// A non-blocking warning produced when a Sprint's assigned points exceed a threshold.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SprintLoadWarning {
+    /// Which planning comparison was exceeded.
+    pub kind: SprintLoadWarningKind,
+    /// Sum of estimated points assigned to the Sprint.
+    pub points: u32,
+    /// Numeric threshold that the assigned points exceeded.
+    pub threshold: f64,
+}
+
+/// Calculate the current load warnings for a Sprint without changing board data.
+pub async fn sprint_load_warnings(
+    project_dir: &Path,
+    id: &SprintId,
+) -> Result<Vec<SprintLoadWarning>> {
+    let (_board_dir, repo, _config) = open_board(project_dir).await?;
+    let (sprints, items) = tokio::try_join!(
+        SprintRepository::list(&repo),
+        BacklogItemRepository::list(&repo)
+    )?;
+    let target = sprints
+        .iter()
+        .find(|sprint| sprint.id == *id)
+        .ok_or_else(|| Error::SprintNotFound(id.clone()))?;
+    Ok(sprint_load_warnings_for(target, &sprints, &items))
+}
+
+/// Calculate Sprint load warnings from an already loaded board snapshot.
+fn sprint_load_warnings_for(
+    target: &Sprint,
+    sprints: &[Sprint],
+    items: &[BacklogItem],
+) -> Vec<SprintLoadWarning> {
+    let assigned_points = items
+        .iter()
+        .filter(|item| item.sprint.as_deref() == Some(target.id.as_str()))
+        .filter_map(|item| item.points)
+        .fold(0_u32, u32::saturating_add);
+    let mut warnings = Vec::with_capacity(2);
+
+    if let Some(capacity) = target.capacity()
+        && f64::from(assigned_points) > capacity.hours
+    {
+        warnings.push(SprintLoadWarning {
+            kind: SprintLoadWarningKind::Capacity,
+            points: assigned_points,
+            threshold: capacity.hours,
+        });
+    }
+
+    if let Some(threshold) = historical_velocity_threshold(target, sprints, items)
+        && f64::from(assigned_points) > threshold
+    {
+        warnings.push(SprintLoadWarning {
+            kind: SprintLoadWarningKind::Velocity,
+            points: assigned_points,
+            threshold,
+        });
+    }
+
+    warnings
+}
+
+/// Return the average completed points from the target's five most recent closed predecessors.
+fn historical_velocity_threshold(
+    target: &Sprint,
+    sprints: &[Sprint],
+    items: &[BacklogItem],
+) -> Option<f64> {
+    let target_index = sprints.iter().position(|sprint| sprint.id == target.id)?;
+    let history: Vec<Sprint> = sprints[..target_index]
+        .iter()
+        .filter(|sprint| sprint.state == SprintState::Closed)
+        .cloned()
+        .collect();
+    if history.is_empty() {
+        return None;
+    }
+    Some(super::velocity::compute_velocity(&history, items, VELOCITY_WARNING_RECENT).average_points)
+}
+
 /// Create a sprint on the board in `project_dir` and return the saved [`Sprint`].
 ///
 /// The state is [`crate::sprint::SprintState::Planned`]. `goal` is persisted after the frontmatter
@@ -1211,5 +1324,107 @@ mod tests {
     async fn list_on_empty_board_is_empty() {
         let dir = init_temp().await;
         assert!(list_sprints(dir.path()).await.unwrap().is_empty());
+    }
+
+    fn sprint_with_capacity(id: &str, hours: f64) -> Sprint {
+        let mut sprint = Sprint::new(sid(id), id, date(2026, 7, 1)).expect("valid sprint");
+        sprint.start = Some(date(2026, 7, 1));
+        sprint.end = Some(date(2026, 7, 1));
+        sprint.set_capacity(hours, 0, 1.0).expect("valid capacity");
+        sprint
+    }
+
+    fn sprint_with_state(id: &str, state: SprintState) -> Sprint {
+        let mut sprint = Sprint::new(sid(id), id, date(2026, 7, 1)).expect("valid sprint");
+        sprint.goal = "Ship it".to_string();
+        if matches!(state, SprintState::Active | SprintState::Closed) {
+            sprint.start(date(2026, 7, 2)).expect("start sprint");
+        }
+        if state == SprintState::Closed {
+            sprint
+                .close(date(2026, 7, 3), SprintSpillover::default())
+                .expect("close sprint");
+        }
+        sprint
+    }
+
+    fn item_in_sprint(
+        number: u32,
+        sprint: &str,
+        points: Option<u32>,
+        done_at: Option<DateTime<Utc>>,
+    ) -> BacklogItem {
+        let mut item = BacklogItem::new(
+            ItemId::new("T", number),
+            format!("Item {number}"),
+            crate::backlog::Status::new("todo"),
+            crate::rank::Rank::after(None),
+            date(2026, 7, 1),
+        )
+        .expect("valid item");
+        item.sprint = Some(sprint.to_string());
+        item.points = points;
+        item.done_at = done_at;
+        item
+    }
+
+    #[test]
+    fn sprint_load_warning_respects_capacity_equality_and_ignores_unestimated_points() {
+        let target = sprint_with_capacity("S-2", 5.0);
+        let items = [
+            item_in_sprint(1, "S-2", Some(2), None),
+            item_in_sprint(2, "S-2", Some(3), None),
+            item_in_sprint(3, "S-2", None, None),
+        ];
+
+        assert!(
+            sprint_load_warnings_for(&target, std::slice::from_ref(&target), &items).is_empty()
+        );
+
+        let over = [
+            item_in_sprint(1, "S-2", Some(3), None),
+            item_in_sprint(2, "S-2", Some(3), None),
+            item_in_sprint(3, "S-2", None, None),
+        ];
+        assert_eq!(
+            sprint_load_warnings_for(&target, std::slice::from_ref(&target), &over),
+            vec![SprintLoadWarning {
+                kind: SprintLoadWarningKind::Capacity,
+                points: 6,
+                threshold: 5.0,
+            }]
+        );
+    }
+
+    #[test]
+    fn sprint_load_warning_uses_recent_closed_sprint_velocity() {
+        let first = sprint_with_state("S-1", SprintState::Closed);
+        let second = sprint_with_state("S-2", SprintState::Closed);
+        let target = sprint_with_capacity("S-3", 100.0);
+        let sprints = [first, second, target.clone()];
+        let items = [
+            item_in_sprint(1, "S-1", Some(4), Some(date(2026, 7, 2))),
+            item_in_sprint(2, "S-2", Some(6), Some(date(2026, 7, 2))),
+            item_in_sprint(3, "S-3", Some(6), None),
+        ];
+
+        assert_eq!(
+            sprint_load_warnings_for(&target, &sprints, &items),
+            vec![SprintLoadWarning {
+                kind: SprintLoadWarningKind::Velocity,
+                points: 6,
+                threshold: 5.0,
+            }]
+        );
+    }
+
+    #[test]
+    fn sprint_load_warning_is_empty_without_capacity_or_history() {
+        let target = Sprint::new(sid("S-1"), "S-1", date(2026, 7, 1)).expect("valid sprint");
+        let items = [item_in_sprint(1, "S-1", Some(8), None)];
+
+        assert!(
+            sprint_load_warnings_for(&target, std::slice::from_ref(&target), &items).is_empty()
+        );
     }
 }

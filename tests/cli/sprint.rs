@@ -473,6 +473,138 @@ fn sprint_capacity_rejects_out_of_range_deduction_factor() {
 }
 
 #[test]
+fn sprint_start_warns_when_capacity_is_exceeded_without_blocking() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Sprint One",
+            "--goal",
+            "Ship it",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-06",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Large task", "--points", "5"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "capacity",
+            "S-1",
+            "--daily-hours",
+            "4",
+            "--holidays",
+            "0",
+            "--deduction-factor",
+            "1",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Started sprint S-1"))
+        .stderr(predicate::str::contains("capacity threshold"));
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]))[0]["state"],
+        "active"
+    );
+}
+
+#[test]
+fn sprint_add_warns_when_velocity_is_exceeded_and_assigns_all_matching_items() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "History", "--goal", "Ship it"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Completed history", "--points", "3"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "start", "S-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["move", "T-1", "done"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "close", "S-1"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "new", "S-2", "Current", "--goal", "Ship it"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "First current task", "--points", "2"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Second current task", "--points", "2"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-2", "--status", "todo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assigned T-2 to sprint S-2"))
+        .stdout(predicate::str::contains("Assigned T-3 to sprint S-2"))
+        .stderr(predicate::str::contains("velocity threshold"));
+
+    let assigned = json_stdout(pinto(dir.path()).args(["list", "--sprint", "S-2", "--json"]));
+    assert_eq!(assigned.as_array().expect("list JSON array").len(), 2);
+}
+
+#[test]
+fn sprint_add_without_a_comparison_is_silent_and_still_assigns() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Task", "--points", "8"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("threshold").not());
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-1", "--json"]))["sprint"],
+        "S-1"
+    );
+}
+
+#[test]
 fn sprint_new_start_without_end_is_usage_error_code_1() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

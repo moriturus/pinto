@@ -30,8 +30,8 @@ use pinto::service::{
     display_settings, edit_item, edit_sprint, init_board, item_detail, item_edit_template,
     link_commits, list_items, list_sprints, lock_board, migrate_storage, move_item_with_outcome,
     next_items, rebalance, remove_dependency, remove_item, reorder_item, restore_item,
-    set_common_dod, set_sprint_capacity, sprint_capacity, start_sprint, sync_commits,
-    template_body, unassign_sprint, unlink_commits, velocity,
+    set_common_dod, set_sprint_capacity, sprint_capacity, sprint_load_warnings, start_sprint,
+    sync_commits, template_body, unassign_sprint, unlink_commits, velocity,
 };
 use std::io::{IsTerminal, Read};
 
@@ -1463,6 +1463,27 @@ fn warn_wip(v: &WipViolation) {
     );
 }
 
+/// Warn to stderr when assigned Sprint points exceed a configured planning threshold.
+async fn warn_sprint_load(dir: &Path, id: &SprintId) -> anyhow::Result<()> {
+    for warning in sprint_load_warnings(dir, id).await? {
+        let points = warning.points.to_string();
+        let threshold = format!("{:.1} {}", warning.threshold, warning.kind.unit());
+        eprintln!(
+            "{}",
+            current().format(
+                Message::SprintLoadWarning,
+                [
+                    ("sprint", id.as_str()),
+                    ("points", points.as_str()),
+                    ("kind", warning.kind.as_str()),
+                    ("threshold", threshold.as_str()),
+                ],
+            )
+        );
+    }
+    Ok(())
+}
+
 /// `pinto reorder` — Reorder PBI ranks (without changing `status`).
 ///
 /// The destination (`--before` / `--after` / `--top` / `--bottom`) is an exclusive group of clap.
@@ -1889,6 +1910,7 @@ async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                     [("id", sprint.id.to_string().as_str())],
                 )
             );
+            warn_sprint_load(&dir, &sprint.id).await?;
         }
         SprintCommand::Close {
             id,
@@ -1920,7 +1942,8 @@ async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
         } => {
             if let Some(item_id) = item_id {
                 let item_id: ItemId = item_id.parse()?;
-                let item = assign_sprint_raw(&dir, &sprint_id, &item_id).await?;
+                let sprint_id: SprintId = sprint_id.parse()?;
+                let item = assign_sprint_raw(&dir, sprint_id.as_str(), &item_id).await?;
                 println!(
                     "{}",
                     current().format(
@@ -1931,9 +1954,11 @@ async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                         ],
                     )
                 );
+                warn_sprint_load(&dir, &sprint_id).await?;
             } else if let Some(status) = status {
                 let sprint_id: SprintId = sprint_id.parse()?;
-                for item in assign_sprint_by_status(&dir, &sprint_id, &status, limit).await? {
+                let assigned = assign_sprint_by_status(&dir, &sprint_id, &status, limit).await?;
+                for item in &assigned {
                     println!(
                         "{}",
                         current().format(
@@ -1944,6 +1969,9 @@ async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                             ],
                         )
                     );
+                }
+                if !assigned.is_empty() {
+                    warn_sprint_load(&dir, &sprint_id).await?;
                 }
             } else {
                 return Err(anyhow::anyhow!(

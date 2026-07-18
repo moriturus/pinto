@@ -212,6 +212,12 @@ pinto sprint remove S-1
 Reports include `pinto sprint burndown`, `pinto sprint velocity`,
 `pinto sprint capacity`, and `pinto cycletime`.
 
+After a successful `pinto sprint start` or `pinto sprint add`, pinto prints a non-blocking warning
+to stderr when the Sprint's estimated assigned points exceed either its configured capacity-hours
+value or the average completed points from its five most recent closed predecessor Sprints.
+Unestimated PBIs do not contribute to the point total, equality is within the threshold, and no
+warning is emitted when the corresponding comparison is unavailable.
+
 Use `pinto sprint edit` to add a goal or change a planned period before
 starting a Sprint. Removing a Sprint releases its assigned PBIs without
 deleting them. Assign new PBIs only to `planned` or `active` Sprints; use
