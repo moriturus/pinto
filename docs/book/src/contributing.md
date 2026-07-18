@@ -6,6 +6,12 @@ and [design guide](https://github.com/moriturus/pinto/blob/main/docs/DESIGN.md)
 before making a design decision. The project favors a small, fast, Scrum-focused
 tool with plain-text, Git-friendly storage.
 
+`AGENTS.base.md` is the shared contributor and agent baseline. A developer may
+derive a local `AGENTS.md` overlay with `cp AGENTS.base.md AGENTS.md` and append
+personal tool or environment instructions there. Root-level `AGENTS.md`,
+`CLAUDE.md`, and `.claude/` are ignored and must not be committed; project rules
+that everyone needs belong in the tracked baseline or this guide.
+
 ## Development loop
 
 Install the managed tools and run the quality gate:

@@ -7,6 +7,13 @@ plain-text tool.
 Read [AGENTS.base.md](AGENTS.base.md) and [docs/DESIGN.md](docs/DESIGN.md) before making
 design decisions.
 
+`AGENTS.base.md` is the shared contributor and agent baseline. Developers who
+need personal tool or environment instructions may create a local `AGENTS.md` overlay
+with `cp AGENTS.base.md AGENTS.md`, then append those instructions
+without changing the shared file. Root-level `AGENTS.md`, `CLAUDE.md`, and
+`.claude/` are ignored and must not be committed; durable project guidance
+belongs in the tracked baseline or the linked documentation.
+
 ## Project principles
 
 1. **Lightweight and simple** — fast startup, few dependencies, low learning cost.
@@ -69,8 +76,9 @@ release packaging.
 ## Backlog
 
 pinto dogfoods its own board in `.pinto/`; it is the single source of truth
-for project work. Inspect it with `pinto list` or `pinto board`. The legacy
-`backlog.md` is a frozen migration snapshot.
+for project work. Inspect it with `cargo run -- list` or `cargo run -- board`.
+The former repository-level backlog is not maintained; see
+[`docs/migration.md`](docs/migration.md) for historical context.
 
 ## Pull request flow
 

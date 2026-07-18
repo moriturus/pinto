@@ -5,8 +5,8 @@ mise:
 
 ```bash
 mise run test                 # unit, CLI, docs, i18n, and skill integration tests
-cargo test --doc              # public API examples
-cargo test --test cli         # CLI and pseudo-terminal smoke tests
+cargo test --doc --locked     # public API examples
+cargo test --test cli --locked # CLI and pseudo-terminal smoke tests
 mise run check                # tests, Clippy, Rust docs, mdBook, and fmt
 ```
 

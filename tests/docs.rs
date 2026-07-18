@@ -2,12 +2,160 @@ use std::fs;
 use std::path::Path;
 
 const BOOK_SOURCE: &str = "docs/book/src";
+const MAINTAINED_GUIDANCE: &[&str] = &[
+    "AGENTS.base.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    ".github/ISSUE_TEMPLATE/bug_report.md",
+    ".github/ISSUE_TEMPLATE/feature_request.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "docs/DESIGN.md",
+    "docs/DOGFOODING.md",
+    "docs/benchmarks.md",
+    "docs/dependencies.md",
+    "docs/json-schema.md",
+    "docs/migration.md",
+    "docs/skills.md",
+    "docs/stability.md",
+    "docs/book/src/SUMMARY.md",
+    "docs/book/src/cli.md",
+    "docs/book/src/configuration.md",
+    "docs/book/src/contributing.md",
+    "docs/book/src/cookbook.md",
+    "docs/book/src/data-format.md",
+    "docs/book/src/dogfooding.md",
+    "docs/book/src/installation.md",
+    "docs/book/src/introduction.md",
+    "docs/book/src/kanban.md",
+    "docs/book/src/local-ci.md",
+    "docs/book/src/quickstart.md",
+    "docs/book/src/reproducibility.md",
+    "docs/book/src/testing.md",
+];
 
 fn repository_file(path: &str) -> String {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     fs::read_to_string(root.join(path))
         .map(|contents| contents.replace("\r\n", "\n"))
         .unwrap_or_else(|error| panic!("expected documentation file {path}: {error}"))
+}
+
+fn assert_relative_markdown_links_resolve(path: &str) {
+    let contents = repository_file(path);
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let file_path = root.join(path);
+    let base = file_path.parent().expect("guidance file has a parent");
+    let mut remaining = contents.as_str();
+
+    while let Some(link_start) = remaining.find("](") {
+        let destination_start = link_start + 2;
+        let destination_end = remaining[destination_start..]
+            .find(')')
+            .map(|offset| destination_start + offset)
+            .expect("Markdown link has a closing parenthesis");
+        let destination = remaining[destination_start..destination_end]
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_matches('<');
+        let destination = destination.trim_end_matches('>');
+
+        if !destination.is_empty()
+            && !destination.starts_with('#')
+            && !destination.starts_with("http://")
+            && !destination.starts_with("https://")
+            && !destination.starts_with("mailto:")
+        {
+            let target = destination.split('#').next().unwrap_or_default();
+            let target_path = if target.starts_with('/') {
+                root.join(target.trim_start_matches('/'))
+            } else {
+                base.join(target)
+            };
+            assert!(
+                target_path.exists(),
+                "{path} contains a broken local link: {destination}"
+            );
+        }
+
+        remaining = &remaining[destination_end + 1..];
+    }
+}
+
+#[test]
+fn shared_guidance_is_current_and_supports_local_overlays() {
+    let baseline = repository_file("AGENTS.base.md");
+    for marker in [
+        "# Shared contributor and agent guidance",
+        "`AGENTS.base.md` is the versioned shared baseline",
+        "cp AGENTS.base.md AGENTS.md",
+        "local `AGENTS.md` overlay",
+        "ratatui` with its re-exported `crossterm` backend",
+        "rustyline",
+        "termimad",
+        "fs4",
+        "tempfile",
+        "rusqlite",
+        "cargo test --doc",
+        "cargo fuzz run automation_plan_parse",
+        "cargo fuzz run markdown_frontmatter_parse",
+        "mise run coverage",
+    ] {
+        assert!(baseline.contains(marker), "AGENTS.base.md omits {marker}");
+    }
+    assert!(!baseline.contains("Phase 4 onward"));
+
+    let contributing = repository_file("CONTRIBUTING.md");
+    for marker in ["AGENTS.base.md", "local `AGENTS.md` overlay"] {
+        assert!(
+            contributing.contains(marker),
+            "CONTRIBUTING.md omits {marker}"
+        );
+    }
+
+    let book_contributing = repository_file("docs/book/src/contributing.md");
+    for marker in ["AGENTS.base.md", "local `AGENTS.md` overlay"] {
+        assert!(
+            book_contributing.contains(marker),
+            "contributor book page omits {marker}"
+        );
+    }
+
+    let migration = repository_file("docs/migration.md");
+    assert!(migration.contains("not part of the maintained checkout"));
+    assert!(!migration.contains("backlog.md"));
+
+    let gitignore = repository_file(".gitignore");
+    for marker in ["/AGENTS.md", "/CLAUDE.md", ".claude/"] {
+        assert!(gitignore.contains(marker), ".gitignore omits {marker}");
+    }
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            root.to_str().expect("repository path is UTF-8"),
+            "ls-files",
+            "--",
+            "AGENTS.md",
+            "CLAUDE.md",
+            ".claude",
+        ])
+        .output()
+        .expect("git is required to verify ignored personal guidance");
+    assert!(output.status.success(), "git ls-files failed: {output:?}");
+    assert!(
+        output.stdout.is_empty(),
+        "personal guidance files must not be tracked: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn maintained_guidance_has_resolvable_relative_links() {
+    for path in MAINTAINED_GUIDANCE {
+        assert_relative_markdown_links_resolve(path);
+    }
 }
 
 #[test]

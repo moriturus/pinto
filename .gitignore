@@ -1,8 +1,11 @@
+# Personal agent instructions and settings
 /AGENTS.md
 /CLAUDE.md
+.claude/
+
+# Build artifacts
 /target
 /fuzz/target
-.claude/
 
 # macOS
 .DS_Store

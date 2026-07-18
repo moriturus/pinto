@@ -529,6 +529,8 @@ mise run check
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the TDD workflow and
 [docs/DESIGN.md](docs/DESIGN.md) for architecture decisions.
+The shared contributor and agent baseline is [AGENTS.base.md](AGENTS.base.md);
+personal `AGENTS.md` overlays remain local and are ignored by Git.
 Stability and dependency trade-offs are recorded in
 [docs/stability.md](docs/stability.md) and [docs/dependencies.md](docs/dependencies.md).
 
