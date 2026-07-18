@@ -268,6 +268,27 @@ fn archive_recovery_demo_documents_listing_and_restore() {
 }
 
 #[test]
+fn stale_filter_demo_documents_duration_queries() {
+    let readme = repository_file("demos/single/stale-filter/README.md");
+    for command in [
+        "list --stale 1s",
+        "list --stale 1s --status todo --json",
+        "list --stale 1s --label backend",
+    ] {
+        assert!(
+            readme.contains(command),
+            "stale-filter demo omits {command}"
+        );
+    }
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let task_dir = root.join("demos/single/stale-filter/.pinto/tasks");
+    for id in ["T-1", "T-2", "T-3"] {
+        assert!(task_dir.join(format!("{id}.md")).is_file());
+    }
+}
+
+#[test]
 fn parent_child_demo_documents_root_only_views() {
     let readme = repository_file("demos/single/parent-child/README.md");
     for command in [

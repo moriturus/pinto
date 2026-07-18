@@ -6,6 +6,7 @@ use crate::service::test_support::{add_with, init_temp, parent_edit};
 use crate::service::{LabelMatch, create_sprint};
 use crate::sprint::SprintId;
 use crate::storage::{BacklogItemRepository, FileRepository};
+use chrono::{Duration, Utc};
 use std::path::Path;
 use tempfile::TempDir;
 use tokio::fs;
@@ -431,6 +432,47 @@ async fn list_combines_filters_conjunctively() {
         .collect();
 
     assert_eq!(titles, ["Match"]);
+}
+
+#[tokio::test]
+async fn list_filters_by_stale_updated_cutoff_including_boundary_without_writing() {
+    let dir = init_temp().await;
+    let stale = add_item(dir.path(), "Stale", NewItem::default())
+        .await
+        .unwrap();
+    let boundary = add_item(dir.path(), "Boundary", NewItem::default())
+        .await
+        .unwrap();
+    let fresh = add_item(dir.path(), "Fresh", NewItem::default())
+        .await
+        .unwrap();
+
+    let cutoff = Utc::now() - Duration::days(7);
+    let repo = FileRepository::new(dir.path().join(".pinto"));
+    for (item, updated) in [
+        (stale, cutoff - Duration::seconds(1)),
+        (boundary, cutoff),
+        (fresh, cutoff + Duration::seconds(1)),
+    ] {
+        let mut item = repo.load(&item.id).await.unwrap();
+        item.updated = updated;
+        repo.save(&item).await.unwrap();
+    }
+    let before = repo.load(&ItemId::new("T", 1)).await.unwrap();
+
+    let filter = ListFilter {
+        stale_before: Some(cutoff),
+        ..Default::default()
+    };
+    let titles: Vec<_> = list_items(dir.path(), &filter)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.title)
+        .collect();
+
+    assert_eq!(titles, ["Stale", "Boundary"]);
+    assert_eq!(repo.load(&ItemId::new("T", 1)).await.unwrap(), before);
 }
 
 #[tokio::test]

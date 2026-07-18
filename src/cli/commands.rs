@@ -1228,7 +1228,8 @@ fn combine_template_body(template: String, body: String) -> String {
 /// `--label`, `--sprint`, and `--acceptance-criteria` add columns between assignee and creation date;
 /// omit their values in long mode to show the columns without filtering. Multiple labels use OR
 /// by default; `--all-labels` switches to AND. `--roots-only` omits PBIs with a persisted parent
-/// link. `--json` takes precedence because it already contains all metadata.
+/// link. `--stale` filters by the `updated` timestamp and composes with the other filters.
+/// `--json` takes precedence because it already contains all metadata.
 async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
     let dir = std::env::current_dir()?;
     let long = args.long;
@@ -1237,6 +1238,18 @@ async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
     let labels = resolve_label_filter("--label", args.label, long)?;
     let label_match = resolve_label_match(args.all_labels, &labels)?;
     let sprint = resolve_optional_filter("--sprint", args.sprint, long)?;
+    let stale_before = args
+        .stale
+        .map(|duration| {
+            chrono::Utc::now()
+                .checked_sub_signed(duration)
+                .ok_or_else(|| {
+                    Error::InvalidFilterOption(
+                        "--stale duration is too large for a UTC timestamp".to_string(),
+                    )
+                })
+        })
+        .transpose()?;
     let filter = ListFilter {
         roots_only: args.roots_only,
         archived: args.archived,
@@ -1245,6 +1258,7 @@ async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
         labels,
         label_match,
         search: build_search_filter(args.search, args.regex)?,
+        stale_before,
     };
     let items = list_items(&dir, &filter).await?;
     if args.json {

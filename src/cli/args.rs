@@ -38,6 +38,36 @@ fn parse_positive_usize(s: &str) -> Result<usize, String> {
     Ok(value)
 }
 
+/// Parse the compact positive duration accepted by `list --stale`.
+fn parse_stale_duration(s: &str) -> Result<chrono::Duration, String> {
+    const GUIDANCE: &str =
+        "expected a positive integer followed by s, m, h, d, or w (for example, 7d)";
+    let invalid = || format!("invalid stale duration {s:?}: {GUIDANCE}");
+
+    let mut chars = s.chars();
+    let Some(unit) = chars.next_back() else {
+        return Err(invalid());
+    };
+    let amount = chars.as_str();
+    if amount.is_empty() || !amount.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(invalid());
+    }
+    let amount = amount.parse::<i64>().map_err(|_| invalid())?;
+    if amount == 0 {
+        return Err(invalid());
+    }
+    let seconds_per_unit = match unit {
+        's' => 1,
+        'm' => 60,
+        'h' => 60 * 60,
+        'd' => 24 * 60 * 60,
+        'w' => 7 * 24 * 60 * 60,
+        _ => return Err(invalid()),
+    };
+    let seconds = amount.checked_mul(seconds_per_unit).ok_or_else(invalid)?;
+    Ok(chrono::Duration::seconds(seconds))
+}
+
 /// A lightweight scrum backlog/kanban board.
 #[derive(Debug, Parser)]
 #[command(name = "pinto", version, about, long_about = None)]
@@ -731,6 +761,9 @@ pub(super) struct ListArgs {
     /// Interpret `--search` as a regular expression.
     #[arg(long, short = 'R', requires = "search")]
     pub(super) regex: bool,
+    /// Filter PBIs not updated within this duration; use a positive value such as `7d` (`s`, `m`, `h`, `d`, and `w` are supported).
+    #[arg(long, short = 't', value_name = "DURATION", value_parser = parse_stale_duration)]
+    pub(super) stale: Option<chrono::Duration>,
 }
 
 /// `next` Subcommand arguments.
@@ -776,6 +809,44 @@ pub(super) struct AddArgs {
     /// Template name (`.pinto/templates/item/<name>.md`) to apply to the body.
     #[arg(long, short = 't')]
     pub(super) template: Option<String>,
+}
+
+#[cfg(test)]
+mod stale_duration_tests {
+    use super::*;
+    use chrono::Duration;
+
+    #[test]
+    fn parses_supported_stale_duration_units() {
+        for (input, expected) in [
+            ("30s", Duration::seconds(30)),
+            ("45m", Duration::minutes(45)),
+            ("12h", Duration::hours(12)),
+            ("7d", Duration::days(7)),
+            ("2w", Duration::weeks(2)),
+        ] {
+            assert_eq!(parse_stale_duration(input), Ok(expected), "input: {input}");
+        }
+    }
+
+    #[test]
+    fn stale_duration_requires_a_positive_integer_and_supported_unit() {
+        for input in ["", "0d", "-1d", "7", "7q", "1.5d", "999999999999999999999w"] {
+            let error = parse_stale_duration(input).expect_err(input);
+            assert!(error.contains("positive"), "{input}: {error}");
+            assert!(error.contains("s, m, h, d, or w"), "{input}: {error}");
+        }
+    }
+
+    #[test]
+    fn list_accepts_stale_duration() {
+        let cli =
+            Cli::try_parse_from(["pinto", "list", "--stale", "7d"]).expect("stale duration parses");
+        let Command::List(args) = cli.command else {
+            panic!("expected list command");
+        };
+        assert_eq!(args.stale, Some(Duration::days(7)));
+    }
 }
 
 #[cfg(test)]

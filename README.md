@@ -98,7 +98,7 @@ done (0)
 | --- | --- |
 | `pinto init` | Initialize `.pinto/` in the current directory. It is idempotent. |
 | `pinto add <title>` | Add a PBI. Use `--label <label>...` to set one or more labels in one occurrence; repeating `--label` is equivalent. Other options include `--points`, `--sprint`, `--body`, `--edit`, and `--template`. |
-| `pinto list` | List active PBIs; use `--archived` for archived PBIs. Filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label`, `--sprint`, or `--acceptance-criteria/-A` to include the corresponding column. |
+| `pinto list` | List active PBIs; use `--archived` for archived PBIs. Filter with `--status <status>...` (or repeat `--status`), `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), `--search/-F` (use `--regex/-R` for regular expressions), or `--stale <duration>` (for example, `7d`; units are `s`, `m`, `h`, `d`, and `w`). Use `--roots-only` to omit PBIs with a parent. `--long/-l` shows `ID`, `TITLE`, `STATUS`, `POINTS`, `ASSIGNEE`, `CREATED`, and `UPDATED`; add `--label`, `--sprint`, or `--acceptance-criteria/-A` to include the corresponding column. |
 | `pinto next` | Show up to one highest-ranked unstarted PBI whose dependencies are complete; use `--count/-n`, `--sprint/-S`, or `--json/-j` to adjust the result. |
 | `pinto show <id>...` | Show one or more active PBIs in input order; use `--archived` for archived details. `--plain` keeps raw Markdown and `--json` always returns an array. |
 | `pinto restore <id>` | Restore an archived PBI to the active backlog without changing its ID or content. |
@@ -136,6 +136,7 @@ pinto list --status todo --long --acceptance-criteria
 pinto list --status todo in-progress --json
 pinto list --label backend frontend                 # either label (OR)
 pinto list --label backend frontend --all-labels    # both labels (AND)
+pinto list --stale 7d --status todo --json          # unchanged for at least seven days
 pinto list --roots-only --status todo --json       # roots only, machine-readable
 pinto list --archived --json                        # archived PBIs only
 pinto next                                           # highest-ranked actionable PBI
@@ -161,6 +162,17 @@ unstarted, excludes the configured `done_column`, and returns only items whose d
 dependencies all exist and are in that completion column. Results use the same canonical
 backlog order as `list`; a missing dependency keeps an item blocked. `--count` defaults to `1`,
 and `--sprint` applies an exact Sprint filter.
+
+### Stale PBIs
+
+Use `pinto list --stale <duration>` to find PBIs whose `updated` timestamp is at or before the
+query time minus the requested duration. The duration is a positive integer followed by one unit:
+seconds (`s`), minutes (`m`), hours (`h`), days (`d`), or weeks (`w`). For example, `7d` finds PBIs
+that have not changed for at least seven days. The filter composes with status, Sprint, labels,
+search, archived, long, and JSON options, and the read-only query does not rewrite timestamps.
+
+See the [stale-filter demo](https://github.com/moriturus/pinto/tree/main/demos/single/stale-filter)
+for a runnable example.
 
 ### Acceptance Criteria progress
 

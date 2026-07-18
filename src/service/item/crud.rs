@@ -10,7 +10,7 @@ use crate::service::{
 };
 use crate::sprint::Sprint;
 use crate::storage::BacklogItemRepository;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 
 /// Optional fields for [`add_item`]. Unspecified fields use their domain defaults.
@@ -113,8 +113,9 @@ pub async fn add_item_with_outcome(
 ///
 /// Multiple status specifications use OR (a PBI matches any selected status); label specifications
 /// use [`LabelMatch::Any`] by default and can use [`LabelMatch::All`]; roots-only and other filters
-/// are combined with AND. The roots-only condition uses the item's persisted parent link even
-/// when that parent is excluded by another filter.
+/// are combined with AND. The stale condition matches `updated` timestamps at or before its
+/// cutoff. The roots-only condition uses the item's persisted parent link even when that parent is
+/// excluded by another filter.
 #[derive(Debug, Default, Clone)]
 pub struct ListFilter {
     /// Include only PBIs whose persisted parent link is unset.
@@ -131,6 +132,8 @@ pub struct ListFilter {
     pub label_match: LabelMatch,
     /// Search the item's fields and assigned sprint metadata.
     pub search: Option<SearchFilter>,
+    /// Match PBIs whose `updated` timestamp is at or before this UTC cutoff.
+    pub stale_before: Option<DateTime<Utc>>,
 }
 
 impl ListFilter {
@@ -153,6 +156,11 @@ impl ListFilter {
             return false;
         }
         if !self.labels.is_empty() && !self.label_match.matches(&item.labels, &self.labels) {
+            return false;
+        }
+        if let Some(cutoff) = self.stale_before
+            && item.updated > cutoff
+        {
             return false;
         }
         if let Some(search) = &self.search {

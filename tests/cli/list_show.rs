@@ -1,6 +1,17 @@
 //! List and show commands, including JSON output.
 
 use super::common::*;
+use chrono::{DateTime, Duration, Utc};
+use pinto::backlog::ItemId;
+use pinto::storage::{BacklogItemRepository, FileRepository};
+
+async fn set_updated(dir: &Path, id: &str, updated: DateTime<Utc>) {
+    let repo = FileRepository::new(dir.join(".pinto"));
+    let item_id = id.parse::<ItemId>().expect("valid item ID");
+    let mut item = repo.load(&item_id).await.expect("item exists");
+    item.updated = updated;
+    repo.save(&item).await.expect("save item timestamp");
+}
 
 #[test]
 fn display_timezone_changes_human_output_but_keeps_json_in_utc() {
@@ -263,6 +274,69 @@ fn list_regex_search_and_invalid_pattern_are_reported() {
         .failure()
         .code(1)
         .stderr(predicate::str::contains("invalid search pattern"));
+}
+
+#[tokio::test]
+async fn list_stale_filter_composes_with_existing_filters_and_is_read_only() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["add", "Stale parser", "--label", "backend"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Fresh parser", "--label", "backend"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Stale unrelated", "--label", "frontend"])
+        .assert()
+        .success();
+
+    let cutoff = Utc::now() - Duration::days(7);
+    set_updated(dir.path(), "T-1", cutoff - Duration::seconds(1)).await;
+    set_updated(dir.path(), "T-2", cutoff + Duration::seconds(1)).await;
+    set_updated(dir.path(), "T-3", cutoff - Duration::seconds(1)).await;
+    let before = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+
+    let filtered = json_stdout(pinto(dir.path()).args([
+        "list", "--stale", "7d", "--status", "todo", "--label", "backend", "--search", "parser",
+        "--json",
+    ]));
+    assert_eq!(
+        filtered
+            .as_array()
+            .expect("stale result is an array")
+            .iter()
+            .map(|item| item["title"].as_str().expect("title"))
+            .collect::<Vec<_>>(),
+        ["Stale parser"]
+    );
+
+    pinto(dir.path())
+        .args(["list", "--stale", "7d", "--long"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Stale parser"))
+        .stdout(predicate::str::contains("Fresh parser").not())
+        .stdout(predicate::str::contains("UPDATED"));
+
+    let after = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(after["updated"], before["updated"]);
+}
+
+#[test]
+fn list_stale_filter_rejects_invalid_duration_with_guidance() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .args(["list", "--stale", "7q"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("--stale"))
+        .stderr(predicate::str::contains("s, m, h, d, or w"));
 }
 
 #[test]
