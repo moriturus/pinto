@@ -17,6 +17,8 @@ mod dependencies;
 mod doctor;
 #[path = "cli/dod.rs"]
 mod dod;
+#[path = "cli/export.rs"]
+mod export;
 #[path = "cli/item.rs"]
 mod item;
 #[path = "cli/kanban.rs"]

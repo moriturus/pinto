@@ -25,10 +25,24 @@ pinto list --json
 pinto show T-1 T-2 --json
 pinto board --json
 pinto sprint list --json
+pinto export --json
 ```
 
 Do not parse the human-oriented table or board output when `--json` is
 available.
+
+## Complete board export
+
+`pinto export --json` returns one read-only object with four fields:
+
+- `items` — the active PBIs, using the same objects and hierarchical priority order as `list --json`.
+- `sprints` — all Sprints, using the same objects and creation order as `sprint list --json`.
+- `config` — the effective validated board configuration, including defaults for omitted settings.
+- `dod` — the shared Definition of Done as Markdown, or `null` when it is unset.
+
+The export opens the configured backend for reading only. It does not acquire a
+write lock, modify board data, or require a server. Archived PBIs are excluded,
+matching the default active-backlog behavior of `list --json`.
 
 ## Sprint close fields
 

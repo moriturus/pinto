@@ -8,7 +8,9 @@
 //! is non-destructive. Optional fields always appear and use `null` when unset.
 
 use pinto::backlog::{BacklogItem, ItemId};
-use pinto::service::{Board, Burndown, CycleTimeReport, DurationSummary, ItemDetail};
+use pinto::service::{
+    Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail,
+};
 use pinto::sprint::{Sprint, SprintCapacity};
 use serde::Serialize;
 
@@ -175,6 +177,30 @@ pub(super) fn board_json(board: &Board) -> serde_json::Result<String> {
 /// Format the Sprint list into a JSON array. If empty, `[]`.
 pub(super) fn sprints_json(sprints: &[Sprint]) -> serde_json::Result<String> {
     let dto: Vec<SprintJson> = sprints.iter().map(SprintJson::from_sprint).collect();
+    serde_json::to_string_pretty(&dto)
+}
+
+/// JSON representation of a complete board export.
+#[derive(Debug, Serialize)]
+struct ExportJson {
+    items: Vec<ItemJson>,
+    sprints: Vec<SprintJson>,
+    config: serde_json::Value,
+    dod: Option<String>,
+}
+
+/// Format a complete board snapshot as one JSON object.
+pub(super) fn export_json(snapshot: &BoardSnapshot) -> serde_json::Result<String> {
+    let dto = ExportJson {
+        items: snapshot.items.iter().map(ItemJson::from_item).collect(),
+        sprints: snapshot
+            .sprints
+            .iter()
+            .map(SprintJson::from_sprint)
+            .collect(),
+        config: snapshot.config.clone(),
+        dod: snapshot.dod.clone(),
+    };
     serde_json::to_string_pretty(&dto)
 }
 

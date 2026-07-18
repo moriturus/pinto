@@ -44,6 +44,7 @@ tasks/archive filename collisions with a location and repair direction.
 | `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open the configured editor. |
 | `pinto remove <id>...` | Archive PBIs; use the `rm` alias and `--force` only for permanent removal. |
 | `pinto board` | Render PBIs grouped by workflow column, optionally filtering by assignee or showing root PBIs only. |
+| `pinto export --json` | Export the complete active board, configuration, and shared DoD as one JSON snapshot. |
 | `pinto kanban` | Open the interactive [Kanban board](kanban.md). |
 
 Examples:
@@ -63,6 +64,7 @@ pinto next --count 3 --sprint S-1 --json
 pinto board --status in-progress review
 pinto board --assignee alice --json
 pinto board --roots-only --status todo --long
+pinto export --json
 pinto reorder T-1 --top
 pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
 pinto show T-1 --archived
@@ -313,6 +315,7 @@ pinto show T-1 T-2 --json
 pinto board --json
 pinto next --json
 pinto sprint list --json
+pinto export --json
 ```
 
 Prefer this format over parsing human-oriented tables. IDs, statuses, ranks,

@@ -9,6 +9,7 @@ mod cycletime;
 mod dependency;
 mod doctor;
 mod dod;
+mod export;
 mod item;
 mod lifecycle;
 mod migrate;
@@ -38,6 +39,7 @@ pub use dependency::{
 };
 pub use doctor::{DoctorFix, DoctorIssue, DoctorIssueKind, DoctorReport, doctor};
 pub use dod::{clear_common_dod, common_dod, set_common_dod};
+pub use export::{BoardSnapshot, export_snapshot};
 pub use item::{
     AddItemOutcome, EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, RebalanceOutcome,
     RemoveOutcome, ReorderTarget, add_item, add_item_with_outcome, apply_item_edit, edit_item,

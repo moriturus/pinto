@@ -33,6 +33,7 @@ const SAFE_COMMAND_NAMES: &[&str] = &[
     "ln",
     "dod",
     "dd",
+    "export",
     "sprint",
     "sp",
     "board",

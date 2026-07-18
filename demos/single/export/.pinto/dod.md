@@ -1,0 +1,3 @@
+- [ ] export returns one JSON document
+- [ ] timestamps remain UTC
+- [ ] read-only behavior is verified

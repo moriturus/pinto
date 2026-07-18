@@ -60,6 +60,7 @@ fn documentation_includes_the_required_operating_instructions() {
         "pinto sprint",
         "pinto automate",
         "pinto automate --schema",
+        "pinto export --json",
         "pinto list --roots-only",
         "pinto board --roots-only",
         "--json",

@@ -18,6 +18,11 @@ const DOD_FILE: &str = "dod.md";
 /// when the board is uninitialized.
 pub async fn common_dod(project_dir: &Path) -> Result<Option<String>> {
     let (board_dir, _repo, _config) = open_board(project_dir).await?;
+    read_common_dod(&board_dir).await
+}
+
+/// Load the common DoD from an already opened board directory.
+pub(crate) async fn read_common_dod(board_dir: &Path) -> Result<Option<String>> {
     let path = board_dir.join(DOD_FILE);
     match fs::read_to_string(&path).await {
         Ok(text) => {

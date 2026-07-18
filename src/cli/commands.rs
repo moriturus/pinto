@@ -11,8 +11,8 @@ use super::format::sprint::{
     format_sprint_capacity, format_sprints_with_timezone, format_velocity,
 };
 use super::json::{
-    board_json, burndown_json, cycletime_json, detail_json, list_json, sprint_capacity_json,
-    sprints_json,
+    board_json, burndown_json, cycletime_json, detail_json, export_json, list_json,
+    sprint_capacity_json, sprints_json,
 };
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
@@ -27,11 +27,11 @@ use pinto::service::{
     SprintCloseAction, WipViolation, add_dependency, add_item_with_outcome, apply_item_edit,
     archived_item_detail, assign_sprint_by_status, assign_sprint_raw, board, burndown, check_wip,
     clear_common_dod, close_sprint, common_dod, create_sprint, cycle_time, delete_sprint,
-    display_settings, edit_item, edit_sprint, init_board, item_detail, item_edit_template,
-    link_commits, list_items, list_sprints, lock_board, migrate_storage, move_item_with_outcome,
-    next_items, rebalance, remove_dependency, remove_item, reorder_item, restore_item,
-    set_common_dod, set_sprint_capacity, sprint_capacity, sprint_load_warnings, start_sprint,
-    sync_commits, template_body, unassign_sprint, unlink_commits, velocity,
+    display_settings, edit_item, edit_sprint, export_snapshot, init_board, item_detail,
+    item_edit_template, link_commits, list_items, list_sprints, lock_board, migrate_storage,
+    move_item_with_outcome, next_items, rebalance, remove_dependency, remove_item, reorder_item,
+    restore_item, set_common_dod, set_sprint_capacity, sprint_capacity, sprint_load_warnings,
+    start_sprint, sync_commits, template_body, unassign_sprint, unlink_commits, velocity,
 };
 use std::io::{IsTerminal, Read};
 
@@ -120,6 +120,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
         Command::Dep(args) => cmd_dep(args).await,
         Command::Link(args) => cmd_link(args).await,
         Command::Dod(args) => cmd_dod(args).await,
+        Command::Export(args) => cmd_export(args).await,
         Command::Sprint(args) => cmd_sprint(args).await,
         Command::Board(args) => cmd_board(args).await,
         Command::CycleTime(args) => cmd_cycletime(args).await,
@@ -504,6 +505,7 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         | Command::List(_)
         | Command::Next(_)
         | Command::Dod(_)
+        | Command::Export(_)
         | Command::Board(_)
         | Command::CycleTime(_)
         | Command::Rebalance(_)
@@ -1316,6 +1318,14 @@ async fn cmd_next(args: NextArgs) -> anyhow::Result<ExitCode> {
     } else {
         print!("{}", format_list(&items));
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `pinto export --json` — Export the complete active board as one JSON document.
+async fn cmd_export(_args: ExportArgs) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    let snapshot = export_snapshot(&dir).await?;
+    println!("{}", export_json(&snapshot)?);
     Ok(ExitCode::SUCCESS)
 }
 

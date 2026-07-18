@@ -214,6 +214,8 @@ pub(super) enum Command {
     /// Reference, set, and delete DoD (Definition of Done) common to all PBIs.
     #[command(visible_alias = "dd")]
     Dod(DodArgs),
+    /// Export the complete board as machine-readable JSON.
+    Export(ExportArgs),
     /// Manage sprints (create, start, close, assign, list).
     #[command(visible_alias = "sp")]
     Sprint(SprintArgs),
@@ -637,6 +639,14 @@ pub(super) enum LinkCommand {
 pub(super) struct DodArgs {
     #[command(subcommand)]
     pub(super) command: Option<DodCommand>,
+}
+
+/// Arguments for the `export` subcommand.
+#[derive(Debug, Args)]
+pub(super) struct ExportArgs {
+    /// Output the complete board snapshot as machine-readable JSON.
+    #[arg(long, short = 'j', required = true)]
+    pub(super) json: bool,
 }
 
 /// `dod` operation (setting/deleting). Displayed if omitted.

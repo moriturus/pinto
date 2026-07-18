@@ -403,6 +403,7 @@ fn representative_subcommands_work_in_both_supported_locales() {
             (&["add", "Second"], true),
             (&["list"], true),
             (&["list", "--json"], true),
+            (&["export", "--json"], true),
             (&["show", "T-1"], true),
             (&["move", "T-1", "in-progress"], true),
             (&["reorder", "T-1", "--top"], true),

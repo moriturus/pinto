@@ -111,6 +111,7 @@ done (0)
 | `pinto dep add/rm` | Add or remove item dependencies. |
 | `pinto link add/rm/sync` | Associate Git commits with PBIs, or synchronize links from commit messages containing item IDs. |
 | `pinto dod` | View, set, or clear the shared Definition of Done. |
+| `pinto export --json` | Export all active PBIs, Sprints, effective board configuration, and the shared Definition of Done as one JSON snapshot. |
 | `pinto sprint` | Create, edit, delete, start, close, list, assign, and report on Sprints (`burndown`, `velocity`, `capacity`). |
 | `pinto cycletime` / `pinto ct` | Report cycle and lead-time metrics. |
 | `pinto rebalance` | Reassign oversized ranks while preserving item order. Use `--dry-run` to preview changes. |
@@ -140,6 +141,7 @@ pinto list --label backend frontend --all-labels    # both labels (AND)
 pinto list --stale 7d --status todo --json          # unchanged for at least seven days
 pinto list --roots-only --status todo --json       # roots only, machine-readable
 pinto list --archived --json                        # archived PBIs only
+pinto export --json                                 # complete active-board snapshot
 pinto next                                           # highest-ranked actionable PBI
 pinto next -n 3 --sprint S-1 --json                  # several candidates for one Sprint
 pinto show T-1
@@ -455,6 +457,12 @@ argv plan from inline input, a file, or standard input and runs each command
 through the same validation, service, and storage paths as the normal CLI. It
 neither stores API keys nor requires a particular AI provider. See
 [JSON and automation schemas](docs/json-schema.md) for the contract.
+
+`pinto export --json` returns one read-only object containing the active PBI
+array (`items`), Sprint array (`sprints`), effective board configuration
+(`config`), and the optional shared Definition of Done (`dod`). It uses the
+same PBI/Sprint fields and UTC RFC 3339 timestamps as the corresponding JSON
+commands.
 
 ## Development
 
