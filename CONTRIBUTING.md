@@ -7,6 +7,12 @@ plain-text tool.
 Read [AGENTS.base.md](AGENTS.base.md) and [docs/DESIGN.md](docs/DESIGN.md) before making
 design decisions.
 
+For a new command, backend, or report, record the Scrum-related need, why
+existing functionality is insufficient, and the dependency, persistence, and
+migration/compatibility impact in the issue or pull request. Keep the file and
+Git backends as the plain-text default; consult [stability decisions](docs/stability.md)
+for SQLite changes.
+
 `AGENTS.base.md` is the shared contributor and agent baseline. Developers who
 need personal tool or environment instructions may create a local `AGENTS.md` overlay
 with `cp AGENTS.base.md AGENTS.md`, then append those instructions

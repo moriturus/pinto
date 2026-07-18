@@ -12,7 +12,9 @@ It keeps Product Backlog Items (PBIs), Sprints, and board state in readable text
 
 - **Fast and simple.** Minimal dependencies and a small vocabulary.
 - **Focused on Scrum.** Product Backlog, Sprints, and Kanban—not project-suite features such as billing, CRM, or Gantt charts.
-- **Plain text and Git-friendly.** Board data is Markdown with TOML frontmatter.
+- **Plain text and Git-friendly.** File and Git backends keep board data in plain text with
+  Markdown and TOML frontmatter. SQLite is an explicit exception: it is an optional, non-default
+  backend for local normalized storage and does not provide the same per-record Git diff.
 - **Local first.** No server, database service, or account is required.
 
 ## Installation
@@ -368,6 +370,11 @@ object store. The temporary workspace is removed after both successful and faile
 reports each command as `valid`, `succeeded`, `failed`, or `skipped`,
 including created and updated item IDs and recovery-relevant errors. An `add` command can combine
 `--template default` with `--body` without opening an editor.
+
+File and Git backends are the recommended plain-text compatibility boundary. The SQLite backend is
+available only in builds with `--features sqlite`; it is an explicit exception to the Git-diff
+guarantee and uses its own versioned schema. See [storage compatibility](docs/stability.md) before
+changing backends or upgrading a SQLite board.
 
 ## TUI demo
 

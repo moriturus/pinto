@@ -1,5 +1,22 @@
 # Dependency decisions
 
+## `rusqlite` (optional SQLite backend)
+
+`rusqlite` implements the optional, non-default SQLite backend. The default
+build keeps the file backend and does not compile this dependency; users opt in
+with `--features sqlite` when a normalized local database is useful for their
+Scrum board.
+
+The dependency uses `bundled SQLite` so the opt-in build does not require a
+system SQLite installation. That increases compile time and package size for
+the opt-in path, but keeps the supported feature reproducible across hosts. The
+file backend remains the lightweight default and the SQLite support is not a
+removal target.
+
+SQLite has an independent versioned schema. Any schema change must record its
+dependency and persistence impact, provide an explicit migration or recovery
+plan, and update the compatibility tests and guidance together.
+
 ## `serde_json`
 
 `serde_json` remains an unconditional dependency. It powers both Automation

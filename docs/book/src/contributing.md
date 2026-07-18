@@ -6,6 +6,13 @@ and [design guide](https://github.com/moriturus/pinto/blob/main/docs/DESIGN.md)
 before making a design decision. The project favors a small, fast, Scrum-focused
 tool with plain-text, Git-friendly storage.
 
+For a new command, backend, or report, record the Scrum-related need, why
+existing functionality is insufficient, and the dependency, persistence, and
+migration/compatibility impact in the issue or pull request. See the [design
+decision record](https://github.com/moriturus/pinto/blob/main/docs/DESIGN.md)
+and [stability decisions](https://github.com/moriturus/pinto/blob/main/docs/stability.md)
+for the storage boundary.
+
 `AGENTS.base.md` is the shared contributor and agent baseline. A developer may
 derive a local `AGENTS.md` overlay with `cp AGENTS.base.md AGENTS.md` and append
 personal tool or environment instructions there. Root-level `AGENTS.md`,

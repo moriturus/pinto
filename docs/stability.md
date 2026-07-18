@@ -77,6 +77,19 @@ writer behavior, but it introduces `-wal` and `-shm` companion files and is
 not useful for the short-lived, write-serialized CLI workload. Revisit this
 decision only if a long-running local process is introduced.
 
+## SQLite support policy
+
+SQLite remains a supported optional backend for teams that need normalized
+local storage, but it is not enabled by default. The file backend remains the
+plain-text and Git-diff compatibility boundary; SQLite is an explicit exception
+with a separate schema and migration contract. SQLite support is not a removal
+target merely because the default workflow is file-backed.
+
+Future SQLite schema work must increment the schema version, document the
+affected users and recovery path, and provide an explicit migration plan before
+the schema changes. The release compatibility check and an integration test
+must be updated in the same change.
+
 ## SQLite schema v1 to v2 compatibility
 
 The current SQLite schema version is `2`. Every newly created database contains an extensible

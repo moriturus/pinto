@@ -244,6 +244,60 @@ fn every_persisted_demo_board_passes_read_only_cli_smoke_checks() {
 }
 
 #[test]
+fn lightweight_defaults_demo_runs_on_the_default_file_backend() {
+    let demo = discovered_demos()
+        .into_iter()
+        .find(|demo| demo.name == "single/lightweight-defaults")
+        .expect("lightweight-defaults demo is present");
+    let temp = tempdir().expect("create lightweight-defaults fixture directory");
+    let board = copy_demo(&demo, &temp);
+
+    let items = json_output(&demo.name, &board, &["list", "--status", "todo", "--json"]);
+    assert_eq!(
+        items.as_array().map(Vec::len),
+        Some(1),
+        "default file backend exposes the demo PBI"
+    );
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn lightweight_defaults_demo_roundtrips_through_opt_in_sqlite() {
+    let demo = discovered_demos()
+        .into_iter()
+        .find(|demo| demo.name == "single/lightweight-defaults")
+        .expect("lightweight-defaults demo is present");
+    let temp = tempdir().expect("create SQLite fixture directory");
+    let board = copy_demo(&demo, &temp);
+
+    let migrate_to_sqlite = ["migrate", "--to", "sqlite"];
+    assert_success(
+        &demo.name,
+        &migrate_to_sqlite,
+        &run_pinto(&board, &migrate_to_sqlite),
+    );
+    let sqlite_items = json_output(&demo.name, &board, &["list", "--json"]);
+    assert_eq!(
+        sqlite_items.as_array().map(Vec::len),
+        Some(1),
+        "opt-in SQLite backend exposes the migrated PBI"
+    );
+
+    let migrate_to_file = ["migrate", "--to", "file"];
+    assert_success(
+        &demo.name,
+        &migrate_to_file,
+        &run_pinto(&board, &migrate_to_file),
+    );
+    let file_items = json_output(&demo.name, &board, &["list", "--json"]);
+    assert_eq!(
+        file_items.as_array().map(Vec::len),
+        Some(1),
+        "file backend remains readable after the SQLite round trip"
+    );
+}
+
+#[test]
 fn kanban_keybindings_demo_keeps_personal_settings_outside_the_board() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let demo = root.join("demos/single/kanban-keybindings");

@@ -72,10 +72,14 @@ field in `config.toml` and retry.
 - `git` — the file layout plus one automatic commit for each complete write operation; pre-existing
   Git changes are kept out of that commit.
 - `sqlite` — a single `.pinto/board.sqlite3` database, available only in builds
-  with the optional `sqlite` feature.
+  with the optional `sqlite` feature. It is not enabled in the default build and does not provide
+  the plain-text Git-diff view of the file and Git backends.
 
 All backends expose the same CLI. Use `pinto migrate --to <backend>` to move an
-existing board between them.
+existing board between them. Build the SQLite variant explicitly with
+`cargo build --features sqlite` (or `cargo run --features sqlite -- ...`).
+Migration between file/Git and SQLite is a persistence-format change; keep a
+backup and follow the versioned-schema guidance in [Stability decisions](../../stability.md).
 
 Write commands wait up to five seconds for another pinto process by default.
 The lock remains held through a Git-backed commit so one service operation stays

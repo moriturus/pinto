@@ -18,7 +18,11 @@ assignees: ''
 
 pinto prioritizes a lightweight, Scrum-focused, local-first design.
 
-- Is this feature necessary for Scrum work?
+- **Scrum-related need:** Is this necessary for Scrum work?
+- **Why existing functionality is insufficient:** What current command, backend, or report cannot cover the need?
+- **Dependency impact:** Would a dependency be added, removed, or made unconditional?
+- **Persistence impact:** Would board files, schemas, or stored data change?
+- **Migration and compatibility impact:** How would existing boards be migrated, downgraded, or recovered?
 - Does it preserve startup speed, a small dependency set, and a low learning cost?
 
 ## Alternatives

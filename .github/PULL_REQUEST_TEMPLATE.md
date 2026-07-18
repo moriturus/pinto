@@ -24,4 +24,13 @@ Review CONTRIBUTING.md before merging and complete the checklist below.
 
 ## Design alignment
 
-<!-- Explain whether the change is needed for Scrum work and preserves the lightweight design. Include reasons for new dependencies. -->
+<!-- Explain whether the change is needed for Scrum work and preserves the lightweight design. -->
+
+- **Scrum-related need:**
+- **Why existing functionality is insufficient:**
+- **Dependency impact:** None, or explain each added/changed dependency and why it is necessary.
+- **Persistence impact:** None, or describe changes to board files, schemas, or stored data.
+- **Migration and compatibility impact:** None, or describe migration, downgrade, and recovery guidance.
+
+For a new command, backend, or report, keep this record even when no dependency
+changes are required.

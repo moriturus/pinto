@@ -8,8 +8,11 @@ Markdown files, Sprint data, templates, and the `issued_ids` history. Each PBI i
 that a Git diff shows the change to one item clearly.
 
 The board is local-first: no account, server, or database service is required.
-The optional Git and SQLite backends expose the same pinto operations while
-keeping the CLI contract consistent.
+File and Git backends are the plain-text compatibility boundary: their PBI and
+Sprint records remain human-readable and a Git diff can show each operation.
+SQLite is the explicit persistence exception. It exposes the same pinto
+operations through an opt-in, normalized database, but its versioned schema and
+migration rules replace the per-record text diff.
 
 ## PBI files
 
@@ -72,10 +75,11 @@ does not rewrite stored data.
 
 Board configuration is a strict TOML schema and may gain keys between releases;
 an older binary can reject a newer `.pinto/config.toml`. Markdown PBI and Sprint
-records are the file-backed board data, while SQLite has its own explicit schema
-version and migration rules. JSON is a machine-readable CLI output contract, not
-another persistence backend and not a configuration file. Personal keybindings
-are independent of all four board data formats.
+records are the file-backed board data. File and Git backends are the plain-text
+compatibility boundary, while SQLite is the explicit persistence exception with
+its own versioned schema and migration rules. JSON is a machine-readable CLI
+output contract, not another persistence backend and not a configuration file.
+Personal keybindings are independent of all four board data formats.
 
 ## Safe operations
 

@@ -16,6 +16,18 @@ Board data is human-readable text intended to be reviewed with Git.
 The project intentionally excludes general project-suite features, cloud sync,
 and any setup process that is required before a user can create a local board.
 
+## Feature decision record
+
+New commands, backends, and reports must have a Scrum-related need and explain
+why existing functionality is insufficient. Before implementation, record the
+dependency, persistence, and migration impact in the design notes, issue, or
+pull request. The record must also state whether the change preserves the
+lightweight default and which compatibility boundary it affects.
+
+The issue and pull-request templates carry this checklist so a proposal can be
+reviewed before code or a new dependency is introduced. Storage changes must
+also update the relevant compatibility guidance and integration/demo coverage.
+
 ## Architecture
 
 The binary is organized into layers:
