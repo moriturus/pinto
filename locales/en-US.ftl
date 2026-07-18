@@ -204,6 +204,7 @@ cli-command-pinto-doctor = Check board integrity and report actionable repairs.
 cli-arg-pinto-doctor-fix = Apply safe mechanical repairs before the final scan.
 cli-command-pinto-automate = Run an AI-generated structured plan as pinto commands.
 cli-arg-pinto-automate-plan = Inline JSON, a readable plan file path, or `-` for standard input.
+cli-arg-pinto-automate-schema = Print the JSON Schema for a validated automation plan without executing one.
 cli-arg-pinto-automate-dry_run = Validate every command and report planned changes without modifying the board.
 cli-arg-pinto-automate-json = Output a structured result instead of human-readable messages.
 cli-command-pinto-shell = Start the interactive shell.

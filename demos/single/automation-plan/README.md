@@ -1,7 +1,11 @@
 # automation-plan (single feature: safe structured plans)
 
 Dataset for automation plans with a file source, multiline body input, dry-run validation, and
-structured results.
+structured results. Inspect the accepted plan envelope without a board or plan first:
+
+```bash
+cargo run --manifest-path ../../../Cargo.toml -- automate --schema
+```
 
 ```bash
 cargo run --manifest-path ../../../Cargo.toml -- automate --plan plan.json --dry-run --json

@@ -47,3 +47,17 @@ original stderr from a child command or an external tool, so consumers must use
 `status` and the other structured fields rather than parse the error text. A
 failed execution stops the plan; later commands are reported as `skipped` so the
 applied prefix and the safe recovery point are explicit.
+
+## Automation plan schema
+
+`pinto automate --schema` prints the Draft 2020-12 JSON Schema for the plan
+envelope. It is available without an initialized board and does not execute a
+plan. The schema requires one or more argv-style command arrays, rejects unknown
+top-level properties, and excludes recursive or interactive command names. The
+normal CLI parser remains authoritative for the arguments after each command
+name, so agents should validate the generated plan with `pinto automate --dry-run`
+before applying it.
+
+```bash
+pinto automate --schema > automation-plan.schema.json
+```

@@ -116,6 +116,7 @@ done (0)
 | `pinto rebalance` | Reassign oversized ranks while preserving item order. Use `--dry-run` to preview changes. |
 | `pinto migrate --to <backend>` | Move a board between the file, Git, and optional SQLite storage backends. |
 | `pinto automate --plan <JSON/PATH/->` | Validate and execute a structured plan from inline JSON, a file, or standard input; add `--dry-run` or `--json` for safe previews and machine-readable results. |
+| `pinto automate --schema` | Print the machine-readable JSON Schema for the safe automation-plan envelope without requiring a board or execution plan. |
 | `pinto shell` | Start the interactive shell with history, editing, and completion. |
 | `pinto completion <shell>` | Print a completion script for a supported shell. |
 
@@ -296,6 +297,7 @@ available, making them easy to use in scripts.
 
 ```bash
 pinto migrate --to git
+pinto automate --schema
 pinto automate --plan '{"commands":[["add","Draft release notes"]]}'
 pinto automate --plan plan.json --dry-run --json
 pinto automate --plan - --json < plan.json
@@ -308,7 +310,9 @@ multi-file migration is one operation). It isolates pre-existing Git changes
 with a temporary index, so they remain available for the user's own commit.
 If it needs to initialize a Git repository for the first write, pinto prints a
 warning first. `automate`
-accepts only a validated argv-style JSON plan; it does not execute shell code. Use a file path or
+accepts only a validated argv-style JSON plan; it does not execute shell code. Use
+`pinto automate --schema` to inspect the accepted envelope before generating a plan; this command
+does not require an initialized board. Use a file path or
 `-` for standard input when a plan contains long or multiline bodies. `--dry-run` validates and
 executes the plan in an isolated copy of the board, reporting planned changes without modifying
 the real board. The source board is locked while that snapshot is taken. For a normal repository
@@ -443,10 +447,14 @@ become the item body.
 ## Automation and JSON
 
 Most read commands accept `--json` for machine-readable output. `pinto
-automate --plan` accepts a JSON argv plan from inline input, a file, or standard
-input and runs each command through the same validation, service, and storage
-paths as the normal CLI. It neither stores API keys nor requires a particular AI
-provider.
+automate --schema` prints the JSON Schema for the safe plan envelope. The schema
+requires a non-empty `commands` array, rejects unknown top-level fields and
+recursive or interactive commands, and leaves complete command-argument
+validation to the existing CLI parser. `pinto automate --plan` accepts a JSON
+argv plan from inline input, a file, or standard input and runs each command
+through the same validation, service, and storage paths as the normal CLI. It
+neither stores API keys nor requires a particular AI provider. See
+[JSON and automation schemas](docs/json-schema.md) for the contract.
 
 ## Development
 

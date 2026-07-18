@@ -283,12 +283,17 @@ pinto migrate --to git             # switch the storage backend
 writes, and use JSON output when another tool needs execution results:
 
 ```bash
+pinto automate --schema
 pinto automate --plan plan.json --dry-run --json
 pinto automate --plan plan.json --json
 ```
 
-Plans can be supplied inline, from a file, or from standard input. `pinto
-shell` starts an interactive command shell, and `pinto completion <shell>`
+`--schema` prints the machine-readable JSON Schema without requiring an
+initialized board or an execution plan. It describes the required non-empty
+`commands` array, rejects unknown top-level fields and recursive or interactive
+commands, and leaves each command's full argument grammar to the normal CLI
+parser. Plans can be supplied inline, from a file, or from standard input.
+`pinto shell` starts an interactive command shell, and `pinto completion <shell>`
 generates completion scripts for supported shells.
 
 The dry-run snapshot holds the board write lock, so a concurrent writer cannot

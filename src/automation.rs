@@ -7,6 +7,48 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
+const SAFE_COMMAND_NAMES: &[&str] = &[
+    "init",
+    "add",
+    "a",
+    "list",
+    "ls",
+    "next",
+    "n",
+    "show",
+    "s",
+    "move",
+    "mv",
+    "reorder",
+    "ro",
+    "edit",
+    "e",
+    "remove",
+    "rm",
+    "restore",
+    "rs",
+    "dep",
+    "d",
+    "link",
+    "ln",
+    "dod",
+    "dd",
+    "sprint",
+    "sp",
+    "board",
+    "b",
+    "cycletime",
+    "ct",
+    "rebalance",
+    "reb",
+    "migrate",
+    "mig",
+    "doctor",
+    "dr",
+];
+
+const UNSAFE_COMMAND_NAMES: &[&str] = &["automate", "auto", "shell", "kanban", "k", "completion"];
+
 /// Why an automation plan cannot be run safely.
 ///
 /// The detailed input is omitted so callers can log an error without leaking
@@ -68,10 +110,9 @@ impl AutomationPlan {
         if raw.commands.is_empty()
             || raw.commands.iter().any(std::vec::Vec::is_empty)
             || raw.commands.iter().any(|command| {
-                matches!(
-                    command.first().map(String::as_str),
-                    Some("automate" | "shell" | "kanban" | "completion")
-                )
+                command
+                    .first()
+                    .is_some_and(|name| UNSAFE_COMMAND_NAMES.contains(&name.as_str()))
             })
         {
             return Err(AutomationPlanError::Invalid);
@@ -85,6 +126,44 @@ impl AutomationPlan {
     #[must_use]
     pub fn commands(&self) -> &[Vec<String>] {
         &self.commands
+    }
+
+    /// Return the JSON Schema for the validated automation-plan envelope.
+    ///
+    /// The schema covers the JSON structure and excludes commands that would recurse into
+    /// automation or start an interactive session. Arguments after the command name remain
+    /// ordinary strings because the CLI's existing `clap` parser is the source of truth for each
+    /// command's complete argument grammar.
+    #[must_use]
+    pub fn json_schema() -> serde_json::Value {
+        serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "pinto automation plan",
+            "description": "A non-empty sequence of safe pinto command argv arrays.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["commands"],
+            "properties": {
+                "commands": {
+                    "type": "array",
+                    "description": "Commands are executed in order after clap validation.",
+                    "minItems": 1,
+                    "items": {"$ref": "#/$defs/command"}
+                }
+            },
+            "$defs": {
+                "command": {
+                    "type": "array",
+                    "description": "An argv-style pinto command; arguments are strings.",
+                    "minItems": 1,
+                    "prefixItems": [{
+                        "type": "string",
+                        "enum": SAFE_COMMAND_NAMES
+                    }],
+                    "items": {"type": "string"}
+                }
+            }
+        })
     }
 }
 
@@ -106,8 +185,38 @@ mod tests {
 
     #[test]
     fn rejects_recursive_or_interactive_commands() {
-        for command in ["automate", "shell", "kanban", "completion"] {
+        for command in ["automate", "auto", "shell", "kanban", "k", "completion"] {
             assert!(AutomationPlan::parse(&format!(r#"{{"commands":[["{command}"]]}}"#)).is_err());
         }
+    }
+
+    #[test]
+    fn exposes_a_strict_schema_for_safe_command_plans() {
+        let schema = AutomationPlan::json_schema();
+
+        assert_eq!(
+            schema["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"], serde_json::json!(["commands"]));
+        assert_eq!(schema["properties"]["commands"]["type"], "array");
+        assert_eq!(schema["properties"]["commands"]["minItems"], 1);
+
+        let command = &schema["$defs"]["command"];
+        assert_eq!(command["type"], "array");
+        assert_eq!(command["minItems"], 1);
+        let command_names = command["prefixItems"][0]["enum"]
+            .as_array()
+            .expect("schema command names are an array");
+        for unsafe_command in ["automate", "auto", "shell", "kanban", "k", "completion"] {
+            assert!(
+                !command_names.iter().any(|name| name == unsafe_command),
+                "unsafe command must not be schema-valid: {unsafe_command}"
+            );
+        }
+        assert!(command_names.iter().any(|name| name == "add"));
+        assert_eq!(command["items"]["type"], "string");
     }
 }

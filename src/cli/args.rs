@@ -286,10 +286,15 @@ pub(super) struct AutomateArgs {
     #[arg(
         long,
         short = 'p',
+        required_unless_present = "schema",
+        conflicts_with = "schema",
         value_name = "JSON|PATH|-",
         help = "Inline JSON, a plan file path, or `-` to read the JSON plan from standard input."
     )]
-    pub(super) plan: String,
+    pub(super) plan: Option<String>,
+    /// Print the JSON Schema for a validated automation plan without executing one.
+    #[arg(long, short = 's', conflicts_with = "plan")]
+    pub(super) schema: bool,
     /// Validate every command and report planned changes without modifying the board.
     #[arg(long, short = 'n')]
     pub(super) dry_run: bool,

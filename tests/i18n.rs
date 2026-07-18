@@ -197,6 +197,14 @@ fn localized_help_preserves_aliases_and_short_options() {
         .stdout(predicate::str::contains("-o, --sort"))
         .stdout(predicate::str::contains("-j, --json"))
         .stdout(predicate::str::contains("-w, --no-wip-check"));
+
+    let mut automate = Command::cargo_bin("pinto").expect("binary builds");
+    automate
+        .args(["automate", "--help"])
+        .env("LC_ALL", "ja_JP.UTF-8")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("自動化プランの JSON Schema"));
 }
 
 fn japanese_pinto(dir: &Path) -> Command {

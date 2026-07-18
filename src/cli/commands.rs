@@ -152,12 +152,15 @@ async fn anchor_automation_plan_path(cli: &mut Cli, invocation_dir: &Path) -> an
     let Command::Automate(args) = &mut cli.command else {
         return Ok(());
     };
-    if args.plan == "-" || Path::new(&args.plan).is_absolute() {
+    let Some(plan) = args.plan.as_mut() else {
+        return Ok(());
+    };
+    if plan == "-" || Path::new(plan).is_absolute() {
         return Ok(());
     }
 
-    let inline_json = args.plan.trim_start().starts_with('{');
-    let candidate = invocation_dir.join(&args.plan);
+    let inline_json = plan.trim_start().starts_with('{');
+    let candidate = invocation_dir.join(&*plan);
     let exists = match tokio::fs::try_exists(&candidate).await {
         Ok(exists) => exists,
         Err(_error) if inline_json => false,
@@ -170,7 +173,7 @@ async fn anchor_automation_plan_path(cli: &mut Cli, invocation_dir: &Path) -> an
         }
     };
     if exists || !inline_json {
-        args.plan = candidate.to_string_lossy().into_owned();
+        *plan = candidate.to_string_lossy().into_owned();
     }
     Ok(())
 }
@@ -181,7 +184,16 @@ async fn anchor_automation_plan_path(cli: &mut Cli, invocation_dir: &Path) -> an
 /// Does not evaluate as shellcode, performs normal `clap` validation, service layer, and plain text saving.
 /// You can pass it as is. Reject unknown fields containing API keys and do not log the input value itself.
 async fn cmd_automate(args: AutomateArgs) -> anyhow::Result<ExitCode> {
-    let input = read_automation_plan(&args.plan).await?;
+    if args.schema {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&AutomationPlan::json_schema())?
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    let source = args.plan.ok_or(Error::InvalidAutomationPlan)?;
+    let input = read_automation_plan(&source).await?;
     let plan = AutomationPlan::parse(&input).map_err(|_| Error::InvalidAutomationPlan)?;
     let validated = validate_automation_commands(&plan);
 
@@ -2302,6 +2314,42 @@ mod tests {
             ["T-10"]
         );
         assert!(automation_target_ids(&argv(&["unknown", "T-11"])).is_empty());
+    }
+
+    #[test]
+    fn automation_schema_tracks_safe_cli_commands_and_aliases() {
+        let schema = AutomationPlan::json_schema();
+        let names = schema["$defs"]["command"]["prefixItems"][0]["enum"]
+            .as_array()
+            .expect("schema command names are an array");
+        let is_unsafe = |name: &str| {
+            matches!(
+                name,
+                "automate" | "auto" | "shell" | "kanban" | "k" | "completion"
+            )
+        };
+
+        for command in Cli::command().get_subcommands() {
+            if command.get_name() == "help" {
+                continue;
+            }
+            let command_names =
+                std::iter::once(command.get_name()).chain(command.get_visible_aliases());
+            for name in command_names {
+                if is_unsafe(name) {
+                    assert!(!names.iter().any(|value| value == name));
+                    assert!(
+                        AutomationPlan::parse(&format!(r#"{{"commands":[["{name}"]]}}"#)).is_err(),
+                        "unsafe command must be rejected: {name}"
+                    );
+                } else {
+                    assert!(
+                        names.iter().any(|value| value == name),
+                        "safe CLI command is missing from the schema: {name}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

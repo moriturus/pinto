@@ -194,6 +194,51 @@ fn automate_executes_a_structured_plan_from_the_cli() {
 }
 
 #[test]
+fn automate_schema_prints_without_a_board_or_execution_plan() {
+    let dir = TempDir::new().expect("temp dir");
+
+    let output = pinto(dir.path())
+        .args(["automate", "--schema"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let schema: serde_json::Value = serde_json::from_slice(&output).expect("JSON Schema");
+
+    assert_eq!(
+        schema["$schema"],
+        "https://json-schema.org/draft/2020-12/schema"
+    );
+    assert_eq!(schema["required"], serde_json::json!(["commands"]));
+    assert_eq!(schema["additionalProperties"], false);
+
+    let project = dir.path().to_str().expect("temporary path is UTF-8");
+    pinto(dir.path())
+        .args(["--dir", project, "automate", "--schema"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"$schema\""));
+}
+
+#[test]
+fn automate_schema_cannot_be_combined_with_a_plan() {
+    let dir = TempDir::new().expect("temp dir");
+
+    pinto(dir.path())
+        .args([
+            "automate",
+            "--schema",
+            "--plan",
+            r#"{"commands":[["list"]]}"#,
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
 fn automate_reads_a_plan_file_whose_name_starts_with_a_brace() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

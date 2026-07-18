@@ -38,7 +38,9 @@ pub(super) async fn prepare_working_directory(
         .or_else(environment_override);
 
     let project_dir = match configured {
-        Some(path) => override_project_directory(&current, &path, !init).await?,
+        Some(path) => {
+            override_project_directory(&current, &path, !init && !allow_missing_board).await?
+        }
         None if init => return Ok(()),
         None => match discover_project_directory(&current).await {
             Ok(project_dir) => project_dir,
