@@ -244,6 +244,24 @@ fn every_persisted_demo_board_passes_read_only_cli_smoke_checks() {
 }
 
 #[test]
+fn kanban_keybindings_demo_keeps_personal_settings_outside_the_board() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let demo = root.join("demos/single/kanban-keybindings");
+    let board_config =
+        fs::read_to_string(demo.join(".pinto/config.toml")).expect("read Kanban demo board config");
+    let user_config = fs::read_to_string(demo.join("user-config/pinto/config.toml"))
+        .expect("read Kanban demo user config");
+    let readme = fs::read_to_string(demo.join("README.md")).expect("read Kanban demo README");
+
+    assert!(
+        !board_config.contains("key_bindings"),
+        "personal keybindings must not be persisted in the demo board"
+    );
+    assert!(user_config.contains("[tui.key_bindings]"));
+    assert!(readme.contains("XDG_CONFIG_HOME=\"$PWD/user-config\""));
+}
+
+#[test]
 fn sprint_lifecycle_demo_persists_rollover_and_separate_spillover() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let demo = root.join("demos/single/sprint-lifecycle");

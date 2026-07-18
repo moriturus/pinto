@@ -1,11 +1,11 @@
-//! Board configuration (`.pinto/config.toml`).
+//! Shared board configuration (`.pinto/config.toml`).
 //!
-//! Stores Kanban columns (the workflow) and project settings using TOML, the same format used by
-//! item frontmatter.
+//! Stores Kanban columns (the workflow), project settings, and board-wide presentation settings
+//! using TOML, the same format used by item frontmatter. Personal Kanban keybindings live in the
+//! user configuration loaded by [`crate::user_config`].
 
 use crate::backlog::ItemId;
 use crate::error::{Error, Result};
-use crate::kanban_keys::KeyBindings;
 use crate::timezone::DisplayTimezone;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -141,8 +141,6 @@ pub struct TuiConfig {
     /// Workflow columns hidden from the default Kanban display. Explicit `kanban --column` values override this list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden_columns: Vec<String>,
-    /// Key assignments for Kanban operations. Missing entries use the built-in defaults.
-    pub key_bindings: KeyBindings,
 }
 
 impl Default for TuiConfig {
@@ -151,7 +149,6 @@ impl Default for TuiConfig {
         Self {
             confirm_quit: true,
             hidden_columns: Vec::new(),
-            key_bindings: KeyBindings::default(),
         }
     }
 }
@@ -220,15 +217,9 @@ impl Config {
         let document: toml::Value =
             toml::from_str(&text).map_err(|e| Error::parse(path, e.to_string()))?;
         validate_known_fields(&document).map_err(|message| Error::parse(path, message))?;
-        let mut config: Config =
+        let config: Config =
             toml::from_str(&text).map_err(|e| Error::parse(path, e.to_string()))?;
         validate_semantics(path, &config)?;
-        config.tui.key_bindings = config.tui.key_bindings.with_defaults();
-        config
-            .tui
-            .key_bindings
-            .validate()
-            .map_err(|e| Error::parse(path, format!("[tui.key_bindings] {e}")))?;
         Ok(config)
     }
 
@@ -271,12 +262,7 @@ fn validate_known_fields(document: &toml::Value) -> std::result::Result<(), Stri
         ],
     )?;
     validate_nested_fields(root, "project", "[project]", &["name", "key"])?;
-    validate_nested_fields(
-        root,
-        "tui",
-        "[tui]",
-        &["confirm_quit", "hidden_columns", "key_bindings"],
-    )?;
+    validate_nested_fields(root, "tui", "[tui]", &["confirm_quit", "hidden_columns"])?;
     validate_nested_fields(root, "storage", "[storage]", &["backend"])?;
     validate_nested_fields(root, "wip", "[wip]", &["enabled", "limits"])?;
     validate_nested_fields(root, "display", "[display]", &["markdown", "timezone"])?;
@@ -305,6 +291,12 @@ fn reject_unknown_fields(
         .keys()
         .find(|field| !allowed.contains(&field.as_str()))
     {
+        if path == "[tui]" && field == "key_bindings" {
+            return Err(
+                "personal keybindings do not belong in shared .pinto/config.toml; move [tui.key_bindings] to $XDG_CONFIG_HOME/pinto/config.toml"
+                    .to_string(),
+            );
+        }
         return Err(format!(
             "unknown configuration field {path}.{field:?}; remove it or check the documented schema"
         ));
@@ -689,21 +681,13 @@ markdown = false
     }
 
     #[test]
-    fn default_tui_key_bindings_cover_the_existing_kanban_controls() {
-        let bindings = Config::default().tui.key_bindings;
-
-        assert_eq!(
-            bindings.keys(crate::kanban_keys::KeyAction::Quit),
-            ["q".to_string(), "Esc".to_string()]
-        );
-        assert_eq!(
-            bindings.keys(crate::kanban_keys::KeyAction::SelectLeft),
-            ["h".to_string(), "Left".to_string()]
-        );
+    fn default_shared_config_omits_personal_key_bindings() {
+        let text = toml::to_string(&Config::default()).expect("default config serializes");
+        assert!(!text.contains("key_bindings"));
     }
 
     #[tokio::test]
-    async fn load_partial_key_bindings_fills_unconfigured_actions() {
+    async fn load_rejects_key_bindings_from_shared_board_config() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("config.toml");
         std::fs::write(
@@ -715,25 +699,16 @@ markdown = false
         )
         .expect("write");
 
-        let loaded = Config::load(&path).await.expect("load succeeds");
-        assert_eq!(
-            loaded
-                .tui
-                .key_bindings
-                .keys(crate::kanban_keys::KeyAction::Quit),
-            ["Ctrl+a".to_string(), "Esc".to_string()]
-        );
-        assert_eq!(
-            loaded
-                .tui
-                .key_bindings
-                .keys(crate::kanban_keys::KeyAction::SelectLeft),
-            ["h".to_string(), "Left".to_string()]
-        );
+        let error = Config::load(&path)
+            .await
+            .expect_err("shared config must reject personal bindings");
+        let message = error.to_string();
+        assert!(message.contains("key_bindings"));
+        assert!(message.contains("XDG_CONFIG_HOME/pinto/config.toml"));
     }
 
     #[tokio::test]
-    async fn invalid_key_binding_reports_the_operation_and_fix_syntax() {
+    async fn shared_config_key_binding_error_is_not_a_key_syntax_error() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("config.toml");
         std::fs::write(
@@ -747,8 +722,8 @@ markdown = false
 
         let error = Config::load(&path).await.expect_err("invalid key rejected");
         let message = error.to_string();
-        assert!(message.contains("edit"));
-        assert!(message.contains("Ctrl"));
+        assert!(message.contains("XDG_CONFIG_HOME/pinto/config.toml"));
+        assert!(!message.contains("Controlled+a"));
     }
 
     #[tokio::test]

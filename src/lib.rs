@@ -19,6 +19,7 @@ pub mod template;
 pub mod timezone;
 
 mod config;
+mod user_config;
 
 /// Crate version (synced with `Cargo.toml`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

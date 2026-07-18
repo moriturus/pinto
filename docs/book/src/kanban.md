@@ -65,7 +65,7 @@ subtree. The completion column leads with the most recently finished card
 
 ## Customize behavior
 
-The `[tui]` section of `.pinto/config.toml` adjusts the interactive board:
+The `[tui]` section of `.pinto/config.toml` adjusts the shared parts of the interactive board:
 
 ```toml
 [tui]
@@ -76,11 +76,14 @@ hidden_columns = ["done"]           # hide columns unless --column overrides
 Unknown column names in `hidden_columns` are rejected at load time, so a typo
 surfaces immediately rather than silently hiding nothing.
 
-## Rebind keys
+## Personal keybindings
 
-`[tui.key_bindings]` overrides the keys for individual actions. Each action
-takes an array of one or more key expressions, and an action may keep several
-bindings at once:
+Keybindings are personal preferences and are stored outside the board. Create
+`$XDG_CONFIG_HOME/pinto/config.toml` or, when `XDG_CONFIG_HOME` is unset, use
+`$HOME/.config/pinto/config.toml` on Unix-like systems or
+`%APPDATA%/pinto/config.toml` on Windows. Put the existing
+`[tui.key_bindings]` table there. Each action takes an array of one or more key
+expressions, and an action may keep several bindings at once:
 
 ```toml
 [tui.key_bindings]
@@ -92,7 +95,7 @@ help = ["?", "F1"]
 
 Only the actions you list are overridden; every other action keeps its default
 keys. The action names are the snake_case forms shown by the built-in help
-window and the `[tui.key_bindings]` documentation (`quit`, `shell`,
+window (`quit`, `shell`,
 `select_left`, `move_left`, `reorder_up`, `add`, `edit`, `dependency_add`,
 `parent`, `maximize`, `search`, `regex_search`, `details`, `help`, and so on).
 
@@ -108,5 +111,5 @@ modifiers:
   `Ctrl+a` or `Alt+Shift+Left`. Write the literal plus key as `Plus`.
 
 Invalid expressions (an empty name, an unknown modifier, or `Shift+` on a
-printable character) are reported when the board configuration loads, so a bad
+printable character) are reported when the user configuration loads, so a bad
 binding is caught before the TUI starts rather than failing silently.

@@ -9,7 +9,10 @@ pub(crate) use unicode_width::UnicodeWidthStr;
 /// Build a `pinto` command rooted at a temporary board directory.
 pub(crate) fn pinto(dir: &Path) -> Command {
     let mut cmd = Command::cargo_bin("pinto").expect("binary builds");
-    cmd.current_dir(dir);
+    // Keep integration tests independent from a developer's real personal keybindings. Tests
+    // that exercise the user file explicitly override this value with their own XDG directory.
+    cmd.current_dir(dir)
+        .env("XDG_CONFIG_HOME", dir.join("test-xdg-config"));
     cmd
 }
 

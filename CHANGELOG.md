@@ -12,6 +12,8 @@ diagnostics, machine-readable workflows, and richer Sprint and Kanban reporting.
 
 ### Added
 
+- Added per-user Kanban keybindings in `$XDG_CONFIG_HOME/pinto/config.toml`,
+  keeping personal preferences out of shared `.pinto/config.toml` board state.
 - Added `pinto export --json` for read-only snapshots containing active PBIs,
   Sprints, effective configuration, and the shared Definition of Done.
 - Added `pinto automate --schema` to print the Draft 2020-12 schema for safe
@@ -35,10 +37,22 @@ diagnostics, machine-readable workflows, and richer Sprint and Kanban reporting.
 - Added support for supplying multiple label values after one `--label`
   option; repeating the option remains supported.
 
+### Changed
+
+- Moved personal Kanban keybindings out of shared `.pinto/config.toml` and
+  into `$XDG_CONFIG_HOME/pinto/config.toml`. A newer binary rejects the legacy
+  shared `[tui.key_bindings]` table; copy those preferences to the user file
+  before upgrading. After that table is removed, older binaries can read the
+  board configuration unless another newly added board key is present.
+
 ### Documentation
 
 - Added a reproducible local CI guide for `act` and expanded the CLI, data
   format, JSON contract, and workflow documentation for the new commands.
+- Documented the compatibility boundary between strict board configuration,
+  Markdown board data, versioned SQLite storage, and JSON output. Releases that
+  add board configuration keys must state older-binary readability and provide
+  downgrade guidance in the release notes.
 
 ## [0.2.0] - 2026-07-17
 

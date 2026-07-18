@@ -53,6 +53,23 @@ manually. A rare failure while refreshing the real index is reported after
 is an intentional recoverable failure contract: a failed commit does not roll
 back or discard board data.
 
+## Configuration and data compatibility
+
+`.pinto/config.toml` is shared board configuration. It uses a strict schema, so
+an older binary may reject a board configuration containing a key introduced by
+a newer release. Every release that adds a board key must state whether older
+binaries can read it. Before downgrading, restore the configuration from Git or
+a backup, or remove the documented newer keys; do not copy personal settings
+into the board file. If the older binary still rejects the file, use the newer
+binary to move the board back to the documented compatible representation.
+
+PBI and Sprint Markdown with TOML frontmatter are file-backed board data and
+must remain under `.pinto/`; their compatibility is separate from the board
+configuration schema. SQLite has an independent versioned schema and its own
+migration and downgrade procedure, documented below. JSON is a machine-readable
+CLI output contract, not a persistence backend or a configuration source; an
+export does not contain personal keybindings.
+
 ## SQLite journal mode
 
 SQLite uses its default journal mode. WAL would improve concurrent reader and

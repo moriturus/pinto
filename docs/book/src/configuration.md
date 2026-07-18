@@ -131,6 +131,6 @@ calculation.
 
 ## Interactive Kanban
 
-The `[tui]` table configures the interactive board — exit confirmation, hidden
-columns, and key bindings. See [Kanban (TUI)](kanban.md) for the full set of
-options and the key-binding syntax.
+The `[tui]` table configures the shared parts of the interactive board — exit
+confirmation and hidden columns. Personal keybindings are kept outside the
+board; see [Kanban (TUI)](kanban.md) for the user configuration and key syntax.

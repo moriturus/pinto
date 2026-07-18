@@ -1,7 +1,8 @@
 //! Read settings used by the TUI and human-readable CLI output.
 //!
 //! `Config` is crate-private, so [`TuiSettings`] exposes only the values needed by the binary-side
-//! TUI. Both CLI and TUI read the same `config.toml` through the shared persistence layer.
+//! TUI. Shared board settings come from `.pinto/config.toml`; personal keybindings come from the
+//! optional user configuration.
 
 use super::open_board;
 use crate::error::Result;
@@ -33,7 +34,7 @@ pub async fn tui_settings(project_dir: &Path) -> Result<TuiSettings> {
         confirm_quit: config.tui.confirm_quit,
         workflow: config.columns,
         hidden_columns: config.tui.hidden_columns,
-        key_bindings: config.tui.key_bindings,
+        key_bindings: crate::user_config::load().await?,
         markdown: config.display.markdown,
         timezone: config.display.timezone,
     })

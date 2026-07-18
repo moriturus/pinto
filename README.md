@@ -279,7 +279,17 @@ The configuration schema is strict. Unknown keys (for example, a misspelled
 silently using a default. Workflow columns must be non-blank and unique, and
 `done_column`, hidden columns, and WIP limit keys must name configured columns.
 The project name must not be blank, and the project key uses the same
-ASCII-letter grammar as PBI IDs.
+ASCII-letter grammar as PBI IDs. Personal Kanban keybindings are not board
+configuration; keep them in `$XDG_CONFIG_HOME/pinto/config.toml` or, when
+`XDG_CONFIG_HOME` is unset, the platform home configuration directory:
+`$HOME/.config/pinto/config.toml` on Unix-like systems or
+`%APPDATA%/pinto/config.toml` on Windows.
+
+Board TOML configuration, Markdown PBI/Sprint data, versioned SQLite storage,
+and JSON output have separate compatibility contracts. See
+[`docs/stability.md`](docs/stability.md) for downgrade guidance when a release
+adds a board configuration key, and [`docs/json-schema.md`](docs/json-schema.md)
+for the machine-readable output contract.
 
 ### Dependencies, Git links, and Definition of Done
 
@@ -382,16 +392,21 @@ displays the selected item's details, and keeps secondary key bindings in the
 
 ### Where is my board stored?
 
-Everything is local to `.pinto/` beneath the directory where you run `init`.
+Board data is local to `.pinto/` beneath the directory where you run `init`.
 PBI files are readable Markdown with TOML frontmatter, so ordinary Git tools
-can review their history.
+can review their history. Personal Kanban keybindings are kept separately in
+`$XDG_CONFIG_HOME/pinto/config.toml` (or `$HOME/.config/pinto/config.toml` on
+Unix-like systems, or `%APPDATA%/pinto/config.toml` on Windows).
 
 ### Can I customize the workflow?
 
 Yes. Edit `.pinto/config.toml` to set `columns` and `done_column`; subsequent
 `list`, `move`, `board`, and TUI commands use the new workflow immediately.
 
-Kanban key assignments live under `[tui.key_bindings]`. Each operation accepts
+Kanban key assignments are personal settings in
+`$XDG_CONFIG_HOME/pinto/config.toml` or, when `XDG_CONFIG_HOME` is unset,
+`$HOME/.config/pinto/config.toml` on Unix-like systems or
+`%APPDATA%/pinto/config.toml` on Windows. They use `[tui.key_bindings]`. Each operation accepts
 an ordered array; every entry is active and the first entry is shown in the
 fixed footer or the `?` help window:
 
@@ -447,8 +462,9 @@ Customize its column names and order in `config.toml`; `pinto board` and
 `pinto move` immediately use the updated workflow. The configured `done_column`
 is displayed newest-first by completion time.
 
-The same configuration file contains `[tui]` settings, including the complete
-default `[tui.key_bindings]` table written by `pinto init`.
+The shared configuration file contains board-level `[tui]` settings such as
+`confirm_quit` and `hidden_columns`. `pinto init` does not write personal
+keybindings into the board.
 
 `pinto rm` archives one or more PBIs to `.pinto/archive/` by default. Use
 `--force` only when permanent deletion is intended.

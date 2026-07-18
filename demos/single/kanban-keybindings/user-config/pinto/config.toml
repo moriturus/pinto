@@ -1,0 +1,73 @@
+[tui.key_bindings]
+cancel_quit = [
+    "n",
+    "N",
+]
+clear_filter = ["Esc"]
+confirm_quit = [
+    "y",
+    "Y",
+    "q",
+    "Q",
+    "Enter",
+    "Esc",
+]
+details = ["A", "v"]
+edit = ["e"]
+maximize = ["m"]
+move_left = [
+    "H",
+]
+move_right = [
+    "L",
+]
+popup_close = [
+    "v",
+    "Esc",
+    "q",
+]
+popup_scroll_down = [
+    "j",
+    "Down",
+]
+popup_scroll_up = [
+    "k",
+    "Up",
+]
+popup_select_down = [
+    "J",
+]
+popup_select_left = [
+    "H",
+]
+popup_select_right = [
+    "L",
+]
+popup_select_up = [
+    "K",
+]
+quit = ["Alt+q", "Esc"]
+regex_search = ["Ctrl+?"]
+reload = ["r"]
+reorder_down = [
+    "J",
+]
+reorder_up = [
+    "K",
+]
+search = ["/"]
+select_down = [
+    "j",
+    "Down",
+]
+select_left = ["a", "Left"]
+select_right = ["d", "Right"]
+select_up = [
+    "k",
+    "Up",
+]
+shell = ["Q"]
+toggle_expand = [
+    "Space",
+    "Enter",
+]

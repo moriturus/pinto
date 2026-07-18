@@ -92,9 +92,11 @@ exposing the same repository behavior.
 
 Configuration is TOML. User-created task bodies and existing board data are
 never translated or rewritten merely because the application locale changes.
-The `[tui.key_bindings]` table maps Kanban operation names to ordered key
-arrays. The key parser is shared by configuration validation and the TUI event
-loop: it supports named keys, modifier combinations including platform
+Shared board configuration stays in `.pinto/config.toml`; personal Kanban key
+bindings use the same `[tui.key_bindings]` table under
+`$XDG_CONFIG_HOME/pinto/config.toml` (with the standard home fallback). The
+key parser is shared by user-configuration validation and the TUI event loop:
+it supports named keys, modifier combinations including platform
 Command/Super, and multiple aliases per operation. Shift remains available for named keys such
 as `Shift+Left`; printable results are written directly (`A` or `<`, not `Shift+a` or
 `Shift+,`), including after another modifier (`Ctrl+A`, not `Ctrl+Shift+a`). The footer fixes

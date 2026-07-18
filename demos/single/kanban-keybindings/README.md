@@ -20,7 +20,15 @@ cargo run --manifest-path ../../../Cargo.toml -- kanban
 cargo run --manifest-path ../../../Cargo.toml -- kanban --column todo in-progress
 ```
 
-The settings are in `.pinto/config.toml` under `[tui.key_bindings]`. Try
+The shared board keeps only its workflow and display settings in
+`.pinto/config.toml`. Personal keybindings are in
+`user-config/pinto/config.toml`; set the XDG directory before running the demo:
+
+```bash
+export XDG_CONFIG_HOME="$PWD/user-config"
+```
+
+The settings use `[tui.key_bindings]`. Try
 reordering the aliases: the first key is shown in the fixed footer or help window
 while every listed key remains active. `Ctrl+`, `Alt+`, `Shift+`, `Cmd+`, `Meta+`,
 and `Hyper+` modifiers are supported. Write printable results directly (`A` or

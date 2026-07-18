@@ -34,16 +34,9 @@ fn init_creates_board_files() {
         "display timezone defaults are discoverable"
     );
     assert!(
-        config.contains("[tui.key_bindings]"),
-        "Kanban keys are discoverable"
+        !config.contains("key_bindings"),
+        "personal Kanban keys are not shared board configuration"
     );
-    assert!(config.contains("quit ="), "default quit keys are written");
-    assert!(config.contains("add ="), "PBI add key is configurable");
-    assert!(
-        config.contains("dependency_add =") && config.contains("dependency_remove ="),
-        "dependency keys are configurable"
-    );
-    assert!(config.contains("parent ="), "parent key is configurable");
 }
 
 #[test]

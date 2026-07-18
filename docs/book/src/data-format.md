@@ -52,7 +52,7 @@ released, while velocity continues to count completed work only.
 
 ## Configuration
 
-`.pinto/config.toml` controls the workflow and presentation settings. The
+`.pinto/config.toml` controls the shared workflow and presentation settings. The
 default workflow is:
 
 ```toml
@@ -62,9 +62,20 @@ done_column = "done"
 
 It is the one file under `.pinto/` intended for hand-editing. Beyond the
 workflow columns, it selects the storage backend, project identity, WIP limits,
-display and timezone options, and the interactive Kanban key bindings. See
-[Configuration](configuration.md) for every setting. Keep machine-readable JSON
-timestamps in UTC; the display timezone does not rewrite stored data.
+and display/timezone options. Personal interactive Kanban keybindings belong
+in `$XDG_CONFIG_HOME/pinto/config.toml`; they are not board data and are not
+included in board exports. See [Configuration](configuration.md) for every
+setting. Keep machine-readable JSON timestamps in UTC; the display timezone
+does not rewrite stored data.
+
+## Compatibility boundaries
+
+Board configuration is a strict TOML schema and may gain keys between releases;
+an older binary can reject a newer `.pinto/config.toml`. Markdown PBI and Sprint
+records are the file-backed board data, while SQLite has its own explicit schema
+version and migration rules. JSON is a machine-readable CLI output contract, not
+another persistence backend and not a configuration file. Personal keybindings
+are independent of all four board data formats.
 
 ## Safe operations
 

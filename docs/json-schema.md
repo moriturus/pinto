@@ -18,6 +18,12 @@ fields and use documented command options rather than depending on display
 formatting. The JSON representation is intended for scripts that need stable,
 machine-readable values.
 
+The `config` object in `export --json` contains only the effective shared board
+configuration. Personal Kanban keybindings from
+`$XDG_CONFIG_HOME/pinto/config.toml` are intentionally excluded; JSON output
+cannot be used as a user-settings file or as a replacement for Markdown/SQLite
+board data.
+
 ## Examples
 
 ```bash

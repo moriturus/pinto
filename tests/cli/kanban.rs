@@ -66,33 +66,20 @@ fn kanban_rejects_unknown_hidden_column_from_config_before_terminal_startup() {
 fn kanban_accepts_custom_key_bindings_before_opening_the_terminal() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
+    let config_home = dir.path().join("xdg");
+    std::fs::create_dir_all(config_home.join("pinto")).expect("create user config directory");
     std::fs::write(
-        dir.path().join(".pinto/config.toml"),
-        r#"columns = ["todo", "in-progress", "review", "done"]
-done_column = "done"
-
-[project]
-name = "test"
-key = "T"
-
-[tui]
-confirm_quit = true
-
-[tui.key_bindings]
+        config_home.join("pinto/config.toml"),
+        r#"[tui.key_bindings]
 details = ["Cmd+d", "v"]
 quit = ["Ctrl+a", "Esc"]
-
-[storage]
-backend = "file"
-
-[wip]
-enabled = true
 "#,
     )
-    .expect("write config");
+    .expect("write user config");
 
     // A missing display column fails after settings have been parsed, but before a TTY is opened.
     pinto(dir.path())
+        .env("XDG_CONFIG_HOME", &config_home)
         .args(["kanban", "--column", "missing"])
         .assert()
         .failure()
@@ -102,6 +89,31 @@ enabled = true
 
 #[test]
 fn kanban_rejects_invalid_key_bindings_with_actionable_guidance() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let config_home = dir.path().join("xdg");
+    std::fs::create_dir_all(config_home.join("pinto")).expect("create user config directory");
+    std::fs::write(
+        config_home.join("pinto/config.toml"),
+        r#"[tui.key_bindings]
+details = ["Controlled+d"]
+"#,
+    )
+    .expect("write user config");
+
+    pinto(dir.path())
+        .env("XDG_CONFIG_HOME", &config_home)
+        .arg("kanban")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("config.toml"))
+        .stderr(predicate::str::contains("details"))
+        .stderr(predicate::str::contains("Ctrl"))
+        .stderr(predicate::str::contains("panicked").not());
+}
+
+#[test]
+fn kanban_rejects_key_bindings_left_in_shared_board_configuration() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     std::fs::write(
@@ -117,7 +129,7 @@ key = "T"
 confirm_quit = true
 
 [tui.key_bindings]
-details = ["Controlled+d"]
+details = ["v"]
 
 [storage]
 backend = "file"
@@ -126,16 +138,15 @@ backend = "file"
 enabled = true
 "#,
     )
-    .expect("write config");
+    .expect("write legacy board config");
 
     pinto(dir.path())
         .arg("kanban")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("config.toml"))
-        .stderr(predicate::str::contains("details"))
-        .stderr(predicate::str::contains("Ctrl"))
-        .stderr(predicate::str::contains("panicked").not());
+        .stderr(predicate::str::contains("key_bindings"))
+        .stderr(predicate::str::contains("XDG_CONFIG_HOME"))
+        .stderr(predicate::str::contains("config.toml"));
 }
 
 #[test]

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
-/// Actions that can be assigned one or more keys in `[tui.key_bindings]`.
+/// Actions that can be assigned one or more keys in the user `[tui.key_bindings]` table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyAction {
     /// Leave Kanban mode.
@@ -345,10 +345,10 @@ impl fmt::Display for KeySpecError {
 
 impl std::error::Error for KeySpecError {}
 
-/// Key assignments stored under `[tui.key_bindings]`.
+/// Key assignments stored under the user's `[tui.key_bindings]` table.
 ///
 /// Each action accepts one or more key expressions. Missing action entries are filled with the
-/// defaults so older configuration files and partial overrides remain usable.
+/// defaults so older user configuration files and partial overrides remain usable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct KeyBindings(BTreeMap<String, Vec<String>>);
@@ -375,7 +375,7 @@ impl KeyBindings {
         self.0.get(action.name()).map(Vec::as_slice).unwrap_or(&[])
     }
 
-    /// Override one action. Validation is performed when the board configuration is loaded.
+    /// Override one action. Validation is performed when the user configuration is loaded.
     pub fn set(&mut self, action: KeyAction, keys: Vec<String>) {
         self.0.insert(action.name().to_string(), keys);
     }
