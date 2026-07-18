@@ -24,6 +24,8 @@ pub struct BoardQuery {
     pub roots_only: bool,
     /// Sprint scope. When set, include only PBIs assigned to this sprint.
     pub sprint: Option<String>,
+    /// Exact assignee name to match.
+    pub assignee: Option<String>,
     /// Labels to match. An empty list does not filter by label.
     pub labels: Vec<String>,
     /// Matching mode for [`Self::labels`].
@@ -71,6 +73,8 @@ pub struct Board {
 ///   evaluated before the other filters, so a child is not promoted when its parent is hidden.
 /// - If `sprint` is set, include only PBIs assigned to that sprint. Filters apply to both sorting
 ///   and orphan detection.
+/// - If `assignee` is set, include only PBIs assigned to that person. Matching is exact and applies
+///   to both sorting and orphan detection.
 /// - If `labels` is specified, only PBIs matching the requested labels will be targeted. The
 ///   default [`LabelMatch::Any`] mode is OR; [`LabelMatch::All`] is AND.
 /// - If `statuses` is set, display only those known columns in their configured order. Unknown
@@ -114,6 +118,9 @@ pub async fn board(project_dir: &Path, query: &BoardQuery) -> Result<Board> {
     // Apply the sprint scope before the remaining filters.
     if let Some(sprint) = &query.sprint {
         items.retain(|it| it.sprint.as_deref() == Some(sprint.as_str()));
+    }
+    if let Some(assignee) = &query.assignee {
+        items.retain(|it| it.assignee.as_deref() == Some(assignee.as_str()));
     }
     if !query.labels.is_empty() {
         items.retain(|it| query.label_match.matches(&it.labels, &query.labels));
@@ -199,7 +206,7 @@ mod tests {
     use super::*;
     use crate::error::Error;
     use crate::service::test_support::{init_temp, set_columns};
-    use crate::service::{NewItem, add_item, move_item};
+    use crate::service::{ItemEdit, NewItem, add_item, edit_item, move_item};
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -421,6 +428,77 @@ mod tests {
             .map(|item| item.id.clone())
             .collect();
         assert_eq!(ids, [matching.id]);
+    }
+
+    #[tokio::test]
+    async fn board_filters_by_assignee_across_workflow_columns() {
+        let dir = init_temp().await;
+        let alice_todo = add_item(dir.path(), "Alice todo", NewItem::default())
+            .await
+            .unwrap();
+        let bob_todo = add_item(dir.path(), "Bob todo", NewItem::default())
+            .await
+            .unwrap();
+        let alice_progress = add_item(dir.path(), "Alice progress", NewItem::default())
+            .await
+            .unwrap();
+        let bob_done = add_item(dir.path(), "Bob done", NewItem::default())
+            .await
+            .unwrap();
+
+        for (item, assignee) in [
+            (&alice_todo, "alice"),
+            (&bob_todo, "bob"),
+            (&alice_progress, "alice"),
+            (&bob_done, "bob"),
+        ] {
+            edit_item(
+                dir.path(),
+                &item.id,
+                ItemEdit {
+                    assignee: Some(assignee.to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        }
+        move_item(dir.path(), &alice_progress.id, "in-progress")
+            .await
+            .unwrap();
+        move_item(dir.path(), &bob_done.id, "done").await.unwrap();
+
+        let board = board(
+            dir.path(),
+            &BoardQuery {
+                assignee: Some("alice".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("assignee-scoped board succeeds");
+
+        assert_eq!(
+            board.columns[0]
+                .items
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            [alice_todo.id]
+        );
+        assert_eq!(
+            board.columns[1]
+                .items
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            [alice_progress.id]
+        );
+        assert_eq!(board.columns[0].items[0].assignee.as_deref(), Some("alice"));
+        assert_eq!(board.columns[1].items[0].assignee.as_deref(), Some("alice"));
+        assert!(board.columns[2].items.is_empty());
+        assert!(board.columns[3].items.is_empty());
+        assert!(board.orphaned.is_empty());
     }
 
     #[tokio::test]

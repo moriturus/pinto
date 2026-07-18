@@ -21,6 +21,48 @@ fn board_search_filters_columns() {
 }
 
 #[test]
+fn board_assignee_filter_applies_to_every_column_and_preserves_unfiltered_order() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    for title in ["Alice todo", "Bob todo", "Alice progress", "Bob done"] {
+        pinto(dir.path()).args(["add", title]).assert().success();
+    }
+    for (id, assignee) in [
+        ("T-1", "alice"),
+        ("T-2", "bob"),
+        ("T-3", "alice"),
+        ("T-4", "bob"),
+    ] {
+        pinto(dir.path())
+            .args(["edit", id, "--assignee", assignee])
+            .assert()
+            .success();
+    }
+    pinto(dir.path())
+        .args(["move", "T-3", "in-progress"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["move", "T-4", "done"])
+        .assert()
+        .success();
+
+    let filtered = json_stdout(pinto(dir.path()).args(["board", "--assignee", "alice", "--json"]));
+    assert_eq!(board_column_ids(&filtered, "todo"), ["T-1"]);
+    assert_eq!(board_column_ids(&filtered, "in-progress"), ["T-3"]);
+    assert!(board_column_ids(&filtered, "review").is_empty());
+    assert!(board_column_ids(&filtered, "done").is_empty());
+
+    let short_filtered = json_stdout(pinto(dir.path()).args(["board", "-u", "alice", "--json"]));
+    assert_eq!(short_filtered, filtered);
+
+    let all = json_stdout(pinto(dir.path()).args(["board", "--json"]));
+    assert_eq!(board_column_ids(&all, "todo"), ["T-1", "T-2"]);
+    assert_eq!(board_column_ids(&all, "in-progress"), ["T-3"]);
+    assert_eq!(board_column_ids(&all, "done"), ["T-4"]);
+}
+
+#[test]
 fn board_groups_items_under_columns_in_order() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

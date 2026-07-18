@@ -365,6 +365,9 @@ pub(super) struct BoardArgs {
     /// the SPRINT column without filtering.
     #[arg(long, short = 'S', num_args = 0..=1)]
     pub(super) sprint: Option<Option<String>>,
+    /// Display only PBIs assigned to the specified person.
+    #[arg(long, short = 'u', value_name = "NAME")]
+    pub(super) assignee: Option<String>,
     /// Filter by one or more labels. Multiple labels use OR by default; use `--all-labels` for AND.
     /// In long mode, omit the values to show the LABELS column without filtering.
     #[arg(long, short = 'L', num_args = 0..)]
@@ -737,6 +740,9 @@ pub(super) struct ListArgs {
     /// filtering.
     #[arg(long, short = 'S', num_args = 0..=1)]
     pub(super) sprint: Option<Option<String>>,
+    /// Filter by assignee name using an exact match.
+    #[arg(long, short = 'u', value_name = "NAME")]
+    pub(super) assignee: Option<String>,
     /// Filter by one or more labels. Multiple labels use OR by default; use `--all-labels` for AND.
     /// In long mode, omit the values to show the LABELS column without filtering.
     #[arg(long, short = 'L', num_args = 0..)]

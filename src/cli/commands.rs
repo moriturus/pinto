@@ -1226,9 +1226,10 @@ fn combine_template_body(template: String, body: String) -> String {
 ///
 /// `--long/-l` shows ID, title, status, points, assignee, and creation/update dates.
 /// `--label`, `--sprint`, and `--acceptance-criteria` add columns between assignee and creation date;
-/// omit their values in long mode to show the columns without filtering. Multiple labels use OR
-/// by default; `--all-labels` switches to AND. `--roots-only` omits PBIs with a persisted parent
-/// link. `--stale` filters by the `updated` timestamp and composes with the other filters.
+/// omit their values in long mode to show the columns without filtering. `--assignee` is an exact
+/// match and composes with the other filters. Multiple labels use OR by default; `--all-labels`
+/// switches to AND. `--roots-only` omits PBIs with a persisted parent link. `--stale` filters by
+/// the `updated` timestamp and composes with the other filters.
 /// `--json` takes precedence because it already contains all metadata.
 async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
     let dir = std::env::current_dir()?;
@@ -1255,6 +1256,7 @@ async fn cmd_list(args: ListArgs) -> anyhow::Result<ExitCode> {
         archived: args.archived,
         status: args.status,
         sprint,
+        assignee: args.assignee,
         labels,
         label_match,
         search: build_search_filter(args.search, args.regex)?,
@@ -2078,7 +2080,8 @@ fn terminal_width() -> usize {
 
 /// `pinto board` — Display board columns and their PBIs.
 ///
-/// When `--sprint <id>` is specified, display only PBIs assigned to that sprint.
+/// When `--sprint <id>` is specified, display only PBIs assigned to that sprint. `--assignee` is
+/// an exact assignee-name filter and composes with the other scopes.
 /// `--long/-l` uses the same detail columns as `list --long` for each board column. `--label`
 /// and `--sprint` add their columns; in long mode, omit their values to show the columns without
 /// filtering. Multiple labels use OR by default; `--all-labels` switches to AND. `--roots-only`
@@ -2102,6 +2105,7 @@ async fn cmd_board(args: BoardArgs) -> anyhow::Result<ExitCode> {
     let query = BoardQuery {
         roots_only: args.roots_only,
         sprint,
+        assignee: args.assignee,
         labels,
         label_match,
         statuses: args.status,

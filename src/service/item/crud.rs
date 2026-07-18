@@ -113,9 +113,9 @@ pub async fn add_item_with_outcome(
 ///
 /// Multiple status specifications use OR (a PBI matches any selected status); label specifications
 /// use [`LabelMatch::Any`] by default and can use [`LabelMatch::All`]; roots-only and other filters
-/// are combined with AND. The stale condition matches `updated` timestamps at or before its
-/// cutoff. The roots-only condition uses the item's persisted parent link even when that parent is
-/// excluded by another filter.
+/// are combined with AND. The assignee condition is an exact match. The stale condition matches
+/// `updated` timestamps at or before its cutoff. The roots-only condition uses the item's
+/// persisted parent link even when that parent is excluded by another filter.
 #[derive(Debug, Default, Clone)]
 pub struct ListFilter {
     /// Include only PBIs whose persisted parent link is unset.
@@ -126,6 +126,8 @@ pub struct ListFilter {
     pub status: Vec<String>,
     /// Exact assigned sprint ID to match.
     pub sprint: Option<String>,
+    /// Exact assignee name to match.
+    pub assignee: Option<String>,
     /// Labels to match. An empty list includes every label set.
     pub labels: Vec<String>,
     /// Matching mode for [`Self::labels`].
@@ -152,6 +154,11 @@ impl ListFilter {
         }
         if let Some(sprint) = &self.sprint
             && item.sprint.as_deref() != Some(sprint.as_str())
+        {
+            return false;
+        }
+        if let Some(assignee) = &self.assignee
+            && item.assignee.as_deref() != Some(assignee.as_str())
         {
             return false;
         }

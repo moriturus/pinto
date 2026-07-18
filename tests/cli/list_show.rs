@@ -13,6 +13,15 @@ async fn set_updated(dir: &Path, id: &str, updated: DateTime<Utc>) {
     repo.save(&item).await.expect("save item timestamp");
 }
 
+fn list_item_ids(value: &serde_json::Value) -> Vec<String> {
+    value
+        .as_array()
+        .expect("list array")
+        .iter()
+        .map(|item| item["id"].as_str().expect("id string").to_string())
+        .collect()
+}
+
 #[test]
 fn display_timezone_changes_human_output_but_keeps_json_in_utc() {
     use chrono::{DateTime, FixedOffset};
@@ -91,6 +100,103 @@ fn list_filters_by_label() {
         .success()
         .stdout(predicate::str::contains("Backend"))
         .stdout(predicate::str::contains("Frontend").not());
+}
+
+#[test]
+fn list_assignee_filter_composes_with_existing_filters_and_json() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-2", "Sprint Two"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args([
+            "add",
+            "Alice backend match",
+            "--label",
+            "backend",
+            "--sprint",
+            "S-1",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["edit", "T-1", "--assignee", "alice"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args([
+            "add",
+            "Alice wrong label",
+            "--label",
+            "frontend",
+            "--sprint",
+            "S-1",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["edit", "T-2", "--assignee", "alice"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args([
+            "add",
+            "Bob backend match",
+            "--label",
+            "backend",
+            "--sprint",
+            "S-1",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["edit", "T-3", "--assignee", "bob"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args([
+            "add",
+            "Alice other sprint",
+            "--label",
+            "backend",
+            "--sprint",
+            "S-2",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["edit", "T-4", "--assignee", "alice"])
+        .assert()
+        .success();
+
+    let filtered = json_stdout(pinto(dir.path()).args([
+        "list",
+        "--assignee",
+        "alice",
+        "--status",
+        "todo",
+        "--sprint",
+        "S-1",
+        "--label",
+        "backend",
+        "--search",
+        "match",
+        "--json",
+    ]));
+    assert_eq!(list_item_ids(&filtered), ["T-1"]);
+
+    let short_filtered = json_stdout(pinto(dir.path()).args(["list", "-u", "alice", "--json"]));
+    assert_eq!(list_item_ids(&short_filtered), ["T-1", "T-2", "T-4"]);
+
+    let all = json_stdout(pinto(dir.path()).args(["list", "--json"]));
+    assert_eq!(list_item_ids(&all), ["T-1", "T-2", "T-3", "T-4"]);
 }
 
 #[test]

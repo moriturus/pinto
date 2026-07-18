@@ -18,7 +18,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`ancestor-discovery`](single/ancestor-discovery) — discover the nearest ancestor board and use explicit directory overrides
   - [`cookbook`](single/cookbook) — seed board for the Cookbook chapter's Unix text-stream pipeline recipes
   - [`cli-test-layout`](single/cli-test-layout) — feature-oriented CLI integration-test fixtures
-  - [`status-filter`](single/status-filter) — filter `list` and `board` by multiple statuses with other filters
+  - [`status-filter`](single/status-filter) — filter `list` and `board` by assignee, multiple statuses, and other filters
   - [`remove-multiple`](single/remove-multiple) — remove multiple PBIs, including partial failures and `--force`
   - [`move-multiple`](single/move-multiple) — move multiple PBIs at once (`mv`-style), batch WIP warning, partial failures
   - [`board-view`](single/board-view) — board columns, sorting, filtering, and truncation

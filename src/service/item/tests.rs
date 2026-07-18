@@ -347,6 +347,64 @@ async fn list_filters_by_sprint() {
 }
 
 #[tokio::test]
+async fn list_filters_by_assignee_without_changing_rank_order() {
+    let dir = init_temp().await;
+    let first = add_item(dir.path(), "Alice first", NewItem::default())
+        .await
+        .unwrap();
+    let bob = add_item(dir.path(), "Bob", NewItem::default())
+        .await
+        .unwrap();
+    let second = add_item(dir.path(), "Alice second", NewItem::default())
+        .await
+        .unwrap();
+
+    edit_item(
+        dir.path(),
+        &first.id,
+        ItemEdit {
+            assignee: Some("alice".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    edit_item(
+        dir.path(),
+        &bob.id,
+        ItemEdit {
+            assignee: Some("bob".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    edit_item(
+        dir.path(),
+        &second.id,
+        ItemEdit {
+            assignee: Some("alice".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let filter = ListFilter {
+        assignee: Some("alice".to_string()),
+        ..Default::default()
+    };
+    let ids: Vec<_> = list_items(dir.path(), &filter)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+
+    assert_eq!(ids, [first.id, second.id]);
+}
+
+#[tokio::test]
 async fn list_filters_by_status() {
     let dir = init_temp().await;
     // Immediately after addition, all columns are default columns (todo). All cases exist, and 0 cases do not.

@@ -35,7 +35,7 @@ tasks/archive filename collisions with a location and repair direction.
 | --- | --- |
 | `pinto init` | Initialize a board in the current directory. |
 | `pinto add <title>` | Add a PBI; use `--label <label>...` to set one or more labels, or optionally set points, Sprint, body, or a template. |
-| `pinto list` | List active PBIs, with status, label, Sprint, search, stale-duration, root-only, long, and JSON filters. Use `--archived` to select archived PBIs. |
+| `pinto list` | List active PBIs, with status, assignee, label, Sprint, search, stale-duration, root-only, long, and JSON filters. Use `--archived` to select archived PBIs. |
 | `pinto next` | Show ranked unstarted PBIs whose dependencies are complete. |
 | `pinto show <id>...` | Display one or more active PBI details. Use `--archived` to display archived details. |
 | `pinto restore <id>` | Restore an archived PBI to the active task store without changing its ID or content. |
@@ -43,7 +43,7 @@ tasks/archive filename collisions with a location and repair direction.
 | `pinto reorder <id>` | Reorder a PBI within its sibling group (same parent and column). |
 | `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open the configured editor. |
 | `pinto remove <id>...` | Archive PBIs; use the `rm` alias and `--force` only for permanent removal. |
-| `pinto board` | Render PBIs grouped by workflow column, optionally showing root PBIs only. |
+| `pinto board` | Render PBIs grouped by workflow column, optionally filtering by assignee or showing root PBIs only. |
 | `pinto kanban` | Open the interactive [Kanban board](kanban.md). |
 
 Examples:
@@ -53,6 +53,7 @@ pinto add "Implement the parser" --label backend cli
 pinto list --status todo in-progress --long
 pinto list --status todo --long --acceptance-criteria
 pinto list --label backend frontend --all-labels
+pinto list --assignee alice --json
 pinto list --search "parser"
 pinto list --stale 7d --status todo --json
 pinto list --archived --json
@@ -60,6 +61,7 @@ pinto list --roots-only --status todo --json
 pinto next
 pinto next --count 3 --sprint S-1 --json
 pinto board --status in-progress review
+pinto board --assignee alice --json
 pinto board --roots-only --status todo --long
 pinto reorder T-1 --top
 pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
@@ -124,6 +126,16 @@ search filter.
 
 The [`parent-child` demo](https://github.com/moriturus/pinto/tree/main/demos/single/parent-child)
 contains a reproducible hierarchy for trying these commands.
+
+### Assignee filters
+
+Use `--assignee <name>` (or `-u <name>`) with `list` or `board` to keep only PBIs whose persisted
+assignee exactly matches the requested name. The filter composes with status, Sprint, label, and
+search filters, and applies before hierarchical ordering or board-column grouping. It also works
+with `--json`; omitting it leaves the existing result set and order unchanged.
+
+The [`status-filter` demo](https://github.com/moriturus/pinto/tree/main/demos/single/status-filter)
+includes assigned PBIs across multiple workflow columns.
 
 ### Stale PBIs
 
