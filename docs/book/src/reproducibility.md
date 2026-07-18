@@ -36,7 +36,11 @@ cargo install --path . --locked --root "$PWD/.tmp/pinto"
 ```
 
 `mise run release-check` adds coverage, dependency audit, dependency policy,
-and the release build/package tasks to the quality gate.
+release metadata, and the release build/package tasks to the quality gate. The
+release metadata task checks package versions in all committed lockfiles,
+published installation examples, the latest release tag, and the CHANGELOG.
+It also requires the [SQLite schema v1 to v2 compatibility guidance](../../stability.md)
+to remain complete.
 
 ## Allowlisted package contents
 
@@ -57,8 +61,8 @@ from the clean checkout as the source-install check.
 ## Publishing a release
 
 For each release, update the package version in `Cargo.toml` and both
-committed lockfiles, move the relevant entries into a dated `CHANGELOG.md`
-heading, and update the published-version installation examples. For a breaking change
+committed lockfiles, move the relevant entries from `[Unreleased]` into a dated
+`CHANGELOG.md` heading, and update the published-version installation examples. For a breaking change
 while pinto remains in the `0.x` series, increment the minor version as the
 `0.2.0` CLI rename demonstrates. Before publishing, run the complete local
 release gate and verify the package without uploading it:
@@ -68,6 +72,12 @@ mise run release-check
 cargo publish --dry-run --all-features --locked
 ```
 
+The release gate must pass before a public release. A release is not ready
+while the package version, lockfiles, installation examples, CHANGELOG heading,
+and release tag disagree, or while the SQLite compatibility guidance is
+incomplete. Keep the next work items under the undated `[Unreleased]` heading
+until the release commit is tagged.
+
 After the release commit has passed CI and has been fast-forwarded to `main`,
 create the repository's version tag and push it together with `main`. Publish
 the same locked package to crates.io only after the tag points at that commit:
@@ -75,5 +85,5 @@ the same locked package to crates.io only after the tag points at that commit:
 ```bash
 git tag 0.2.0
 git push origin main 0.2.0
-cargo publish --all-features --locked
+mise run release-publish
 ```

@@ -44,6 +44,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`quality-validation`](single/quality-validation) — Markdown parser, public API, and Kanban smoke-test data
   - [`toolchain-reproducibility`](single/toolchain-reproducibility) — pinned toolchain, locked installs, and release package checks
   - [`package-allowlist`](single/package-allowlist) — allowlisted crate contents and packaged-crate verification
+  - [`release-metadata`](single/release-metadata) — publication metadata and SQLite schema compatibility checks
   - [`stale-lock`](single/stale-lock) — OS-owned lock recovery across Unix, macOS, and Windows
   - [`remove-force-safety`](single/remove-force-safety) — permanent removal, reverse-reference guards, and issued-ID history
   - [`parent-child`](single/parent-child) — parent/child hierarchy

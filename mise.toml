@@ -59,7 +59,16 @@ run = "cargo build --release --all-features --locked"
 description = "Verify the allowlisted crate package with the committed lockfile"
 run = "./scripts/verify-package.sh"
 
+[tasks.release-metadata]
+description = "Verify publication metadata and SQLite compatibility guidance"
+run = "./scripts/check-release-metadata.sh"
+
+[tasks.release-publish]
+description = "Publish only after the complete release gate passes"
+depends = ["release-check"]
+run = "cargo publish --all-features --locked"
+
 [tasks.release-check]
 description = "Reproduce the complete local pre-release quality gate and package"
-depends = ["check", "coverage", "audit", "deny", "release-build", "release-package"]
+depends = ["check", "coverage", "audit", "deny", "release-metadata", "release-build", "release-package"]
 run = "cargo fmt --check"

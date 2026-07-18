@@ -149,6 +149,8 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+      - name: Verify release metadata and SQLite compatibility guidance
+        run: ./scripts/check-release-metadata.sh
       - name: Build release artifact with locked dependencies
         run: cargo build --release --all-features --locked
       - name: Verify allowlisted crate package and packaged crate tests

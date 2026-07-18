@@ -60,7 +60,7 @@ writer behavior, but it introduces `-wal` and `-shm` companion files and is
 not useful for the short-lived, write-serialized CLI workload. Revisit this
 decision only if a long-running local process is introduced.
 
-## SQLite schema metadata
+## SQLite schema v1 to v2 compatibility
 
 The current SQLite schema version is `2`. Every newly created database contains an extensible
 `metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)` table with these reserved
@@ -70,15 +70,47 @@ entries:
   spillover columns.
 - `format = "pinto-sqlite"` identifies the pinto SQLite storage format.
 
-Opening a new database stamps these entries. Existing databases with missing,
-unknown, or malformed schema metadata fail with an actionable compatibility
-error. Schema version 1 is not opened by a version 2 binary. To preserve such a board, use a
-version 1-compatible pinto binary to run `pinto migrate --to file`, upgrade pinto, and optionally
-run `pinto migrate --to sqlite` to create a version 2 database. Otherwise, recreate the SQLite
-board from its source data. Pinto does not automatically migrate, convert, or downgrade an older
-database layout. A future schema change must
-increment the version, document the new metadata, add an explicit migration
-plan, and update the compatibility check and tests together.
+### Affected users
+
+This breaking change affects users who have a SQLite board created by a version-1-compatible pinto
+binary. Version 2 added `closed_at`, `spillover_points`, `spillover_items`, and
+`unestimated_spillover_items` to the `sprints` table so that closing a Sprint preserves a snapshot
+of unfinished work. A version-1 database does not contain those columns and is not silently altered.
+
+### Symptoms
+
+Opening a version-1 database with a version-2 binary fails before any board operation with an
+unsupported-schema error similar to:
+
+```text
+unsupported SQLite schema ... found version "1", but pinto supports version 2
+```
+
+The database is left untouched. The same fail-fast behavior applies when schema metadata is
+missing, unknown, or malformed. There is no automatic SQLite migration or downgrade.
+
+### Back up before upgrading
+
+Stop all pinto processes and make a byte-for-byte backup of `.pinto/board.sqlite3` before changing
+the binary or attempting recovery. Keep the original database read-only and perform recovery on a
+copy. If the board also has a file-backend source, back up that directory or commit it with Git as
+well. Do not fix the schema by adding columns manually: that can lose the domain-level guarantees
+and does not convert the stored data contract.
+
+### Downgrade and recovery
+
+To preserve a version-1 SQLite board, use a version-1-compatible pinto binary on the backup and
+run `pinto migrate --to file`. Then upgrade pinto and, after checking the file-backed board, run
+`pinto migrate --to sqlite` to create a new version-2 database. This file-backend round trip is the
+supported conversion path; version 2 cannot downgrade a database in place.
+
+If the old binary is unavailable, restore the SQLite backup when a compatible binary can be
+obtained, or recreate the SQLite board from its file-backed source and verify it with `pinto list`
+and `pinto doctor`. Never overwrite the only backup while testing recovery.
+
+Opening a new database stamps the version-2 metadata. A future schema change must increment the
+version, document the new metadata, add an explicit migration plan, and update the compatibility
+check and tests together.
 
 ## Permanent removal
 

@@ -5,10 +5,10 @@ All notable changes to pinto are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2026-07-18
+## [Unreleased]
 
-This minor 0.x release adds backlog discovery, recovery, diagnostics,
-machine-readable workflows, and richer Sprint and Kanban reporting.
+The next minor 0.x release is planned to add backlog discovery, recovery,
+diagnostics, machine-readable workflows, and richer Sprint and Kanban reporting.
 
 ### Added
 

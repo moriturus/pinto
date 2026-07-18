@@ -233,6 +233,29 @@ fn allowlisted_package_is_verified_in_release_paths() {
 }
 
 #[test]
+fn release_metadata_demo_contains_a_reproducible_board_and_gate() {
+    let readme = repository_file("demos/single/release-metadata/README.md");
+    for marker in [
+        "check-release-metadata.sh",
+        "mise run release-check",
+        "Cargo.lock",
+        "SQLite schema v1-to-v2",
+        "docs/stability.md",
+    ] {
+        assert!(
+            readme.contains(marker),
+            "release metadata demo omits {marker}"
+        );
+    }
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert!(
+        root.join("demos/single/release-metadata/.pinto/tasks/T-1.md")
+            .is_file()
+    );
+}
+
+#[test]
 fn documentation_demo_contains_a_reproducible_board_and_guide() {
     let readme = repository_file("demos/single/documentation/README.md");
     assert!(readme.contains("mdBook"));
@@ -669,6 +692,72 @@ fn local_release_gate_runs_every_required_quality_job() {
         .expect("mise.toml defines the release-check task");
     for task in ["check", "coverage", "audit", "deny"] {
         assert!(gate.contains(task), "release-check omits the {task} task");
+    }
+}
+
+#[test]
+fn release_gate_checks_version_and_sqlite_compatibility_contracts() {
+    let mise = repository_file("mise.toml");
+    let gate = mise
+        .split_once("[tasks.release-check]")
+        .map(|(_, rest)| rest)
+        .expect("mise.toml defines the release-check task");
+    assert!(
+        gate.contains("release-metadata"),
+        "release-check omits the publication metadata gate"
+    );
+
+    let publish = mise
+        .split_once("[tasks.release-publish]")
+        .map(|(_, rest)| rest)
+        .expect("mise.toml defines the release-publish task");
+    assert!(
+        publish.contains("depends = [\"release-check\"]"),
+        "release-publish must depend on the complete release-check gate"
+    );
+    assert!(
+        publish.contains("cargo publish --all-features --locked"),
+        "release-publish must publish the locked all-feature package"
+    );
+
+    let checker = repository_file("scripts/check-release-metadata.sh");
+    for marker in [
+        "Cargo.toml",
+        "Cargo.lock",
+        "CHANGELOG.md",
+        "pinto-cli --version",
+        "git tag",
+        "docs/stability.md",
+    ] {
+        assert!(
+            checker.contains(marker),
+            "release metadata checker omits {marker}"
+        );
+    }
+
+    let workflow = repository_file(".github/workflows/ci.yml");
+    let release_job = workflow
+        .split_once("  release:")
+        .and_then(|(_, rest)| rest.split_once("  coverage:"))
+        .map(|(job, _)| job)
+        .expect("workflow contains a bounded release job");
+    assert!(
+        release_job.contains("./scripts/check-release-metadata.sh"),
+        "release job does not block packaging on release metadata"
+    );
+
+    let stability = repository_file("docs/stability.md");
+    for section in [
+        "SQLite schema v1 to v2 compatibility",
+        "Affected users",
+        "Symptoms",
+        "Back up before upgrading",
+        "Downgrade and recovery",
+    ] {
+        assert!(
+            stability.contains(section),
+            "SQLite compatibility guidance omits {section}"
+        );
     }
 }
 
