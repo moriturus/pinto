@@ -13,6 +13,8 @@ mod board;
 mod common;
 #[path = "cli/dependencies.rs"]
 mod dependencies;
+#[path = "cli/doctor.rs"]
+mod doctor;
 #[path = "cli/dod.rs"]
 mod dod;
 #[path = "cli/item.rs"]

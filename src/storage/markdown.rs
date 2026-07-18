@@ -272,7 +272,7 @@ pub(super) fn sprint_from_markdown(text: &str, path: &Path) -> Result<Sprint> {
 /// Split a document whose first line starts with `+++` into (frontmatter, body).
 ///
 /// `None` if there is no closing `+++` line. In the main text, remove one blank line and one trailing newline immediately after the delimiter.
-fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
+pub(crate) fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
     let rest = strip_delimiter_line(text)?;
     let closing = find_delimiter_line(rest)?;
     let front = &rest[..closing];

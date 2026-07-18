@@ -124,6 +124,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
         Command::CycleTime(args) => cmd_cycletime(args).await,
         Command::Rebalance(args) => cmd_rebalance(args).await,
         Command::Migrate(args) => cmd_migrate(args).await,
+        Command::Doctor(args) => cmd_doctor(args).await,
         Command::Automate(args) => cmd_automate(args).await,
         Command::Shell => cmd_shell().await,
         Command::Kanban(args) => cmd_kanban(args, in_shell).await,
@@ -493,6 +494,7 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         | Command::CycleTime(_)
         | Command::Rebalance(_)
         | Command::Migrate(_)
+        | Command::Doctor(_)
         | Command::Automate(_)
         | Command::Shell
         | Command::Kanban(_)
@@ -1026,6 +1028,91 @@ async fn cmd_migrate(args: MigrateArgs) -> anyhow::Result<ExitCode> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `pinto doctor` — Inspect board integrity and apply safe repairs when requested.
+async fn cmd_doctor(args: DoctorArgs) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    let report = pinto::service::doctor(&dir, args.fix).await?;
+    let localizer = current();
+    if report.issues.is_empty() {
+        println!("{}", localizer.text(Message::DoctorHealthy));
+    } else {
+        println!(
+            "{}",
+            localizer.format(
+                Message::DoctorIssues,
+                [("count", report.issues.len().to_string().as_str())],
+            )
+        );
+    }
+    for fix in &report.fixes {
+        println!(
+            "{}",
+            localizer.format(
+                Message::DoctorFixed,
+                [("description", fix.description.as_str())]
+            )
+        );
+    }
+    for issue in &report.issues {
+        let kind = doctor_issue_kind_name(issue.kind, localizer);
+        println!(
+            "{}",
+            localizer.format(
+                Message::DoctorIssue,
+                [
+                    ("kind", kind.as_str()),
+                    ("location", issue.location.as_str()),
+                    ("detail", issue.detail.as_str()),
+                    ("repair", issue.repair.as_str()),
+                ],
+            )
+        );
+    }
+    Ok(if report.issues.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
+}
+
+fn doctor_issue_kind_name(
+    kind: pinto::service::DoctorIssueKind,
+    localizer: &pinto::i18n::Localizer,
+) -> String {
+    match kind {
+        pinto::service::DoctorIssueKind::DanglingDependency => {
+            localizer.text(Message::DoctorKindDanglingDependency)
+        }
+        pinto::service::DoctorIssueKind::DanglingParent => {
+            localizer.text(Message::DoctorKindDanglingParent)
+        }
+        pinto::service::DoctorIssueKind::DanglingSprint => {
+            localizer.text(Message::DoctorKindDanglingSprint)
+        }
+        pinto::service::DoctorIssueKind::ParentCycle => {
+            localizer.text(Message::DoctorKindParentCycle)
+        }
+        pinto::service::DoctorIssueKind::DependencyCycle => {
+            localizer.text(Message::DoctorKindDependencyCycle)
+        }
+        pinto::service::DoctorIssueKind::DuplicateId => {
+            localizer.text(Message::DoctorKindDuplicateId)
+        }
+        pinto::service::DoctorIssueKind::IssuedId => localizer.text(Message::DoctorKindIssuedId),
+        pinto::service::DoctorIssueKind::InvalidStatus => {
+            localizer.text(Message::DoctorKindInvalidStatus)
+        }
+        pinto::service::DoctorIssueKind::RankAnomaly => {
+            localizer.text(Message::DoctorKindRankAnomaly)
+        }
+        pinto::service::DoctorIssueKind::Collision => localizer.text(Message::DoctorKindCollision),
+        pinto::service::DoctorIssueKind::MalformedRecord => {
+            localizer.text(Message::DoctorKindMalformedRecord)
+        }
+        pinto::service::DoctorIssueKind::Filename => localizer.text(Message::DoctorKindFilename),
+    }
 }
 
 /// `pinto init` — Initialize the board in the current directory.

@@ -26,6 +26,11 @@ If no board is found, pinto reports the search and these override options. The
 
 ## Board and PBI commands
 
+Use pinto doctor to check board integrity after hand edits, interrupted migrations, or copied
+records. Add --fix to apply only safe mechanical repairs. The command reports references,
+relationship cycles, duplicate IDs, issued-ID history, workflow states, rank anomalies, and
+tasks/archive filename collisions with a location and repair direction.
+
 | Command | Purpose |
 | --- | --- |
 | `pinto init` | Initialize a board in the current directory. |

@@ -56,6 +56,7 @@ src/service/item/tests.rs
 src/service/item.rs
 src/service/lifecycle.rs
 src/service/migrate.rs
+src/service/next.rs
 src/service/order.rs
 src/service/points.rs
 src/service/relations.rs

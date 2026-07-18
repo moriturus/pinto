@@ -46,10 +46,12 @@ example. This allowlisted package excludes repository-only data such as
 `.pinto`, demos, tests, docs, and CI metadata.
 
 Run `./scripts/verify-package.sh` or `mise run release-package` to run
-`cargo package --all-features --locked`, compare the package file list with the
-committed `release/package-files.txt`, and run tests against the extracted
-packaged crate. A deliberate runtime-file addition must update the allowlist
-and its file-list baseline together. CI also runs `cargo install --path . --locked`
+`cargo package --all-features --locked`, compare non-source package paths with
+the committed package file list in `release/package-files.txt`, and verify every current `src/**` file
+is present in the archive, and run tests against the extracted packaged crate.
+The recursive source include is checked directly, so adding a Rust module does
+not create a stale snapshot failure; update the baseline when a deliberate
+non-source package path changes. CI also runs `cargo install --path . --locked`
 from the clean checkout as the source-install check.
 
 ## Publishing a release

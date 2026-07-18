@@ -19,5 +19,5 @@ cargo install --path . --locked --root "$PWD/.tmp/pinto"
 ```
 
 The verifier runs `cargo package --all-features --locked`, compares the
-archive against `release/package-files.txt`, and tests the extracted packaged
-crate.
+non-source archive paths against `release/package-files.txt`, checks every
+current `src/**` file is packaged, and tests the extracted packaged crate.

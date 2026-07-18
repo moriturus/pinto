@@ -7,6 +7,7 @@ mod burndown;
 mod commits;
 mod cycletime;
 mod dependency;
+mod doctor;
 mod dod;
 mod item;
 mod lifecycle;
@@ -34,6 +35,7 @@ pub use cycletime::{CycleTimeFilter, CycleTimeReport, DurationSummary, cycle_tim
 pub use dependency::{
     DependencyOutcome, ItemDetail, add_dependency, item_detail, remove_dependency,
 };
+pub use doctor::{DoctorFix, DoctorIssue, DoctorIssueKind, DoctorReport, doctor};
 pub use dod::{clear_common_dod, common_dod, set_common_dod};
 pub use item::{
     AddItemOutcome, EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, RebalanceOutcome,
