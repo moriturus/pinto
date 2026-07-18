@@ -15,12 +15,18 @@ Startup flags narrow what the board shows without changing stored data:
 ```bash
 pinto kanban --column in-progress review   # show only these columns
 pinto kanban --maximize --column review     # open maximized on one column
+pinto kanban --sprint S-1                    # show cards assigned to one Sprint
+pinto kanban --label ui backend             # match either label
+pinto kanban --label ui backend --all-labels # require both labels
 pinto kanban --search parser                # filter cards by substring
-pinto kanban --search '^T-1\d' --regex      # filter cards by regular expression
+pinto kanban --sprint S-1 --label ui --column in-progress --search '^T-1\d' --regex
+                                             # compose all startup filters
 ```
 
 Explicit `--column` values override the `[tui] hidden_columns` setting for that
-run. `--regex` requires `--search`.
+run. `--sprint` matches the assigned Sprint ID exactly. `--label` uses the same OR matching as
+`pinto board`; add `--all-labels` for AND matching. `--regex` requires `--search`. All startup
+filters are read-only and remain active when the TUI reloads after an edit, move, or reorder.
 
 ## Navigate and edit
 

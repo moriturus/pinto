@@ -242,3 +242,6 @@ cli-arg-pinto-add-template = Item body template name from `.pinto/templates/item
 cli-arg-pinto-edit-labels = Labels to set, replacing the existing set. Multiple values can follow one option or be supplied with repeated options.
 cli-arg-pinto-kanban-column = Display only the specified workflow columns. Multiple values may follow one option or be repeated; explicit values override [tui].hidden_columns.
 cli-arg-pinto-kanban-maximize = Start with the selected column maximized.
+cli-arg-pinto-kanban-sprint = Filter cards by assigned Sprint.
+cli-arg-pinto-kanban-label = Filter cards by one or more labels. Multiple labels use OR by default; use --all-labels for AND.
+cli-arg-pinto-kanban-all_labels = Require every label supplied to --label instead of matching any label.

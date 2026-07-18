@@ -107,7 +107,7 @@ done (0)
 | `pinto move <id> <status>` | Move a PBI to a workflow column; moving to `done_column` warns when Acceptance Criteria are incomplete but still succeeds. |
 | `pinto reorder <id>` | Reorder a PBI with `--before`, `--after`, `--top`, or `--bottom`. |
 | `pinto board` | Display the board (PBI by column). Filter by `--status <status>...` (or repeat `--status`) for multiple columns, Sprint, or `--label <label>...` (OR; use `--all-labels` for AND). Use `--roots-only` to omit PBIs with a parent; `--long/-l` uses the same detail columns as `pinto list --long`, with `--label`, `--sprint`, and `--acceptance-criteria/-A` available as column selectors. |
-| `pinto kanban` | Open the interactive terminal board. By default, `[tui].hidden_columns` is omitted; use `--column <status>...` (or repeat `--column`) to override the configured display columns. |
+| `pinto kanban` | Open the interactive terminal board. By default, `[tui].hidden_columns` is omitted; use `--column <status>...` (or repeat `--column`) to override the configured display columns. Filter cards with `--sprint <id>`, `--label <label>...` (OR; use `--all-labels` for AND), or `--search/-F` (use `--regex/-R` for regular expressions). |
 | `pinto dep add/rm` | Add or remove item dependencies. |
 | `pinto link add/rm/sync` | Associate Git commits with PBIs, or synchronize links from commit messages containing item IDs. |
 | `pinto dod` | View, set, or clear the shared Definition of Done. |
@@ -152,6 +152,7 @@ pinto board --sort rank
 pinto board --roots-only --status todo --long
 pinto board --long --acceptance-criteria
 pinto kanban --column in-progress
+pinto kanban --sprint S-1 --label backend cli --all-labels --search parser --regex
 pinto rebalance --dry-run
 ```
 
@@ -176,6 +177,11 @@ operations visible: cursor movement, expand, details, normal quit, and help. Pre
 confirmation and `e` edits the selected item with your editor. The help window is non-modal:
 commands remain available while it is displayed and close it once accepted; press `?` to close it
 without running another command.
+
+Use `--sprint <id>` and `--label <label>...` to focus the initial view without changing board
+data. Multiple labels match any label by default; add `--all-labels` to require every label.
+These startup filters compose with `--column`, `--search`, and `--regex`, and remain active when
+the TUI reloads after an edit, move, or reorder.
 
 To hide workflow columns from the default Kanban display, add their exact names under `[tui]`.
 The workflow order remains the order in `columns`, and `kanban --column` overrides this setting

@@ -224,6 +224,16 @@ pub(super) struct KanbanArgs {
     /// Maximize and display selected columns from startup.
     #[arg(long, short = 'm')]
     pub(super) maximize: bool,
+    /// Filter cards by assigned Sprint.
+    #[arg(long, short = 'S')]
+    pub(super) sprint: Option<String>,
+    /// Filter cards by one or more labels. Multiple labels use OR by default; use `--all-labels`
+    /// for AND.
+    #[arg(long = "label", short = 'L', num_args = 1.., value_name = "LABEL")]
+    pub(super) label: Option<Vec<String>>,
+    /// Require every label supplied to `--label` instead of matching any label.
+    #[arg(long = "all-labels", short = 'a', requires = "label")]
+    pub(super) all_labels: bool,
     /// Filter cards by a literal substring or, with `--regex`, a regular expression.
     #[arg(long, short = 'F')]
     pub(super) search: Option<String>,

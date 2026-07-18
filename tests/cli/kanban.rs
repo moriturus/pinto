@@ -24,7 +24,10 @@ fn kanban_help_lists_display_column_and_maximize_options() {
         .stdout(predicate::str::contains("hidden_columns"))
         .stdout(predicate::str::contains("--maximize"))
         .stdout(predicate::str::contains("-F, --search"))
-        .stdout(predicate::str::contains("-R, --regex"));
+        .stdout(predicate::str::contains("-R, --regex"))
+        .stdout(predicate::str::contains("-S, --sprint <SPRINT>"))
+        .stdout(predicate::str::contains("-L, --label <LABEL>..."))
+        .stdout(predicate::str::contains("-a, --all-labels"));
 }
 
 #[test]
@@ -570,6 +573,111 @@ mod pty_tests {
         let status = wait_for_exit_while_draining(&mut child.0, &mut pty, &mut output, WAIT)
             .expect("wait pinto kanban");
         assert!(status.success(), "kanban exited with {status}");
+    }
+
+    #[test]
+    fn kanban_pty_startup_filters_compose_without_mutating_the_board() {
+        let dir = TempDir::new().expect("temp dir");
+        pinto(dir.path()).arg("init").assert().success();
+        pinto(dir.path())
+            .args(["sprint", "new", "S-1", "Sprint One"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args([
+                "add",
+                "Sprint label target",
+                "--sprint",
+                "S-1",
+                "--label",
+                "ui",
+                "backend",
+            ])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args([
+                "add",
+                "Sprint other label",
+                "--sprint",
+                "S-1",
+                "--label",
+                "ops",
+            ])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["add", "Other sprint target", "--label", "ui"])
+            .assert()
+            .success();
+
+        let config_path = dir.path().join(".pinto/config.toml");
+        let config = std::fs::read_to_string(&config_path).expect("config");
+        std::fs::write(
+            config_path,
+            config.replace("confirm_quit = true", "confirm_quit = false"),
+        )
+        .expect("disable quit confirmation");
+
+        let binary = pinto(dir.path()).get_program().to_owned();
+        let mut pty = Pty::open().expect("open pseudo terminal");
+        let mut command = ProcessCommand::new(binary);
+        command
+            .args([
+                "kanban",
+                "--column",
+                "todo",
+                "--sprint",
+                "S-1",
+                "--label",
+                "ui",
+                "backend",
+                "--all-labels",
+                "--search",
+                "^Sprint label target$",
+                "--regex",
+            ])
+            .current_dir(dir.path())
+            .env("TERM", "xterm-256color")
+            .stdin(Stdio::from(pty.slave.try_clone().expect("clone stdin")))
+            .stdout(Stdio::from(pty.slave.try_clone().expect("clone stdout")))
+            .stderr(Stdio::from(pty.slave.try_clone().expect("clone stderr")));
+        let mut child = ChildGuard(pty.spawn(&mut command).expect("spawn pinto kanban"));
+        let mut output = Vec::new();
+        pty.read_until(&mut output, |bytes| {
+            bytes
+                .windows(b"Sprint label target".len())
+                .any(|window| window == b"Sprint label target")
+        })
+        .unwrap_or_else(|error| panic!("filtered card did not render: {error}"));
+        assert!(
+            !output
+                .windows(b"Sprint other label".len())
+                .any(|window| window == b"Sprint other label"),
+            "label filter should exclude the other Sprint card: {}",
+            String::from_utf8_lossy(&output)
+        );
+        assert!(
+            !output
+                .windows(b"Other sprint target".len())
+                .any(|window| window == b"Other sprint target"),
+            "Sprint filter should exclude the other Sprint card: {}",
+            String::from_utf8_lossy(&output)
+        );
+
+        pty.send(b"q").expect("quit kanban");
+        pty.read_until(&mut output, |bytes| {
+            bytes
+                .windows(b"\x1b[?1049l".len())
+                .any(|window| window == b"\x1b[?1049l")
+        })
+        .unwrap_or_else(|error| panic!("kanban did not leave alternate screen: {error}"));
+        let status = wait_for_exit_while_draining(&mut child.0, &mut pty, &mut output, WAIT)
+            .expect("wait pinto kanban");
+        assert!(status.success(), "kanban exited with {status}");
+
+        let items = json_stdout(pinto(dir.path()).args(["list", "--json"]));
+        assert_eq!(items.as_array().expect("list array").len(), 3);
     }
 
     #[test]

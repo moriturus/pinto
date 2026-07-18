@@ -37,7 +37,7 @@ use std::collections::HashSet;
 pub(crate) async fn run(
     columns: Option<&[String]>,
     maximize: bool,
-    search: Option<pinto::service::SearchFilter>,
+    query: pinto::service::BoardQuery,
 ) -> anyhow::Result<ExitMode> {
     let dir = std::env::current_dir()?;
     // Whether confirmation of exit is required depends on the setting (`[tui] confirm_quit`).
@@ -56,7 +56,7 @@ pub(crate) async fn run(
         display_columns,
         initial_column: initial_column.map(str::to_owned),
         maximize,
-        search,
+        query,
     })
     .await
 }

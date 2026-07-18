@@ -311,7 +311,7 @@ pub(super) struct RunOptions {
     pub(super) display_columns: Vec<String>,
     pub(super) initial_column: Option<String>,
     pub(super) maximize: bool,
-    pub(super) search: Option<SearchFilter>,
+    pub(super) query: BoardQuery,
 }
 
 pub(super) async fn run(options: RunOptions) -> Result<ExitMode> {
@@ -324,11 +324,11 @@ pub(super) async fn run(options: RunOptions) -> Result<ExitMode> {
         display_columns,
         initial_column,
         maximize,
-        search,
+        query,
     } = options;
-    let loaded = load_display_board(&dir, search.clone(), &display_columns).await?;
-    let mut view = BoardView::new_with_scope(loaded.display, loaded.full, display_columns);
-    view.set_search(search);
+    let loaded = load_display_board(&dir, &query, &display_columns).await?;
+    let mut view =
+        BoardView::new_with_scope_and_query(loaded.display, loaded.full, display_columns, query);
     if let Some(column) = initial_column.as_deref()
         && !view.select_column(column)
     {
@@ -342,7 +342,7 @@ pub(super) async fn run(options: RunOptions) -> Result<ExitMode> {
     tokio::task::spawn_blocking(move || event_loop(handle, dir, view, keymap, confirm_quit)).await?
 }
 
-/// Board data loaded for Kanban: a display-scoped copy and the full search-scoped board.
+/// Board data loaded for Kanban: a display-scoped copy and the full query-scoped board.
 struct LoadedBoard {
     /// Board columns rendered by Kanban.
     display: Board,
@@ -356,17 +356,10 @@ struct LoadedBoard {
 /// changing which columns are rendered or persisted.
 async fn load_display_board(
     project_dir: &Path,
-    search: Option<SearchFilter>,
+    query: &BoardQuery,
     display_columns: &[String],
 ) -> Result<LoadedBoard> {
-    let full = board(
-        project_dir,
-        &BoardQuery {
-            search,
-            ..Default::default()
-        },
-    )
-    .await?;
+    let full = board(project_dir, query).await?;
     let display = filter_display_columns(full.clone(), display_columns);
     Ok(LoadedBoard { display, full })
 }
@@ -1055,9 +1048,9 @@ fn edit_selected(
 /// Reread the board and keep the selected PBI as much as possible.
 fn reload(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()> {
     let selected = view.selected_item().map(|it| it.id.clone());
-    let search = view.search_filter().cloned();
+    let query = view.board_query().clone();
     let display_columns = view.display_statuses().to_vec();
-    let loaded = handle.block_on(load_display_board(dir, search, &display_columns))?;
+    let loaded = handle.block_on(load_display_board(dir, &query, &display_columns))?;
     view.set_boards(loaded.display, loaded.full);
     if let Some(id) = selected {
         view.select_id(&id);
@@ -1068,9 +1061,9 @@ fn reload(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()> {
 /// Reread the board and reselect the `keep` PBI (common process after transition/sorting).
 /// Retain the expanded state ([`BoardView::set_boards`]).
 fn rebuild(handle: &Handle, dir: &Path, view: &mut BoardView, keep: &ItemId) -> Result<()> {
-    let search = view.search_filter().cloned();
+    let query = view.board_query().clone();
     let display_columns = view.display_statuses().to_vec();
-    let loaded = handle.block_on(load_display_board(dir, search, &display_columns))?;
+    let loaded = handle.block_on(load_display_board(dir, &query, &display_columns))?;
     view.set_boards(loaded.display, loaded.full);
     view.select_id(keep);
     Ok(())
@@ -1086,7 +1079,9 @@ fn reload_with_filter(
 ) -> Result<()> {
     let selected = view.selected_item().map(|item| item.id.clone());
     let display_columns = view.display_statuses().to_vec();
-    let loaded = handle.block_on(load_display_board(dir, filter.clone(), &display_columns))?;
+    let mut query = view.board_query().clone();
+    query.search = filter.clone();
+    let loaded = handle.block_on(load_display_board(dir, &query, &display_columns))?;
     view.set_search(filter);
     view.set_boards(loaded.display, loaded.full);
     if let Some(selected) = selected {
@@ -2612,7 +2607,11 @@ mod popup_rect_tests {
 #[cfg(test)]
 mod ordering_tests {
     use super::*;
-    use pinto::service::{init_board, move_item};
+    use pinto::service::{
+        BoardQuery, LabelMatch, SearchFilter, add_item_with_outcome, create_sprint, init_board,
+        move_item,
+    };
+    use pinto::sprint::SprintId;
     use tempfile::TempDir;
 
     /// Kanban delegates entirely to [`board`] with the default query, so it
@@ -2635,7 +2634,7 @@ mod ordering_tests {
         }
 
         let display_columns: Vec<String> = vec!["done".to_string()];
-        let loaded = load_display_board(dir.path(), None, &display_columns)
+        let loaded = load_display_board(dir.path(), &BoardQuery::default(), &display_columns)
             .await
             .expect("load board");
         let done = loaded
@@ -2648,6 +2647,156 @@ mod ordering_tests {
 
         // Newest completion leads: reverse of rank order (the documented exception).
         assert_eq!(order, vec![&ids[2], &ids[1], &ids[0]]);
+    }
+
+    #[tokio::test]
+    async fn load_display_board_applies_startup_scope_and_composed_search() {
+        let dir = TempDir::new().expect("temp dir");
+        init_board(dir.path()).await.expect("init");
+        create_sprint(
+            dir.path(),
+            &"S-1".parse::<SprintId>().expect("sprint id"),
+            "Sprint One",
+            None,
+            None,
+        )
+        .await
+        .expect("create sprint");
+        add_item_with_outcome(
+            dir.path(),
+            "Keep target",
+            NewItem {
+                labels: vec!["ui".to_string(), "backend".to_string()],
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .expect("target item");
+        add_item_with_outcome(
+            dir.path(),
+            "Other label",
+            NewItem {
+                labels: vec!["ops".to_string()],
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .expect("other label item");
+        add_item_with_outcome(
+            dir.path(),
+            "Other sprint",
+            NewItem {
+                labels: vec!["ui".to_string()],
+                ..NewItem::default()
+            },
+        )
+        .await
+        .expect("other sprint item");
+
+        let query = BoardQuery {
+            sprint: Some("S-1".to_string()),
+            labels: vec!["ui".to_string(), "backend".to_string()],
+            label_match: LabelMatch::All,
+            search: Some(SearchFilter::new("^Keep", true).expect("regex")),
+            ..BoardQuery::default()
+        };
+        let loaded = load_display_board(dir.path(), &query, &["todo".to_string()])
+            .await
+            .expect("load filtered board");
+
+        let visible = loaded
+            .display
+            .columns
+            .first()
+            .expect("todo column")
+            .items
+            .iter()
+            .map(|item| item.title.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(visible, ["Keep target"]);
+        assert_eq!(loaded.full.columns[0].items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn live_search_reload_preserves_startup_scope() {
+        let dir = TempDir::new().expect("temp dir");
+        init_board(dir.path()).await.expect("init");
+        create_sprint(
+            dir.path(),
+            &"S-1".parse::<SprintId>().expect("sprint id"),
+            "Sprint One",
+            None,
+            None,
+        )
+        .await
+        .expect("create sprint");
+        add_item_with_outcome(
+            dir.path(),
+            "Keep target",
+            NewItem {
+                labels: vec!["ui".to_string()],
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .expect("target item");
+        add_item_with_outcome(
+            dir.path(),
+            "Other label",
+            NewItem {
+                labels: vec!["ops".to_string()],
+                sprint: Some("S-1".to_string()),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .expect("other label item");
+
+        let query = BoardQuery {
+            sprint: Some("S-1".to_string()),
+            labels: vec!["ui".to_string()],
+            ..BoardQuery::default()
+        };
+        let display_columns = vec!["todo".to_string()];
+        let loaded = load_display_board(dir.path(), &query, &display_columns)
+            .await
+            .expect("load startup scope");
+        let mut view = BoardView::new_with_scope_and_query(
+            loaded.display,
+            loaded.full,
+            display_columns,
+            query,
+        );
+
+        let reload_dir = dir.path().to_path_buf();
+        let handle = Handle::current();
+        let view = tokio::task::spawn_blocking(move || {
+            reload_with_filter(
+                &handle,
+                &reload_dir,
+                &mut view,
+                Some(SearchFilter::new("Keep", false).expect("search")),
+            )?;
+            Ok::<_, anyhow::Error>(view)
+        })
+        .await
+        .expect("reload task")
+        .expect("reload with live search");
+
+        assert_eq!(view.board_query().sprint.as_deref(), Some("S-1"));
+        assert_eq!(view.board_query().labels, ["ui"]);
+        let visible = view
+            .columns()
+            .first()
+            .expect("todo column")
+            .items
+            .iter()
+            .map(|item| item.title.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(visible, ["Keep target"]);
     }
 }
 

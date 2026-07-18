@@ -461,6 +461,30 @@ fn i18n_localizer_cache_demo_contains_repeated_rendering_commands_and_data() {
 }
 
 #[test]
+fn kanban_documentation_covers_startup_scope_filters() {
+    let readme = repository_file("README.md");
+    let kanban = repository_file("docs/book/src/kanban.md");
+    for option in ["--sprint", "--label", "--all-labels", "--search", "--regex"] {
+        assert!(
+            readme.contains(option),
+            "README omits Kanban option {option}"
+        );
+        assert!(
+            kanban.contains(option),
+            "Kanban guide omits startup option {option}"
+        );
+    }
+    assert!(
+        kanban.contains("read-only"),
+        "Kanban guide omits non-mutating scope"
+    );
+    assert!(
+        kanban.contains("reloads after an edit"),
+        "Kanban guide omits filter persistence"
+    );
+}
+
+#[test]
 fn file_id_integrity_demo_contains_active_archive_and_sprint_data() {
     let readme = repository_file("demos/single/file-id-integrity/README.md");
     for phrase in [

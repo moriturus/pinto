@@ -4,7 +4,7 @@
 use super::layout::{DisplayRow, PopupContent, board_items, column_display_rows};
 use crate::cli::dependency_display::DependencyIndex;
 use pinto::backlog::{BacklogItem, ItemId};
-use pinto::service::{Board, BoardColumn, ReorderTarget, SearchFilter, SearchMode};
+use pinto::service::{Board, BoardColumn, BoardQuery, ReorderTarget, SearchFilter, SearchMode};
 use pinto::timezone::DisplayTimezone;
 use std::collections::HashSet;
 
@@ -134,8 +134,8 @@ pub(crate) struct BoardView {
     help_open: bool,
     /// Scroll position of the help window body.
     help_scroll: u16,
-    /// Current search filter used when reloading the board.
-    search: Option<SearchFilter>,
+    /// Item query used when loading and reloading the board.
+    query: BoardQuery,
     /// Pending in-view search input (vim-style bottom prompt). `None` outside search entry.
     search_input: Option<SearchInput>,
     /// Pending add/relation input. `None` outside a form.
@@ -158,10 +158,21 @@ impl BoardView {
     }
 
     /// Create a view with a display-scoped board and a full board for cross-column metadata.
+    #[cfg(test)]
     pub(crate) fn new_with_scope(
         board: Board,
         full_board: Board,
         display_statuses: Vec<String>,
+    ) -> Self {
+        Self::new_with_scope_and_query(board, full_board, display_statuses, BoardQuery::default())
+    }
+
+    /// Create a view with a display-scoped board and the query used to load it.
+    pub(crate) fn new_with_scope_and_query(
+        board: Board,
+        full_board: Board,
+        display_statuses: Vec<String>,
+        query: BoardQuery,
     ) -> Self {
         let mut view = Self {
             board,
@@ -178,7 +189,7 @@ impl BoardView {
             popup_scroll: 0,
             help_open: false,
             help_scroll: 0,
-            search: None,
+            query,
             search_input: None,
             form_input: None,
             timezone: DisplayTimezone::Local,
@@ -376,12 +387,17 @@ impl BoardView {
 
     /// Replace the filter used by subsequent board reloads.
     pub(crate) fn set_search(&mut self, search: Option<SearchFilter>) {
-        self.search = search;
+        self.query.search = search;
     }
 
     /// Current Kanban search filter.
     pub(crate) fn search_filter(&self) -> Option<&SearchFilter> {
-        self.search.as_ref()
+        self.query.search.as_ref()
+    }
+
+    /// Query used to load the current board, including startup and live-search filters.
+    pub(crate) fn board_query(&self) -> &BoardQuery {
+        &self.query
     }
 
     /// Open the vim-style search prompt in `mode` with an empty buffer, snapshotting the currently
@@ -391,7 +407,7 @@ impl BoardView {
             mode,
             buffer: String::new(),
             error: None,
-            restore: self.search.clone(),
+            restore: self.query.search.clone(),
         });
     }
 

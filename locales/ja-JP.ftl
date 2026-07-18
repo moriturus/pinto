@@ -242,3 +242,6 @@ cli-arg-pinto-add-template = 本文に適用するテンプレート名（`.pint
 cli-arg-pinto-edit-labels = 設定するラベル（既存の集合を置換）。1つのオプションに複数値を続けるか、オプションを繰り返し指定できる。
 cli-arg-pinto-kanban-column = 指定したワークフロー列だけを表示する。1つのオプションに複数値を続けるか、オプションを繰り返し指定でき、明示した値は [tui].hidden_columns を上書きする。
 cli-arg-pinto-kanban-maximize = 起動時から選択列を最大化して表示する。
+cli-arg-pinto-kanban-sprint = 割り当てられた Sprint でカードを絞り込む。
+cli-arg-pinto-kanban-label = 1つ以上のラベルでカードを絞り込む。複数ラベルは既定で OR、一致する全ラベルを要求するには --all-labels を使う。
+cli-arg-pinto-kanban-all_labels = --label で指定したすべてのラベルに一致するカードだけを表示する。

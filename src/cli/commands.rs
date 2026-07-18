@@ -908,8 +908,16 @@ async fn cmd_shell() -> anyhow::Result<ExitCode> {
 /// directly (`in_shell == false`), that starts a new REPL; when already inside a shell
 /// (`in_shell == true`), returning here simply drops back to the existing prompt.
 async fn cmd_kanban(args: KanbanArgs, in_shell: bool) -> anyhow::Result<ExitCode> {
-    let search = build_search_filter(args.search, args.regex)?;
-    let mode = super::kanban::run(args.column.as_deref(), args.maximize, search).await?;
+    let labels = resolve_label_filter("--label", args.label, false)?;
+    let label_match = resolve_label_match(args.all_labels, &labels)?;
+    let query = BoardQuery {
+        sprint: args.sprint,
+        labels,
+        label_match,
+        search: build_search_filter(args.search, args.regex)?,
+        ..BoardQuery::default()
+    };
+    let mode = super::kanban::run(args.column.as_deref(), args.maximize, query).await?;
     if mode == super::kanban::ExitMode::Shell && !in_shell {
         return cmd_shell().await;
     }
