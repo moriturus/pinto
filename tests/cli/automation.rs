@@ -24,13 +24,13 @@ fn select_git_backend(dir: &Path) {
 
 #[test]
 fn completion_bash_generates_script() {
-    // 補完はボード初期化に依存しない（どこでも生成できる）。
+    // Completion generation does not require an initialized board.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path())
         .args(["completion", "bash"])
         .assert()
         .success()
-        // bash 補完は `_pinto()` 関数と `complete` 登録を含む。
+        // Bash completion includes the `_pinto()` function and a `complete` registration.
         .stdout(predicate::str::contains("_pinto"))
         .stdout(predicate::str::contains("complete"));
 }
@@ -42,7 +42,7 @@ fn completion_zsh_generates_script() {
         .args(["completion", "zsh"])
         .assert()
         .success()
-        // zsh 補完は `#compdef pinto` で始まる。
+        // Zsh completion starts with `#compdef pinto`.
         .stdout(predicate::str::contains("#compdef pinto"));
 }
 
@@ -58,7 +58,7 @@ fn completion_fish_generates_script() {
 
 #[test]
 fn completion_lists_subcommands() {
-    // 生成された補完に主要サブコマンドが含まれることを軽く保証する。
+    // Lightly verify that generated completion contains the main subcommands.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path())
         .args(["completion", "bash"])
@@ -81,7 +81,7 @@ fn completion_includes_add_relationship_options() {
 
 #[test]
 fn completion_unknown_shell_errors_as_user_error() {
-    // 未知のシェル名は clap の値解釈エラー。終了コード規約でユーザーエラー(1)へ寄せる。
+    // An unknown shell name is a clap value-parsing error, mapped to user-error exit code 1.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path())
         .args(["completion", "tcsh"])
@@ -92,7 +92,7 @@ fn completion_unknown_shell_errors_as_user_error() {
 
 #[test]
 fn shell_executes_commands_from_stdin() {
-    // 1 行 1 コマンドで既存サブコマンドを実行し、ボードを開いたまま連続操作できる。
+    // Execute one existing subcommand per line so several operations can run in one open shell.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -106,7 +106,7 @@ fn shell_executes_commands_from_stdin() {
 
 #[test]
 fn shell_continues_after_command_error() {
-    // コマンド実行時エラー（存在しない ID）でループが落ちず、後続コマンドが実行できる。
+    // A command error (such as a missing ID) does not end the loop; later commands still run.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -119,7 +119,7 @@ fn shell_continues_after_command_error() {
 
 #[test]
 fn shell_continues_after_unknown_command() {
-    // 未知のコマンド（clap の解釈エラー）でもループを継続する。
+    // The loop continues after an unknown command (a clap parsing error).
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -132,7 +132,7 @@ fn shell_continues_after_unknown_command() {
 
 #[test]
 fn shell_terminates_on_eof() {
-    // exit/quit なしでも EOF（stdin の終端 = Ctrl-D 相当）で正常終了する。
+    // EOF (the end of stdin, equivalent to Ctrl-D) exits cleanly without exit or quit.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -145,7 +145,7 @@ fn shell_terminates_on_eof() {
 
 #[test]
 fn shell_terminates_on_quit() {
-    // `quit` でも正常終了する（`exit` の別名）。
+    // `quit` also exits cleanly as an alias for `exit`.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -158,7 +158,7 @@ fn shell_terminates_on_quit() {
 
 #[test]
 fn shell_rejects_nested_shell() {
-    // 入れ子の `shell` は拒否され、後続行（stdin）を横取りせずに継続する。
+    // Nested `shell` is rejected, and subsequent input lines continue without being consumed.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())

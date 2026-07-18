@@ -36,7 +36,7 @@ fn cycletime_reports_cycle_and_lead_for_completed_items() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "A"]).assert().success();
     pinto(dir.path()).args(["add", "B"]).assert().success();
-    // 2 件を完了へ移す（start_at / done_at が記録される）。
+    // Move both items to done; start_at and done_at are recorded.
     pinto(dir.path())
         .args(["move", "T-1", "done"])
         .assert()
@@ -119,7 +119,7 @@ fn cycletime_filters_by_sprint() {
         .assert()
         .success();
 
-    // S-1 に割り当てた 1 件のみが対象。
+    // Only the one item assigned to S-1 is included.
     pinto(dir.path())
         .args(["cycletime", "--sprint", "S-1"])
         .assert()
@@ -137,7 +137,7 @@ fn cycletime_filters_out_items_completed_before_the_since_bound() {
         .assert()
         .success();
 
-    // 完了は「今」なので、遠い未来を下限にすれば対象 0 件になる。
+    // Completion is based on the current time, so a far-future lower bound yields zero matches.
     pinto(dir.path())
         .args(["cycletime", "--since", "2999-01-01"])
         .assert()
@@ -238,7 +238,7 @@ fn sprint_new_with_date_only_period_shows_midnight_in_list() {
     )
     .expect("configure UTC display");
 
-    // 日付のみ指定は 00:00（UTC）として扱い、表示設定も UTC に固定する。
+    // A date-only value is interpreted as 00:00 UTC, and the display timezone is fixed to UTC.
     pinto(dir.path())
         .args([
             "sprint",
@@ -274,7 +274,7 @@ fn sprint_new_with_minute_precision_period_is_shown_in_list() {
     )
     .expect("configure UTC display");
 
-    // 分単位の時刻を扱い、そのまま UTC 一覧に表示する。
+    // Handle minute-level timestamps and show them unchanged in the UTC list.
     pinto(dir.path())
         .args([
             "sprint",
@@ -609,7 +609,7 @@ fn sprint_new_start_without_end_is_usage_error_code_1() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
-    // `--start` と `--end` は対で指定する（片方だけは使い方の誤り）。
+    // `--start` and `--end` must be provided together; specifying only one is invalid.
     pinto(dir.path())
         .args([
             "sprint",
@@ -939,7 +939,7 @@ fn sprint_add_and_unassign_assigns_and_unassigns_pbi() {
         .success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // 割り当て → show に反映。
+    // The assignment is reflected by show.
     pinto(dir.path())
         .args(["sprint", "add", "S-1", "T-1"])
         .assert()
@@ -951,7 +951,7 @@ fn sprint_add_and_unassign_assigns_and_unassigns_pbi() {
         .success()
         .stdout(predicate::str::contains("S-1"));
 
-    // 解除 → sprint フィールドが外れる。
+    // Unassignment removes the sprint field.
     pinto(dir.path())
         .args(["sprint", "unassign", "S-1", "T-1"])
         .assert()
@@ -1368,7 +1368,7 @@ fn sprint_burndown_renders_chart_with_period_and_remaining() {
         .args(["sprint", "add", "S-1", "T-2"])
         .assert()
         .success();
-    // T-1 を完了へ移す（残量が減る）。
+    // Move T-1 to done; the remaining work decreases.
     pinto(dir.path())
         .args(["move", "T-1", "done"])
         .assert()
@@ -1428,7 +1428,7 @@ fn sprint_burndown_without_period_guides_user_code_1() {
         .assert()
         .success();
 
-    // 計画日程が無いので描画できず、設定方法を案内する。
+    // Without planned dates, the report cannot be rendered and explains how to configure them.
     pinto(dir.path())
         .args(["sprint", "burndown", "S-1"])
         .assert()

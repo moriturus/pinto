@@ -5,6 +5,41 @@ All notable changes to pinto are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-18
+
+This minor 0.x release adds backlog discovery, recovery, diagnostics,
+machine-readable workflows, and richer Sprint and Kanban reporting.
+
+### Added
+
+- Added `pinto export --json` for read-only snapshots containing active PBIs,
+  Sprints, effective configuration, and the shared Definition of Done.
+- Added `pinto automate --schema` to print the Draft 2020-12 schema for safe
+  automation plans.
+- Added `pinto next` to find ranked, unstarted PBIs whose dependencies are
+  complete, with count, Sprint, and JSON options.
+- Added `pinto doctor` for board-integrity diagnostics and conservative
+  mechanical repairs with `--fix`.
+- Added archived-PBI inspection and recovery through `--archived` and
+  `pinto restore`.
+- Added ancestor board discovery, with `--dir` and `PINTO_DIR` overrides for
+  scripts and nested working directories.
+- Added stale-PBI filtering, exact assignee filters for `list` and `board`,
+  and Sprint/label filters for the Kanban view.
+- Added Markdown Acceptance Criteria progress in item details and long-form
+  list/board output, plus a warning when incomplete criteria reach the done
+  column.
+- Added Sprint close handling for unfinished work (`--rollover` and
+  `--release`), close-time spillover snapshots, and non-blocking load warnings
+  based on capacity and recent velocity.
+- Added support for supplying multiple label values after one `--label`
+  option; repeating the option remains supported.
+
+### Documentation
+
+- Added a reproducible local CI guide for `act` and expanded the CLI, data
+  format, JSON contract, and workflow documentation for the new commands.
+
 ## [0.2.0] - 2026-07-17
 
 This minor 0.x release makes the Git commit-link command name match its

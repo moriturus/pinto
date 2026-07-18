@@ -8,7 +8,7 @@ fn move_transitions_status_verified_before_and_after() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // 遷移前は todo。
+    // Before the transition, the item is todo.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -21,7 +21,7 @@ fn move_transitions_status_verified_before_and_after() {
         .success()
         .stdout(predicate::str::contains("in-progress"));
 
-    // 遷移後は in-progress。
+    // After the transition, the item is in-progress.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -35,7 +35,7 @@ fn move_records_start_and_done_timestamps() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // 追加直後は未着手・未完了。
+    // Immediately after creation, the item is neither started nor complete.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -43,7 +43,7 @@ fn move_records_start_and_done_timestamps() {
         .stdout(predicate::str::contains("Started:     -"))
         .stdout(predicate::str::contains("Completed:   -"));
 
-    // in-progress へ入ると start_at が記録される（done はまだ）。
+    // Entering in-progress records start_at; done_at is still unset.
     pinto(dir.path())
         .args(["move", "T-1", "in-progress"])
         .assert()
@@ -55,17 +55,17 @@ fn move_records_start_and_done_timestamps() {
     );
     assert_eq!(started["done_at"], serde_json::Value::Null);
 
-    // done へ入ると done_at が記録される。
+    // Entering done records done_at.
     pinto(dir.path())
         .args(["move", "T-1", "done"])
         .assert()
         .success();
     let done = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
     assert!(done["done_at"].is_string(), "done_at recorded: {done}");
-    // start_at は最初の着手時刻を保つ。
+    // start_at retains the first time work began.
     assert_eq!(done["start_at"], started["start_at"]);
 
-    // done を離れると done_at は消える（start_at は残る）。
+    // Leaving done clears done_at while retaining start_at.
     pinto(dir.path())
         .args(["move", "T-1", "in-progress"])
         .assert()
@@ -130,7 +130,7 @@ fn reorder_before_reference_updates_list_order() {
         pinto(dir.path()).args(["add", t]).assert().success();
     }
 
-    // C を A の前へ → 表示順 C, A, B。
+    // Move C before A; the display order becomes C, A, B.
     pinto(dir.path())
         .args(["reorder", "T-3", "--before", "T-1"])
         .assert()
@@ -163,7 +163,7 @@ fn reorder_keeps_status_unchanged() {
         .assert()
         .success();
 
-    // rank だけ変わり status は in-progress のまま。
+    // Only rank changes; status remains in-progress.
     let value = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
     assert_eq!(value["status"], "in-progress");
 }
@@ -187,7 +187,8 @@ fn reorder_without_target_is_user_error_code_1() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "A"]).assert().success();
 
-    // 移動先（--before/--after/--top/--bottom）未指定は clap の排他必須グループで弾く。
+    // Omitting a destination (--before/--after/--top/--bottom) is rejected by clap's required
+    // exclusive group.
     pinto(dir.path()).args(["reorder", "T-1"]).assert().code(1);
 }
 
@@ -198,7 +199,7 @@ fn reorder_with_conflicting_targets_is_user_error_code_1() {
     pinto(dir.path()).args(["add", "A"]).assert().success();
     pinto(dir.path()).args(["add", "B"]).assert().success();
 
-    // --top と --before の同時指定は排他グループ違反。
+    // Supplying --top and --before together violates the exclusive group.
     pinto(dir.path())
         .args(["reorder", "T-1", "--top", "--before", "T-2"])
         .assert()
@@ -218,7 +219,7 @@ fn move_to_unknown_column_errors() {
         .code(1)
         .stderr(predicate::str::contains("archived"));
 
-    // 状態は変わっていない。
+    // The state remains unchanged.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -260,7 +261,8 @@ fn move_transitions_multiple_items_to_status() {
         pinto(dir.path()).args(["add", t]).assert().success();
     }
 
-    // `mv` と同様、末尾を移動先として T-1 と T-3 をまとめて in-progress へ。
+    // Like `mv`, use the final operand as the destination and move T-1 and T-3 together to
+    // in-progress.
     pinto(dir.path())
         .args(["move", "T-1", "T-3", "in-progress"])
         .assert()
@@ -275,7 +277,7 @@ fn move_transitions_multiple_items_to_status() {
             .success()
             .stdout(predicate::str::contains("Status:      in-progress"));
     }
-    // 指定していない T-2 は todo のまま。
+    // Unspecified T-2 remains todo.
     pinto(dir.path())
         .args(["show", "T-2"])
         .assert()
@@ -290,7 +292,7 @@ fn move_multiple_continues_after_missing_id_and_exits_1() {
     pinto(dir.path()).args(["add", "A"]).assert().success();
     pinto(dir.path()).args(["add", "B"]).assert().success();
 
-    // 存在しない T-99 は黙って無視せずエラーにするが、T-1・T-2 は移動する。
+    // Missing T-99 is reported instead of ignored, while T-1 and T-2 are moved.
     pinto(dir.path())
         .args(["move", "T-99", "T-1", "T-2", "in-progress"])
         .assert()
@@ -315,7 +317,7 @@ fn move_requires_id_and_status() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "A"]).assert().success();
 
-    // 移動先ステータスを伴わない単独指定は clap が弾く。
+    // A lone ID without a destination status is rejected by clap.
     pinto(dir.path())
         .args(["move", "T-1"])
         .assert()
@@ -331,14 +333,14 @@ fn move_over_wip_limit_warns_on_stderr_but_succeeds() {
     pinto(dir.path()).args(["add", "B"]).assert().success();
     set_wip_limit(dir.path(), "in-progress", 1, true);
 
-    // 1 件目は上限内 → 警告なし。
+    // The first item stays within the limit, so no warning is emitted.
     pinto(dir.path())
         .args(["move", "T-1", "in-progress"])
         .assert()
         .success()
         .stderr(predicate::str::contains("WIP limit").not());
 
-    // 2 件目で上限超過 → 移動は成功（コード 0）だが stderr に警告。
+    // The second item exceeds the limit; the move still succeeds (exit code 0) but warns on stderr.
     pinto(dir.path())
         .args(["move", "T-2", "in-progress"])
         .assert()
@@ -377,7 +379,8 @@ fn move_multiple_over_wip_limit_warns_once() {
     pinto(dir.path()).args(["add", "B"]).assert().success();
     set_wip_limit(dir.path(), "in-progress", 1, true);
 
-    // 一括移動で上限超過 → 両方成功しつつ、超過警告は宛先について一度だけ出す。
+    // A bulk move can exceed the limit while both moves succeed; the destination warning appears
+    // only once.
     let assert = pinto(dir.path())
         .args(["move", "T-1", "T-2", "in-progress"])
         .assert()
@@ -416,7 +419,7 @@ fn move_over_wip_limit_disabled_in_config_is_silent() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "A"]).assert().success();
     pinto(dir.path()).args(["add", "B"]).assert().success();
-    // enabled=false ならプロジェクト全体で無効。
+    // enabled=false disables the check for the entire project.
     set_wip_limit(dir.path(), "in-progress", 1, false);
     pinto(dir.path())
         .args(["move", "T-1", "in-progress"])

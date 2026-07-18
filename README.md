@@ -57,6 +57,18 @@ The published book is available at [moriturus.github.io/pinto](https://moriturus
 The [`pages.yml`](.github/workflows/pages.yml) workflow rebuilds and deploys it to GitHub Pages on
 pushes to `main` and on manual dispatch.
 
+## Selecting a board
+
+Board commands search the current directory first and then walk up through its
+ancestors for `.pinto/config.toml`. The search stops after checking a directory
+containing `.git`, or at the filesystem root. This lets you run pinto from a
+repository subdirectory while still using the nearest board.
+
+Use `--dir PATH` or `PINTO_DIR=PATH` when a script or agent needs a different
+board; `PATH` may be either the project directory or its `.pinto` directory.
+`pinto init` still initializes the current directory unless one of these
+overrides is supplied.
+
 ## Quick start
 
 ```bash
@@ -118,6 +130,7 @@ done (0)
 | `pinto migrate --to <backend>` | Move a board between the file, Git, and optional SQLite storage backends. |
 | `pinto automate --plan <JSON/PATH/->` | Validate and execute a structured plan from inline JSON, a file, or standard input; add `--dry-run` or `--json` for safe previews and machine-readable results. |
 | `pinto automate --schema` | Print the machine-readable JSON Schema for the safe automation-plan envelope without requiring a board or execution plan. |
+| `pinto doctor` | Check board integrity after hand edits, interrupted migrations, or copied records; use `--fix` for safe mechanical repairs. |
 | `pinto shell` | Start the interactive shell with history, editing, and completion. |
 | `pinto completion <shell>` | Print a completion script for a supported shell. |
 
@@ -157,8 +170,16 @@ pinto board --roots-only --status todo --long
 pinto board --long --acceptance-criteria
 pinto kanban --column in-progress
 pinto kanban --sprint S-1 --label backend cli --all-labels --search parser --regex
+pinto doctor
+pinto doctor --fix
 pinto rebalance --dry-run
 ```
+
+Run `pinto doctor` after hand-editing board files, recovering from an
+interrupted migration, or copying records between boards. It reports the
+location and repair direction for each integrity issue; `--fix` applies only
+unambiguous mechanical repairs and leaves relationship, duplicate, status,
+rank, and collision decisions for you.
 
 `pinto next` is read-only. It considers PBIs in the first configured workflow column as
 unstarted, excludes the configured `done_column`, and returns only items whose declared

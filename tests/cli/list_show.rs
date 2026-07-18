@@ -77,7 +77,7 @@ fn list_shows_items_in_rank_order() {
         .stdout(predicate::str::contains("First"))
         .stdout(predicate::str::contains("T-2"))
         .stdout(predicate::str::contains("Second"))
-        // 追加順（rank 昇順）で T-1 が T-2 より前に出る。
+        // In insertion/rank order, T-1 appears before T-2.
         .stdout(predicate::str::is_match("(?s)T-1.*T-2").unwrap());
 }
 
@@ -454,7 +454,7 @@ fn list_filters_by_status_shows_empty_message() {
         .assert()
         .success();
 
-    // 既定は todo 列。存在しない done で絞ると 0 件のメッセージ。
+    // The default is the todo column; filtering by nonexistent done yields the zero-match message.
     pinto(dir.path())
         .args(["list", "--status", "done"])
         .assert()
@@ -637,7 +637,7 @@ fn list_long_shows_metadata_columns() {
             .stdout(predicate::str::contains('5'))
             .stdout(predicate::str::contains("backend"))
             .stdout(predicate::str::contains("S-1"))
-            // ヘッダ行に列名が出る。
+            // Column names appear in the header row.
             .stdout(predicate::str::contains("STATUS"))
             .stdout(predicate::str::contains("CREATED"))
             .stdout(predicate::str::contains("UPDATED"));
@@ -850,7 +850,7 @@ fn list_without_long_flag_keeps_concise_output() {
         .assert()
         .success();
 
-    // 既定表示（フラグ無し）ではヘッダ行や CREATED/UPDATED 列は出ない（従来どおり）。
+    // Without flags, headers and CREATED/UPDATED columns are omitted (legacy behavior).
     pinto(dir.path())
         .arg("list")
         .assert()
@@ -889,8 +889,8 @@ fn list_long_with_json_ignores_long_and_keeps_json_schema() {
         .assert()
         .success();
 
-    // `--json` は元々全メタ情報を含むため、`-l` を併用しても JSON スキーマは変わらない
-    // （`-l` は無視される）。
+    // `--json` already includes all metadata, so combining it with `-l` does not change the JSON
+    // schema (`-l` is ignored).
     let with_long = json_stdout(pinto(dir.path()).args(["list", "--json", "-l"]));
     let without_long = json_stdout(pinto(dir.path()).args(["list", "--json"]));
     assert_eq!(with_long, without_long);
@@ -994,7 +994,7 @@ fn show_renders_markdown_body_by_default_and_plain_opts_out() {
         .assert()
         .success();
 
-    // 既定では Markdown レンダリング: 見出し記法 (`# `) は消え、本文は残る。
+    // Default Markdown rendering removes heading syntax (`# `) but keeps the body.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -1003,7 +1003,7 @@ fn show_renders_markdown_body_by_default_and_plain_opts_out() {
         .stdout(predicate::str::contains("# Heading").not())
         .stdout(predicate::str::contains("**bold**").not());
 
-    // --plain は生の Markdown をそのまま表示する（オプトアウト手段）。
+    // --plain prints the raw Markdown unchanged as an opt-out.
     pinto(dir.path())
         .args(["show", "T-1", "--plain"])
         .assert()
@@ -1019,14 +1019,14 @@ fn show_presents_rank_as_human_readable_ordinal() {
     pinto(dir.path()).args(["add", "First"]).assert().success();
     pinto(dir.path()).args(["add", "Second"]).assert().success();
 
-    // 2 番目に追加した PBI は todo 列の #2。
+    // The second PBI added is #2 in the todo column.
     pinto(dir.path())
         .args(["show", "T-2"])
         .assert()
         .success()
         .stdout(predicate::str::contains("#2"));
 
-    // --json は rank_ordinal を数値で持つ（内部の rank 文字列も維持）。
+    // --json represents rank_ordinal as a number while retaining the internal rank string.
     let value = show_json(pinto(dir.path()).args(["show", "T-2", "--json"]));
     assert_eq!(value["rank_ordinal"], 2);
     assert!(value["rank"].is_string(), "raw rank string preserved");
@@ -1180,8 +1180,8 @@ fn list_with_one_corrupt_file_among_valid_fails_whole_without_partial_output() {
     pinto(dir.path()).args(["add", "Alpha"]).assert().success(); // T-1
     pinto(dir.path()).args(["add", "Bravo"]).assert().success(); // T-2
 
-    // 正常な T-1 を残し、T-2 だけ壊す。1 件でも壊れると list 全体が失敗し、
-    // 部分結果（Alpha）は一切出力しない（並列パースのエラー伝播を結合レベルで固定）。
+    // Keep valid T-1 and corrupt only T-2. If any item is corrupt, list fails as a whole and emits
+    // no partial result (Alpha), fixing parallel parse error propagation at the integration level.
     std::fs::write(
         dir.path().join(".pinto/tasks/T-2.md"),
         "no frontmatter here",
@@ -1217,7 +1217,7 @@ fn list_json_outputs_stable_item_schema() {
     let items = value.as_array().expect("list --json is an array");
     assert_eq!(items.len(), 2, "both items present");
 
-    // rank 昇順（追加順）。
+    // Ascending rank (insertion order).
     let first = &items[0];
     assert_eq!(first["id"], "T-1");
     assert_eq!(first["title"], "First");
@@ -1225,7 +1225,7 @@ fn list_json_outputs_stable_item_schema() {
     assert_eq!(first["points"], 3);
     assert_eq!(first["labels"], serde_json::json!(["backend"]));
     assert_eq!(first["sprint"], "S-1");
-    // 任意フィールドはキーを常に持ち、未設定は null（安定スキーマ）。
+    // Optional fields always have a key; unset values are null (stable schema).
     assert!(first.get("assignee").is_some(), "assignee key present");
     assert_eq!(first["assignee"], serde_json::Value::Null);
     assert_eq!(first["parent"], serde_json::Value::Null);
@@ -1330,7 +1330,7 @@ fn show_json_reports_item_with_links() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Epic"]).assert().success();
     pinto(dir.path()).args(["add", "Story"]).assert().success();
-    // Story を Epic の子にし、Epic は Story に依存させる（双方向リンクを作る）。
+    // Make Story a child of Epic and make Epic depend on Story (create bidirectional links).
     pinto(dir.path())
         .args(["edit", "T-2", "--parent", "T-1"])
         .assert()

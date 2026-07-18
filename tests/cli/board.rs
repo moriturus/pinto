@@ -77,14 +77,14 @@ fn board_groups_items_under_columns_in_order() {
         .arg("board")
         .assert()
         .success()
-        // 列見出しと件数（T-2 を移動したので todo は 1 件）。
+        // Column headers and counts (todo has one item after moving T-2).
         .stdout(predicate::str::contains("todo (1)"))
         .stdout(predicate::str::contains("in-progress (1)"))
         .stdout(predicate::str::contains("Alpha"))
         .stdout(predicate::str::contains("Beta"))
-        // 列は config 順（todo が in-progress より前）。
+        // Columns follow config order (todo comes before in-progress).
         .stdout(predicate::str::is_match("(?s)todo.*in-progress").unwrap())
-        // 空の列も見出しを出す。
+        // Empty columns still have a header.
         .stdout(predicate::str::contains("done (0)"))
         .stdout(predicate::str::contains("(empty)"));
 }
@@ -268,7 +268,7 @@ fn board_status_filter_shows_only_requested_columns() {
         .assert()
         .success();
 
-    // --status を複数指定 → その列のみ（review / done は現れない）。
+    // Multiple --status values select only those columns; review and done are absent.
     pinto(dir.path())
         .args(["board", "--status", "todo", "--status", "in-progress"])
         .assert()
@@ -526,12 +526,12 @@ fn board_label_filter_supports_multiple_labels_with_or_and_and_matching() {
 fn board_sort_created_reverse_orders_columns() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
-    // 追加順 = created 昇順（A, B, C）。
+    // Insertion order is ascending creation time (A, B, C).
     for t in ["A", "B", "C"] {
         pinto(dir.path()).args(["add", t]).assert().success();
     }
 
-    // --sort created --reverse → 新しい順（C, B, A）。
+    // --sort created --reverse produces newest-first order (C, B, A).
     let value =
         json_stdout(pinto(dir.path()).args(["board", "--sort", "created", "--reverse", "--json"]));
     let todo = value["columns"]
@@ -558,7 +558,7 @@ fn board_sort_created_reverse_orders_columns() {
 fn board_sort_rejects_unknown_key() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
-    // clap の value_enum 検証で弾かれる（解釈エラー → コード 1）。
+    // Clap's value_enum validation rejects it (a parsing error mapped to exit code 1).
     pinto(dir.path())
         .args(["board", "--sort", "bogus"])
         .assert()
@@ -576,7 +576,7 @@ fn board_renders_parent_child_as_tree() {
         .assert()
         .success();
 
-    // 親子は同じ列内でツリー表示（子が罫線付きでネスト）。
+    // Parent and child are rendered as a tree within the same column (the child is indented).
     pinto(dir.path())
         .arg("board")
         .assert()
@@ -594,7 +594,7 @@ fn board_renders_dependencies_as_flat_markers_not_tree() {
         .args(["add", "Dependent"])
         .assert()
         .success();
-    // T-2 が T-1 に依存。依存はツリーのネストにはせず、フラット＋マーカー行で表す
+    // T-2 depends on T-1. Dependencies stay flat rather than nesting in the tree and use marker rows.
     // Kanban uses the same semantics: the tree represents only parent-child links.
     pinto(dir.path())
         .args(["dep", "add", "T-2", "T-1"])
@@ -619,7 +619,7 @@ fn board_shows_dependency_markers_with_legend() {
         .args(["add", "Dependent"])
         .assert()
         .success();
-    // T-2 が T-1 に依存 → 依存先/依存元マーカーと凡例が出る。
+    // When T-2 depends on T-1, dependency markers for both directions and a legend are shown.
     pinto(dir.path())
         .args(["dep", "add", "T-2", "T-1"])
         .assert()
@@ -651,7 +651,7 @@ fn board_marks_blocked_items() {
         .assert()
         .success();
 
-    // T-1 が未完了のうちは T-2 はブロック中（⊸!）。
+    // T-2 is blocked while T-1 is incomplete (⊸!).
     pinto(dir.path())
         .arg("board")
         .assert()
@@ -659,7 +659,7 @@ fn board_marks_blocked_items() {
         .stdout(predicate::str::contains("⊸! T-1"))
         .stdout(predicate::str::contains("⊸ T-1").not());
 
-    // T-1 を完了させるとブロックが解消され、`⊸!` は付かなくなる。
+    // Completing T-1 clears the block, so `⊸!` is no longer shown.
     pinto(dir.path())
         .args(["move", "T-1", "done"])
         .assert()
@@ -683,7 +683,7 @@ fn board_json_keeps_flat_items_with_relationship_fields() {
         .assert()
         .success();
 
-    // --json は従来どおりフラット＋関係情報（parent）を保つ。
+    // --json remains flat and retains relationship data such as parent.
     let value = json_stdout(pinto(dir.path()).args(["board", "--json"]));
     let todo = value["columns"]
         .as_array()
@@ -727,7 +727,7 @@ fn board_warns_about_items_in_undefined_columns() {
         .assert()
         .success();
 
-    // ユーザーが config を手編集し `review` 列を削除 → T-2 は未定義の列を指す。
+    // Manually remove the `review` column from config, leaving T-2 in an undefined column.
     std::fs::write(
         dir.path().join(".pinto/config.toml"),
         "columns = [\"todo\", \"in-progress\", \"done\"]\ndone_column = \"done\"\n\n[project]\nname = \"test\"\nkey = \"T\"\n\n[tui]\nconfirm_quit = true\n\n[storage]\nbackend = \"file\"\n\n[wip]\nenabled = true\n",
@@ -737,11 +737,11 @@ fn board_warns_about_items_in_undefined_columns() {
     pinto(dir.path())
         .arg("board")
         .assert()
-        .success() // 表示自体は成功（終了コード 0）。
-        // 取り残された PBI は握り潰さず、専用セクションで現在状態を併記。
+        .success() // Rendering itself succeeds (exit code 0).
+        // The stranded PBI is not discarded; its current state appears in a dedicated section.
         .stdout(predicate::str::contains("(!) undefined columns (1)"))
         .stdout(predicate::str::contains("T-2  Stranded  [review]"))
-        // 直し方を添えた警告を stderr に出す。
+        // stderr contains a warning with instructions for fixing it.
         .stderr(predicate::str::contains("not defined in config.toml"))
         .stderr(predicate::str::contains("T-2"));
 }
@@ -762,7 +762,7 @@ fn board_warns_when_column_exceeds_wip_limit() {
         .assert()
         .success();
 
-    // board 表示自体は成功（コード 0）だが、超過列を stderr で警告。
+    // Board rendering succeeds (exit code 0), but an over-limit column is warned about on stderr.
     pinto(dir.path())
         .arg("board")
         .assert()
@@ -771,7 +771,7 @@ fn board_warns_when_column_exceeds_wip_limit() {
             "WIP limit exceeded in 'in-progress'",
         ));
 
-    // --no-wip-check で警告を抑止できる。
+    // --no-wip-check suppresses the warning.
     pinto(dir.path())
         .args(["board", "--no-wip-check"])
         .assert()
@@ -781,7 +781,7 @@ fn board_warns_when_column_exceeds_wip_limit() {
 
 #[test]
 fn board_json_output_suppresses_wip_warning() {
-    // 機械可読出力（--json）は stdout の JSON のみに保ち、WIP 警告を混ぜない。
+    // Machine-readable output (--json) keeps stdout as JSON only and does not mix in WIP warnings.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "A"]).assert().success();
@@ -805,7 +805,7 @@ fn board_json_output_suppresses_wip_warning() {
 
 #[test]
 fn board_without_wip_config_has_no_warning() {
-    // `init` 既定の `[wip]`（有効・制限なし）では、上限が無いため警告を出さない。
+    // The default [wip] configuration is enabled but has no limits, so it emits no warning.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "A"]).assert().success();
@@ -893,7 +893,7 @@ fn board_done_column_shows_most_recent_completion_first() {
     pinto(dir.path()).args(["add", "First"]).assert().success();
     pinto(dir.path()).args(["add", "Second"]).assert().success();
     pinto(dir.path()).args(["add", "Third"]).assert().success();
-    // 完了順に done へ（T-1 が最も古く、T-3 が最も新しい完了）。
+    // Move items to done in completion order; T-1 is oldest and T-3 is newest.
     for id in ["T-1", "T-2", "T-3"] {
         pinto(dir.path())
             .args(["move", id, "done"])
@@ -914,7 +914,7 @@ fn board_done_column_shows_most_recent_completion_first() {
         .iter()
         .map(|it| it["id"].as_str().unwrap().to_string())
         .collect();
-    // 最新完了が先頭（降順）: T-3, T-2, T-1。
+    // Most recently completed appears first (descending): T-3, T-2, T-1.
     assert_eq!(
         ids,
         ["T-3", "T-2", "T-1"],
@@ -936,7 +936,7 @@ fn board_json_reports_orphaned_items() {
         .assert()
         .success();
 
-    // ユーザーが config を手編集し `review` 列を削除 → T-2 は未定義の列を指す。
+    // Manually remove the `review` column from config, leaving T-2 in an undefined column.
     std::fs::write(
         dir.path().join(".pinto/config.toml"),
         "columns = [\"todo\", \"in-progress\", \"done\"]\ndone_column = \"done\"\n\n[project]\nname = \"test\"\nkey = \"T\"\n\n[tui]\nconfirm_quit = true\n\n[storage]\nbackend = \"file\"\n\n[wip]\nenabled = true\n",
@@ -952,7 +952,7 @@ fn board_json_reports_orphaned_items() {
 
 #[test]
 fn board_truncates_long_titles_to_default_width_when_not_a_tty() {
-    // 非 TTY（パイプ）では既定幅 80 桁にフォールバックし、長文を省略する。
+    // Without a TTY (when piped), the output falls back to an 80-column width and truncates long text.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -975,7 +975,7 @@ fn board_truncates_long_titles_to_default_width_when_not_a_tty() {
 
 #[test]
 fn board_truncates_fullwidth_titles_by_display_width() {
-    // 全角のみのタイトルも表示幅ベースで既定幅に収まるよう切り詰める。
+    // A title made entirely of full-width characters is also truncated by display width to fit.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -997,7 +997,7 @@ fn board_no_truncate_shows_full_long_title() {
     let long = "y".repeat(200);
     pinto(dir.path()).args(["add", &long]).assert().success();
 
-    // 既定は省略、--no-truncate は全文表示。
+    // Truncation is the default; --no-truncate displays the full text.
     let out = pinto(dir.path()).arg("board").assert().success();
     let default_stdout = String::from_utf8(out.get_output().stdout.clone()).expect("utf8");
     assert!(default_stdout.contains('…'), "default truncates");
@@ -1022,7 +1022,7 @@ fn board_full_alias_matches_no_truncate() {
     let long = "z".repeat(200);
     pinto(dir.path()).args(["add", &long]).assert().success();
 
-    // `--full` は `--no-truncate` のエイリアス。
+    // `--full` is an alias for `--no-truncate`.
     pinto(dir.path())
         .args(["board", "--full"])
         .assert()

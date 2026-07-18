@@ -30,7 +30,7 @@ fn edit_updates_fields_and_persists() {
         .stdout(predicate::str::contains("Updated T-1"))
         .stdout(predicate::str::contains("New title"));
 
-    // 変更が永続化され、show で確認できる。
+    // The change is persisted and visible in show.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -111,7 +111,8 @@ fn edit_with_no_fields_and_no_editor_guides_user() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // フィールド指定が無く `$EDITOR` も未設定なら、設定方法とフィールド編集を案内する。
+    // With no field specified and no `$EDITOR`, the output explains how to configure an editor and
+    // how to edit fields explicitly.
     pinto(dir.path())
         .args(["edit", "T-1"])
         .env_remove("EDITOR")
@@ -130,7 +131,7 @@ fn edit_without_fields_opens_editor_and_applies_changes() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // `$EDITOR` がタイトル行を書き換える。保存後に検証され PBI へ反映される。
+    // `$EDITOR` rewrites the title line; the saved content is validated and applied to the PBI.
     let ed = editor_script(
         dir.path(),
         "ed.sh",
@@ -145,7 +146,7 @@ fn edit_without_fields_opens_editor_and_applies_changes() {
         .stdout(predicate::str::contains("Updated T-1"))
         .stdout(predicate::str::contains("Edited in editor"));
 
-    // 永続化を確認する（.pinto は pinto コマンド経由でのみ参照する）。
+    // Verify persistence; access `.pinto` only through pinto commands.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -192,7 +193,7 @@ fn edit_without_fields_no_change_reports_unchanged() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // `true` は引数を無視し一時ファイルを変更しない＝キャンセル相当。
+    // `true` ignores its arguments and leaves the temporary file unchanged, representing cancel.
     pinto(dir.path())
         .args(["edit", "T-1"])
         .env("EDITOR", "true")
@@ -209,7 +210,7 @@ fn edit_without_fields_rejects_invalid_content_and_preserves_data() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // frontmatter を壊す編集は反映せず、元データを保つ。
+    // An edit that corrupts the frontmatter is rejected and the original data is preserved.
     let marker = dir.path().join("editor-buffer-path");
     let ed = editor_script(
         dir.path(),
@@ -229,7 +230,7 @@ fn edit_without_fields_rejects_invalid_content_and_preserves_data() {
     let buffer_path = std::fs::read_to_string(marker).expect("editor recorded buffer path");
     assert!(!Path::new(buffer_path.trim()).exists());
 
-    // 元のタイトルが保たれている。
+    // The original title is preserved.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -298,7 +299,7 @@ fn rm_archives_by_default() {
         .success()
         .stdout(predicate::str::contains("Archived T-1"));
 
-    // タスクは tasks から消え、アーカイブへ退避される。
+    // The task is removed from tasks and moved to the archive.
     assert!(
         dir.path().join(".pinto/archive/T-1.md").is_file(),
         "archived file should exist"
@@ -307,7 +308,7 @@ fn rm_archives_by_default() {
         !dir.path().join(".pinto/tasks/T-1.md").exists(),
         "task file should be moved out of tasks/"
     );
-    // show では見つからない。
+    // show no longer finds it.
     pinto(dir.path())
         .args(["show", "T-1"])
         .assert()
@@ -425,7 +426,7 @@ fn rm_force_deletes_permanently() {
         .success()
         .stdout(predicate::str::contains("Deleted T-1"));
 
-    // 物理削除はアーカイブに残さない。
+    // Physical deletion leaves no archive record.
     assert!(
         !dir.path().join(".pinto/archive/T-1.md").exists(),
         "force delete must not archive"

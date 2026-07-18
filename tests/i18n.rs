@@ -1,4 +1,4 @@
-//! 国際化のロケール選択と CLI 統合テスト。
+//! Integration tests for locale selection and CLI localization.
 
 use assert_cmd::Command;
 use pinto::i18n::{Locale, Message, locale_name_from, localizer_from};
@@ -173,11 +173,11 @@ fn cli_uses_japanese_messages_for_a_japanese_locale() {
         .stdout(predicate::str::contains("pinto ボードを初期化しました:"));
 }
 
-/// ローカライズ経路（`localize_command` の `mut_args`）はヘルプ文言だけを差し替え、
-/// サブコマンド別名と short option の構文を保持する回帰ガード。
+/// Regression guard for the localization path: `localize_command`'s `mut_args`
+/// may replace help text, but must preserve subcommand aliases and short-option syntax.
 #[test]
 fn localized_help_preserves_aliases_and_short_options() {
-    // トップレベルの別名（新設: dep→d / link→ln / dod→dd / migrate→mig / automate→auto）。
+    // Top-level aliases (added here: dep→d, link→ln, dod→dd, migrate→mig, automate→auto).
     let mut top = Command::cargo_bin("pinto").expect("binary builds");
     top.args(["--help"])
         .env("LC_ALL", "ja_JP.UTF-8")
@@ -187,7 +187,7 @@ fn localized_help_preserves_aliases_and_short_options() {
         .stdout(predicate::str::contains("aliases: ln]"))
         .stdout(predicate::str::contains("aliases: auto]"));
 
-    // サブコマンドの short option（新設: board の -o/-f/-j/-w）。
+    // Subcommand short options (including board's -o, -f, -j, and -w).
     let mut board = Command::cargo_bin("pinto").expect("binary builds");
     board
         .args(["board", "--help"])

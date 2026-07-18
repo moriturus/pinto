@@ -211,7 +211,7 @@ fn ls_alias_works() {
 fn no_subcommand_is_usage_error() {
     let dir = TempDir::new().expect("temp dir");
 
-    // 引数の使い方の誤りはユーザーエラー = 終了コード 1（内部エラー 2 と区別する）。
+    // Invalid argument usage is a user error (exit code 1), distinct from internal error 2.
     pinto(dir.path())
         .assert()
         .failure()
@@ -248,7 +248,7 @@ fn missing_required_argument_is_user_error_code_1() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
-    // `add` はタイトル必須。欠落は使い方の誤り = 1。
+    // `add` requires a title; omitting it is a usage error mapped to exit code 1.
     pinto(dir.path())
         .arg("add")
         .assert()
@@ -262,7 +262,7 @@ fn invalid_option_value_is_user_error_code_1() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
-    // `--points` は数値。非数値は使い方の誤り = 1。
+    // `--points` is numeric; a non-numeric value is a usage error mapped to exit code 1.
     pinto(dir.path())
         .args(["add", "Task", "--points", "abc"])
         .assert()
@@ -285,7 +285,7 @@ fn unknown_subcommand_is_user_error_code_1() {
 fn help_flag_exits_success_code_0() {
     let dir = TempDir::new().expect("temp dir");
 
-    // --help は要求どおりの表示 = 成功(0)、出力は stdout。
+    // --help produces the requested output successfully (exit code 0) on stdout.
     pinto(dir.path())
         .arg("--help")
         .assert()
@@ -295,7 +295,7 @@ fn help_flag_exits_success_code_0() {
 
 #[test]
 fn init_writes_default_file_storage_backend() {
-    // `init` は保存先バックエンド（既定 file）を config に明示し、発見可能にする。
+    // `init` records the selected storage backend (file by default) in config for discoverability.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
@@ -309,8 +309,8 @@ fn init_writes_default_file_storage_backend() {
 
 #[test]
 fn unknown_storage_backend_is_a_user_error_not_panic() {
-    // 未知のバックエンド値は握り潰さず、直し方の分かるパースエラー（ユーザーエラー = 1）にする。
-    // `sqlite` は sqlite 機能を有効化すると正規の値になるため、常に未知である架空の値で検証する。
+    // An unknown backend is reported as an actionable parse error (user error, exit code 1), not
+    // ignored. Since `sqlite` is valid with the feature enabled, use a value that is always unknown.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     std::fs::write(
@@ -402,7 +402,7 @@ timezone = "local"
 
 #[test]
 fn file_backend_roundtrips_add_and_list() {
-    // 既定（file）でバックエンド抽象化を経ても既存挙動が不変であることを確認する。
+    // Verify that the default file backend preserves existing behavior through the backend abstraction.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path())
@@ -419,16 +419,16 @@ fn file_backend_roundtrips_add_and_list() {
 
 #[test]
 fn git_backend_commits_each_change_through_cli() {
-    // 一時 git リポジトリ（tempfile 隔離）で、CLI 経由の変更操作ごとにコミットされることを
-    // エンドツーエンドに確認する。git 未初期化からの自動 init と、ambient な git
-    // identity が無い環境（= 素の CI ランナー）での identity フォールバックも併せて検証する。
+    // In an isolated temporary Git repository, verify end to end that each CLI write creates a
+    // commit. Also cover automatic initialization and the fallback identity used on a bare CI
+    // runner with no ambient Git identity.
     let dir = TempDir::new().expect("temp dir");
     pinto_isolated_git(dir.path())
         .arg("init")
         .assert()
         .success();
 
-    // config.toml で git バックエンドを選択する（手編集で選べる = ユーザーの操作を再現）。
+    // Select the Git backend in config.toml, reproducing a user hand-edit.
     let config_path = dir.path().join(".pinto/config.toml");
     let config = std::fs::read_to_string(&config_path).expect("config");
     std::fs::write(
@@ -437,7 +437,7 @@ fn git_backend_commits_each_change_through_cli() {
     )
     .expect("write config");
 
-    // 事前に git リポジトリではない。
+    // The directory is not a Git repository beforehand.
     assert!(!dir.path().join(".git").exists());
 
     pinto_isolated_git(dir.path())
@@ -449,14 +449,14 @@ fn git_backend_commits_each_change_through_cli() {
         .assert()
         .success();
 
-    // 自動初期化され、変更操作ごとにコミットが積まれている。
+    // Git is initialized automatically and each write operation creates a commit.
     assert!(
         dir.path().join(".git").exists(),
         "auto-initialized git repo"
     );
     let subjects = git_log_field(dir.path(), "%s");
     assert_eq!(subjects, ["pinto: update T-1", "pinto: add T-1"]);
-    // ambient identity が無いので pinto 既定 identity で著者付けされている。
+    // With no ambient identity, the commit uses pinto's default author identity.
     let authors = git_log_field(dir.path(), "%ae");
     assert_eq!(authors, ["pinto@localhost", "pinto@localhost"]);
 }
@@ -627,8 +627,8 @@ fn git_backend_commits_item_sprint_dod_and_removal_mutations() {
 
 #[test]
 fn git_backend_warns_before_auto_initializing_a_repository() {
-    // Git バックエンドは最初の書き込みで `git init` を実行するため、意図しない初期化を
-    // 見逃さないよう、CLI 経由で明確な警告を出す。
+    // The Git backend runs `git init` on the first write, so the CLI emits an explicit warning to
+    // make an otherwise unexpected initialization visible.
     let dir = TempDir::new().expect("temp dir");
     pinto_isolated_git(dir.path())
         .arg("init")
@@ -1011,8 +1011,8 @@ fn corrupt_config_is_user_error_code_1_without_panic() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
-    // 設定ファイルを壊す（手編集・破損を想定）。パースエラーはユーザーエラー = 1。
-    // `board` は列定義を読むため config をパースする（`list` は読まない）。
+    // Corrupt the configuration as if it were damaged by hand; the parse error is user error 1.
+    // `board` parses config to read column definitions, whereas `list` does not.
     std::fs::write(dir.path().join(".pinto/config.toml"), "columns = = broken")
         .expect("corrupt config");
 
@@ -1021,7 +1021,7 @@ fn corrupt_config_is_user_error_code_1_without_panic() {
         .assert()
         .failure()
         .code(1)
-        // panic ではなく、直し方の分かる整形済みメッセージで終了する。
+        // Exit with a formatted, actionable message rather than panicking.
         .stderr(predicate::str::contains("config.toml"))
         .stderr(predicate::str::contains("panicked").not());
 }
@@ -1031,7 +1031,7 @@ fn config_missing_required_section_is_user_error_code_1_without_panic() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
-    // 必須の [tui] セクションを手編集で削除した設定を想定する。
+    // Simulate a hand-edited configuration with the required [tui] section removed.
     std::fs::write(
         dir.path().join(".pinto/config.toml"),
         "columns = [\"todo\", \"done\"]\ndone_column = \"done\"\n\n[project]\nname = \"x\"\nkey = \"T\"\n\n[storage]\nbackend = \"file\"\n\n[wip]\nenabled = true\n",
@@ -1053,7 +1053,7 @@ fn corrupt_task_file_is_user_error_code_1_without_panic() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // frontmatter 区切りを欠いた壊れたタスクファイルにする。
+    // Create a corrupt task file with its frontmatter delimiter missing.
     std::fs::write(
         dir.path().join(".pinto/tasks/T-1.md"),
         "no frontmatter here",
@@ -1074,7 +1074,7 @@ fn corrupt_frontmatter_is_user_error_code_1_without_panic() {
     pinto(dir.path()).arg("init").assert().success();
     pinto(dir.path()).args(["add", "Task"]).assert().success();
 
-    // Frontmatter の TOML 自体が壊れた手編集を想定する。
+    // Simulate a hand edit that corrupts the TOML in the frontmatter.
     std::fs::write(dir.path().join(".pinto/tasks/T-1.md"), "+++\nid = [\n+++\n")
         .expect("corrupt frontmatter");
 
@@ -1189,7 +1189,7 @@ fn migrate_to_sqlite_switches_backend_and_persists() {
         .stdout(predicate::str::contains("Migrated 1 item(s)"))
         .stdout(predicate::str::contains("now sqlite"));
 
-    // config が切り替わり、DB ファイルが生成されている。
+    // The configuration switches and the database file is created.
     let config = std::fs::read_to_string(dir.path().join(".pinto/config.toml")).expect("config");
     assert!(config.contains("backend = \"sqlite\""), "backend switched");
     assert!(
@@ -1197,14 +1197,14 @@ fn migrate_to_sqlite_switches_backend_and_persists() {
         "db file created"
     );
 
-    // 以降の `list` は SQLite から読む（ドッグフーディング相当）。
+    // Subsequent `list` commands read from SQLite, providing an end-to-end backend check.
     pinto(dir.path())
         .arg("list")
         .assert()
         .success()
         .stdout(predicate::str::contains("Persisted task"));
 
-    // 追加操作も SQLite 側に効く。
+    // Add operations also update the SQLite backend.
     pinto(dir.path())
         .args(["add", "Second on sqlite"])
         .assert()
@@ -1226,7 +1226,7 @@ fn sqlite_normalized_schema_roundtrips_via_cli() {
         .assert()
         .success();
 
-    // ラベル（多値）とポイント（型付き任意カラム）を持つ PBI を追加する。
+    // Add a PBI with multiple labels and points (a typed optional field).
     pinto(dir.path())
         .args([
             "add", "First", "--label", "backend", "--label", "urgent", "--points", "5",
@@ -1235,13 +1235,13 @@ fn sqlite_normalized_schema_roundtrips_via_cli() {
         .success();
     pinto(dir.path()).args(["add", "Second"]).assert().success();
 
-    // 依存（多値・関連テーブル）を張る。
+    // Add a dependency stored in the related table.
     pinto(dir.path())
         .args(["dep", "add", "T-2", "T-1"])
         .assert()
         .success();
 
-    // ラベル・ポイントが list に反映される（型付きカラムから復元）。
+    // list restores labels and points from the typed columns.
     pinto(dir.path())
         .arg("list")
         .assert()
@@ -1249,14 +1249,14 @@ fn sqlite_normalized_schema_roundtrips_via_cli() {
         .stdout(predicate::str::contains("(5)"))
         .stdout(predicate::str::contains("[backend, urgent]"));
 
-    // 依存が show に反映される。
+    // show reflects the dependency.
     pinto(dir.path())
         .args(["show", "T-2"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Depends on:").and(predicate::str::contains("T-1")));
 
-    // アーカイブ（archived フラグ）で list から外れるが、採番は退避 ID を再利用しない。
+    // Archiving removes the item from list, while ID allocation does not reuse the archived ID.
     pinto(dir.path()).args(["rm", "T-1"]).assert().success();
     pinto(dir.path())
         .arg("list")

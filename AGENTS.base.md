@@ -40,7 +40,7 @@ whether it preserves the lightweight design.
 - **Language**: Rust (**2024 edition**)
 - **CLI parser**: [`clap`](https://docs.rs/clap) (derive API)
 - **TUI**: `ratatui` + `crossterm` (Phase 4 onward)
-- **Serialization**: `serde` + YAML frontmatter (items) / TOML (configuration)
+- **Serialization**: `serde` + TOML frontmatter (items) / TOML (configuration)
 - **Dates and times**: `chrono` (`DateTime<Utc>`, RFC3339)
 - **Errors**: `thiserror` in library layers / `anyhow` in the binary
 - **Concurrency**: asynchronous I/O with [`tokio`] / CPU parallelism with

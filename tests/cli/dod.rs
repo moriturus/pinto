@@ -4,7 +4,7 @@ use super::common::*;
 
 #[test]
 fn dod_show_reports_unset_by_default() {
-    // 共通 DoD 未設定でも `dod` は成功し、設定方法を案内する。
+    // `dod` succeeds when the shared DoD is unset and explains how to configure one.
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
@@ -33,7 +33,7 @@ fn dod_set_then_show_roundtrips_and_persists_plain_markdown() {
         .stdout(predicate::str::contains("- [ ] tests pass"))
         .stdout(predicate::str::contains("- [ ] reviewed"));
 
-    // プレーンな Markdown ファイルとして `.pinto/dod.md` に保存される。
+    // The DoD is stored as a plain Markdown file at `.pinto/dod.md`.
     let dod = std::fs::read_to_string(dir.path().join(".pinto/dod.md")).expect("dod file");
     assert!(!dod.starts_with("+++"), "no frontmatter: {dod:?}");
     assert!(dod.contains("- [ ] reviewed"));
@@ -95,7 +95,7 @@ fn show_includes_common_dod_alongside_acceptance_criteria() {
         .args(["show", "T-1"])
         .assert()
         .success()
-        // 個別 Acceptance Criteria（本文）と共通 DoD が併記される。
+        // The PBI's Acceptance Criteria (body) and the shared DoD are shown together.
         .stdout(predicate::str::contains("item-specific AC line"))
         .stdout(predicate::str::contains("Definition of Done (common)"))
         .stdout(predicate::str::contains("integration test exists"));

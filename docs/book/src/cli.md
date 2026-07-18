@@ -26,8 +26,8 @@ If no board is found, pinto reports the search and these override options. The
 
 ## Board and PBI commands
 
-Use pinto doctor to check board integrity after hand edits, interrupted migrations, or copied
-records. Add --fix to apply only safe mechanical repairs. The command reports references,
+Use `pinto doctor` to check board integrity after hand edits, interrupted migrations, or copied
+records. Add `--fix` to apply only safe mechanical repairs. The command reports references,
 relationship cycles, duplicate IDs, issued-ID history, workflow states, rank anomalies, and
 tasks/archive filename collisions with a location and repair direction.
 
@@ -45,6 +45,7 @@ tasks/archive filename collisions with a location and repair direction.
 | `pinto remove <id>...` | Archive PBIs; use the `rm` alias and `--force` only for permanent removal. |
 | `pinto board` | Render PBIs grouped by workflow column, optionally filtering by assignee or showing root PBIs only. |
 | `pinto export --json` | Export the complete active board, configuration, and shared DoD as one JSON snapshot. |
+| `pinto doctor` | Check board integrity; use `--fix` for safe mechanical repairs. |
 | `pinto kanban` | Open the interactive [Kanban board](kanban.md). |
 
 Examples:
