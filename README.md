@@ -123,7 +123,7 @@ done (0)
 | `pinto dep add/rm` | Add or remove item dependencies. |
 | `pinto link add/rm/sync` | Associate Git commits with PBIs, or synchronize links from commit messages containing item IDs. |
 | `pinto dod` | View, set, or clear the shared Definition of Done. |
-| `pinto export --json` | Export all active PBIs, Sprints, effective board configuration, and the shared Definition of Done as one JSON snapshot. |
+| `pinto export --json` | Export all active PBIs, Sprints, effective board configuration, and the shared Definition of Done as one consistent JSON snapshot; it waits for an active writer. |
 | `pinto sprint` | Create, edit, delete, start, close, list, assign, and report on Sprints (`burndown`, `velocity`, `capacity`). |
 | `pinto cycletime` / `pinto ct` | Report cycle and lead-time metrics. |
 | `pinto rebalance` | Reassign oversized ranks while preserving item order. Use `--dry-run` to preview changes. |
@@ -186,6 +186,19 @@ unstarted, excludes the configured `done_column`, and returns only items whose d
 dependencies all exist and are in that completion column. Results use the same canonical
 backlog order as `list`; a missing dependency keeps an item blocked. `--count` defaults to `1`,
 and `--sprint` applies an exact Sprint filter.
+
+### Consistent JSON snapshots
+
+Ordinary read commands such as `list`, `show`, `board`, and `sprint list` do
+not acquire the board-wide write lock, so they remain non-blocking. They do
+not provide snapshot isolation: a command that reads several resources while
+a writer runs may observe different versions of those resources.
+
+Use `pinto export --json` from shell scripts, agents, or other automation that
+must correlate PBIs, Sprints, configuration, and the shared Definition of Done
+from one board state. Export waits for an active writer, acquires the board
+lock before opening configuration and storage, and holds it while assembling
+the complete snapshot.
 
 ### Stale PBIs
 
@@ -483,7 +496,7 @@ neither stores API keys nor requires a particular AI provider. See
 array (`items`), Sprint array (`sprints`), effective board configuration
 (`config`), and the optional shared Definition of Done (`dod`). It uses the
 same PBI/Sprint fields and UTC RFC 3339 timestamps as the corresponding JSON
-commands.
+commands, and is the board-wide consistency boundary for automation.
 
 ## Development
 

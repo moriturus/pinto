@@ -128,9 +128,13 @@ synchronous fallback.
 Write operations acquire the board lock before loading `config.toml` or opening
 the selected backend. Migration holds that same lock through destination writes
 and the configuration switch, so a writer that waited for migration selects and
-writes to the migration target rather than caching the old backend. Snapshot-only
-workflows may hold the same lock while copying board files, but read-only listing
-does not acquire it.
+writes to the migration target rather than caching the old backend. Ordinary
+read commands do not acquire the board-wide lock, which keeps them non-blocking
+but means that a multi-resource read has no snapshot isolation while a writer is
+active. The complete-board `export --json` workflow is the exception: it acquires
+the same lock before loading configuration or opening storage and holds it while
+copying PBIs, Sprints, configuration, and the shared DoD into one snapshot. Shell
+and agent automation that needs those resources to agree must use `export --json`.
 
 ## CLI and localization
 

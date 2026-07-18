@@ -30,6 +30,11 @@ the backlog. Do not replace this verification with direct file editing.
    the `add`, `move`, `edit`, and `rm` commands. Direct editing is reserved for data recovery that
    cannot be expressed through a command.
 
+   Ordinary read commands do not acquire the board-wide write lock and therefore remain
+   non-blocking, but their multi-resource results are not snapshot-isolated. Use
+   `cargo run -- export --json` when a shell or agent needs PBIs, Sprints, configuration, and the
+   shared DoD from one consistent board state.
+
 3. **Use the `default` template** — apply `.pinto/templates/item/default.md` with
    `--template default` for items whose body follows the Summary and Acceptance Criteria format.
    This keeps item bodies consistent with the Definition of Done.

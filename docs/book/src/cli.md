@@ -44,7 +44,7 @@ tasks/archive filename collisions with a location and repair direction.
 | `pinto edit <id>` | Update PBI fields; `--label <label>...` replaces its labels. With no field, open the configured editor. |
 | `pinto remove <id>...` | Archive PBIs; use the `rm` alias and `--force` only for permanent removal. |
 | `pinto board` | Render PBIs grouped by workflow column, optionally filtering by assignee or showing root PBIs only. |
-| `pinto export --json` | Export the complete active board, configuration, and shared DoD as one JSON snapshot. |
+| `pinto export --json` | Export the complete active board, configuration, and shared DoD as one consistent JSON snapshot; it waits for writers. |
 | `pinto doctor` | Check board integrity; use `--fix` for safe mechanical repairs. |
 | `pinto kanban` | Open the interactive [Kanban board](kanban.md). |
 
@@ -71,6 +71,19 @@ pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
 pinto show T-1 --archived
 pinto restore T-1
 ```
+
+### Consistent board reads
+
+`list`, `show`, `board`, `next`, and the other ordinary read commands do not
+take the board-wide write lock. This keeps them non-blocking, but they do not
+provide snapshot isolation when a write operation is running; separate
+resources read by one command may come from different versions of the board.
+
+For shell scripts, agents, and other automation that must correlate PBIs,
+Sprints, configuration, and the shared Definition of Done, use
+`pinto export --json`. Export waits for a writer, acquires the board lock
+before opening configuration and storage, and holds it while assembling one
+complete snapshot.
 
 For `add` and `edit`, multiple label values may follow one `--label`; repeating
 the option once per value remains equivalent. The `list` and `board` forms are
@@ -300,7 +313,9 @@ parser. Plans can be supplied inline, from a file, or from standard input.
 generates completion scripts for supported shells.
 
 The dry-run snapshot holds the board write lock, so a concurrent writer cannot
-be mixed into the preview. It works from both normal repositories and linked
+be mixed into the preview. Use `pinto export --json` for the same consistency
+boundary when an automation consumer needs a complete active-board read. It
+works from both normal repositories and linked
 worktrees: only `.pinto` is copied, and a temporary owner-private Git
 repository is initialized when the source project has Git metadata. The source
 `.git` object store is never copied, and the temporary workspace is cleaned up

@@ -40,9 +40,13 @@ available.
 - `config` — the effective validated board configuration, including defaults for omitted settings.
 - `dod` — the shared Definition of Done as Markdown, or `null` when it is unset.
 
-The export opens the configured backend for reading only. It does not acquire a
-write lock, modify board data, or require a server. Archived PBIs are excluded,
-matching the default active-backlog behavior of `list --json`.
+The export acquires the board write lock before opening configuration or the
+selected backend and holds it while assembling the complete snapshot. It does
+not modify board data or require a server. Ordinary read commands remain
+non-blocking and do not provide board-wide snapshot isolation; use
+`export --json` when automation needs all resource collections to describe one
+board state. Archived PBIs are excluded, matching the default active-backlog
+behavior of `list --json`.
 
 ## Sprint close fields
 

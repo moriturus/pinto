@@ -20,6 +20,18 @@ Replace `<ID-from-list>` and `<ID>` with IDs returned by the board commands.
 Human-readable output is useful for a quick check; `--json` is useful when the
 result must be inspected without depending on table formatting.
 
+These ordinary reads remain non-blocking because they do not acquire the
+board-wide write lock. They therefore do not provide snapshot isolation while
+a writer is active. When a shell or agent needs PBIs, Sprints, configuration,
+and the shared DoD from one consistent state, use:
+
+```bash
+cargo run -- export --json
+```
+
+The export waits for writers and holds the board lock while assembling the
+complete JSON snapshot.
+
 These examples correspond to the installed `pinto list`, `pinto show`, and
 `pinto board` subcommands. The `cargo run --` prefix is intentional while
 developing: it selects the executable built from the current checkout.

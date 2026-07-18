@@ -1,6 +1,6 @@
 //! Read-only complete-board snapshots for machine-readable export.
 
-use super::{apply_effective_points, hierarchical, open_board};
+use super::{apply_effective_points, hierarchical, lock_board, open_board};
 use crate::backlog::{BacklogItem, Status};
 use crate::error::{Error, Result};
 use crate::service::dod::read_common_dod;
@@ -28,8 +28,11 @@ pub struct BoardSnapshot {
 /// Load one read-only snapshot containing the board PBIs, Sprints, configuration, and common DoD.
 ///
 /// Configuration and all repositories are opened once, so the export uses one validated backend
-/// selection. The operation does not acquire the write lock or persist anything.
+/// selection. The board write lock is acquired before configuration and storage are opened and is
+/// held until the complete snapshot has been assembled. This gives automation one consistent board
+/// view while ordinary read commands remain non-blocking.
 pub async fn export_snapshot(project_dir: &Path) -> Result<BoardSnapshot> {
+    let _lock = lock_board(project_dir).await?;
     let (board_dir, repo, config) = open_board(project_dir).await?;
     let (mut items, sprints, dod) = tokio::try_join!(
         BacklogItemRepository::list(&repo),
