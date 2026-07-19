@@ -45,6 +45,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`toolchain-reproducibility`](single/toolchain-reproducibility) — pinned toolchain, locked installs, and release package checks
   - [`package-allowlist`](single/package-allowlist) — allowlisted crate contents and packaged-crate verification
   - [`lightweight-defaults`](single/lightweight-defaults) — plain-text defaults and opt-in SQLite migration
+  - [`storage-contract`](single/storage-contract) — shared file, Git, SQLite, and Markdown persistence contracts
   - [`release-metadata`](single/release-metadata) — publication metadata and SQLite schema compatibility checks
   - [`stale-lock`](single/stale-lock) — OS-owned lock recovery across Unix, macOS, and Windows
   - [`remove-force-safety`](single/remove-force-safety) — permanent removal, reverse-reference guards, and issued-ID history

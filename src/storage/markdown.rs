@@ -315,10 +315,185 @@ fn find_delimiter_line(s: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Duration;
+    use chrono::{Duration, TimeZone};
+    use proptest::prelude::*;
 
     fn epoch() -> DateTime<Utc> {
         DateTime::from_timestamp(0, 0).expect("valid epoch")
+    }
+
+    fn unicode_text() -> impl Strategy<Value = String> {
+        let character = prop_oneof![
+            Just('日'),
+            Just('本'),
+            Just('語'),
+            Just('🙂'),
+            Just('é'),
+            Just(' '),
+            Just('"'),
+            Just('\\'),
+            Just('='),
+            any::<char>().prop_filter("control characters are not needed here", |character| {
+                !character.is_control()
+            }),
+        ];
+        prop::collection::vec(character, 0..32)
+            .prop_map(|characters| characters.into_iter().collect())
+    }
+
+    fn non_blank_unicode_text() -> impl Strategy<Value = String> {
+        unicode_text().prop_map(|text| {
+            if text.trim().is_empty() {
+                format!("{text}値")
+            } else {
+                text
+            }
+        })
+    }
+
+    fn markdown_body() -> impl Strategy<Value = String> {
+        prop::collection::vec(
+            unicode_text().prop_filter("a delimiter line would be ambiguous", |line| line != "+++"),
+            0..8,
+        )
+        .prop_map(|lines| lines.join("\n"))
+    }
+
+    fn timestamp_strategy() -> impl Strategy<Value = DateTime<Utc>> {
+        (-4_000_000_000i64..=4_000_000_000i64).prop_map(|seconds| {
+            Utc.timestamp_opt(seconds, 0)
+                .single()
+                .expect("generated timestamp is valid")
+        })
+    }
+
+    fn item_strategy() -> impl Strategy<Value = BacklogItem> {
+        (
+            (
+                non_blank_unicode_text(),
+                non_blank_unicode_text(),
+                prop::option::of(0u32..=100),
+                prop::collection::vec(unicode_text(), 0..4),
+            ),
+            (
+                prop::option::of(non_blank_unicode_text()),
+                prop::option::of(non_blank_unicode_text()),
+                prop::option::of(1u32..=9),
+                prop::collection::vec(1u32..=9, 0..4),
+            ),
+            (
+                prop::option::of(timestamp_strategy()),
+                prop::option::of(timestamp_strategy()),
+                markdown_body(),
+                prop::collection::vec(non_blank_unicode_text(), 0..4),
+            ),
+            (timestamp_strategy(), timestamp_strategy()),
+        )
+            .prop_map(
+                |(
+                    (title, status, points, labels),
+                    (assignee, sprint, parent, depends_on),
+                    (start_at, done_at, body, commits),
+                    (created, updated),
+                )| {
+                    let mut item = BacklogItem::new(
+                        ItemId::new("T", 7),
+                        title,
+                        Status::new(status),
+                        Rank::parse("m").expect("fixed rank is valid"),
+                        created,
+                    )
+                    .expect("generated item is valid");
+                    item.points = points;
+                    item.labels = labels;
+                    item.assignee = assignee;
+                    item.sprint = sprint;
+                    item.parent = parent.map(|number| ItemId::new("T", number));
+                    item.depends_on = depends_on
+                        .into_iter()
+                        .map(|number| ItemId::new("T", number))
+                        .collect();
+                    item.start_at = start_at;
+                    item.done_at = done_at;
+                    item.body = body;
+                    item.commits = commits;
+                    item.updated = updated;
+                    item
+                },
+            )
+    }
+
+    fn sprint_strategy() -> impl Strategy<Value = Sprint> {
+        (
+            (non_blank_unicode_text(), markdown_body()),
+            prop_oneof![
+                Just(SprintState::Planned),
+                Just(SprintState::Active),
+                Just(SprintState::Closed),
+            ],
+            (
+                prop::option::of(timestamp_strategy()),
+                prop::option::of(timestamp_strategy()),
+                prop::option::of(0.0f64..=24.0),
+                prop::option::of(0u32..=30),
+                prop::option::of(0.0f64..=1.0),
+            ),
+            (0u32..=100, 0u32..=20, 0u32..=20),
+            (
+                timestamp_strategy(),
+                timestamp_strategy(),
+                prop::option::of(timestamp_strategy()),
+            ),
+        )
+            .prop_map(
+                |(
+                    (title, goal),
+                    state,
+                    (start, end, daily_work_hours, holiday_days, deduction_factor),
+                    (points, items, unestimated_items),
+                    (created, updated, closed_at),
+                )| {
+                    let mut sprint = Sprint::new(
+                        SprintId::new("sprint-7").expect("fixed sprint id is valid"),
+                        title,
+                        created,
+                    )
+                    .expect("generated sprint is valid");
+                    sprint.goal = goal;
+                    sprint.start = start;
+                    sprint.end = end;
+                    sprint.daily_work_hours = daily_work_hours;
+                    sprint.holiday_days = holiday_days;
+                    sprint.deduction_factor = deduction_factor;
+                    sprint.spillover = SprintSpillover {
+                        points,
+                        items,
+                        unestimated_items,
+                    };
+                    sprint.state = state;
+                    sprint.closed_at = closed_at;
+                    sprint.updated = updated;
+                    sprint
+                },
+            )
+    }
+
+    proptest! {
+        #[test]
+        fn item_markdown_round_trip_preserves_generated_value(item in item_strategy()) {
+            let text = to_markdown(&item).expect("serialize generated item");
+            let parsed = from_markdown(&text, Path::new("generated-item.md"))
+                .expect("parse generated item");
+            prop_assert_eq!(parsed, item);
+        }
+
+        #[test]
+        fn sprint_markdown_round_trip_preserves_generated_value(sprint in sprint_strategy()) {
+            let text = sprint_to_markdown(&sprint).expect("serialize generated sprint");
+            let parsed = sprint_from_markdown(&text, Path::new("generated-sprint.md"))
+                .expect("parse generated sprint");
+            prop_assert_eq!(parsed, sprint);
+        }
     }
 
     /// PBI with optional fields filled in (multiple lines of text).
