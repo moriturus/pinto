@@ -48,7 +48,8 @@ run = "cargo deny check"
 
 [tasks.doctor]
 description = "Check the backlog soundness"
-run = "cargo run -q -- doctor"
+# Keep the binary feature set aligned with the parallel all-feature checks.
+run = "cargo run -q --all-features --locked -- doctor"
 
 [tasks.check]
 description = "Pre-commit gate: test, lint, docs, and formatting"

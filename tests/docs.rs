@@ -459,6 +459,7 @@ fn toolchain_locks_cargo_and_separates_ci_roles() {
         "cargo test --all-features --locked",
         "cargo clippy --all-targets --all-features --locked",
         "cargo doc --no-deps --all-features --locked",
+        "cargo run -q --all-features --locked -- doctor",
         "cargo llvm-cov --all-features --workspace --locked",
         "-D clippy::must_use_candidate",
         "-D clippy::redundant_closure_for_method_calls",

@@ -400,9 +400,11 @@ async fn list_stale_filter_composes_with_existing_filters_and_is_read_only() {
         .success();
 
     let cutoff = Utc::now() - Duration::days(7);
-    set_updated(dir.path(), "T-1", cutoff - Duration::seconds(1)).await;
-    set_updated(dir.path(), "T-2", cutoff + Duration::seconds(1)).await;
-    set_updated(dir.path(), "T-3", cutoff - Duration::seconds(1)).await;
+    // Leave enough time for the separate CLI processes and slow CI filesystems.
+    let margin = Duration::minutes(1);
+    set_updated(dir.path(), "T-1", cutoff - margin).await;
+    set_updated(dir.path(), "T-2", cutoff + margin).await;
+    set_updated(dir.path(), "T-3", cutoff - margin).await;
     let before = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
 
     let filtered = json_stdout(pinto(dir.path()).args([

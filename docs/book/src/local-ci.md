@@ -61,9 +61,10 @@ act push -j check --matrix os:windows-latest -P windows-latest=-self-hosted
 This runs the Windows leg on the local Windows machine. It is act's
 self-hosted-host mode, not a Windows Docker guest, so the machine must already
 have a real Git checkout (including `.git`) and the native tools used by the
-workflow (`git`, Node.js, a compatible `unzip`, `mise`, Rust, and `rustup`) plus
-the Windows shell environment expected by the steps. Git for Windows provides a
-compatible `usr\bin\unzip.exe`; make sure it is on `PATH`. It does not run the
+workflow (`git`, Node.js, compatible `unzip`/`tar`/`gzip`, `mise`, Rust, and
+`rustup`) plus the Windows shell environment expected by the steps. Git for
+Windows provides these archive tools in `usr\bin`; make sure
+`C:\Program Files\Git\usr\bin` is on `PATH`. It does not run the
 Linux or macOS matrix entries. Use the macOS/Linux procedure above for the
 containerized Linux release job.
 
@@ -83,14 +84,16 @@ on the Windows host.
   revision detection.
 - `Cannot find: node in PATH`: install Node.js and open a new terminal before
   running the Windows job; JavaScript actions such as `jdx/mise-action` need it.
-- `Cannot find: unzip` or a ZIP compatibility error: put the modern
-  `C:\Program Files\Git\usr\bin` directory on `PATH`. The old GnuWin32
-  `unzip` package cannot unpack some current `mise` archives.
+- `Cannot find: unzip`, `gzip`, or an archive/cache compatibility error: put
+  `C:\Program Files\Git\usr\bin` on `PATH`. Git for Windows supplies the
+  archive tools required by the actions used here; the old GnuWin32 `unzip`
+  package cannot unpack some current `mise` archives.
 - `PSSecurityException` or a message that script execution is disabled: allow
   scripts only for the current PowerShell process, then invoke `act`:
 
   ```powershell
   $env:PSExecutionPolicyPreference = "Bypass"
+  $env:Path = "C:\Program Files\Git\usr\bin;$env:Path"
   act push -j check --matrix os:windows-latest -P windows-latest=-self-hosted
   ```
 

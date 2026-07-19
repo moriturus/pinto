@@ -334,10 +334,7 @@ mod pty_tests {
                     events: libc::POLLIN,
                     revents: 0,
                 };
-                let ready = unsafe { libc::poll(&mut poll, 1, timeout) };
-                if ready == -1 {
-                    return Err(io::Error::last_os_error());
-                }
+                let ready = poll_pty(&mut poll, timeout)?;
                 if ready == 0 {
                     continue;
                 }
@@ -346,6 +343,7 @@ mod pty_tests {
                     Ok(0) => break,
                     Ok(read) => output.extend_from_slice(&buffer[..read]),
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                     Err(error) => return Err(error),
                 }
                 let cursor_queries = output
@@ -519,10 +517,7 @@ mod pty_tests {
                 events: libc::POLLIN,
                 revents: 0,
             };
-            let ready = unsafe { libc::poll(&mut poll, 1, timeout) };
-            if ready == -1 {
-                return Err(io::Error::last_os_error());
-            }
+            let ready = poll_pty(&mut poll, timeout)?;
             if ready > 0 {
                 pty.read_available(output)?;
             }
@@ -531,6 +526,19 @@ mod pty_tests {
             io::ErrorKind::TimedOut,
             "child did not exit",
         ))
+    }
+
+    fn poll_pty(poll: &mut libc::pollfd, timeout: libc::c_int) -> io::Result<libc::c_int> {
+        loop {
+            let ready = unsafe { libc::poll(poll, 1, timeout) };
+            if ready != -1 {
+                return Ok(ready);
+            }
+            let error = io::Error::last_os_error();
+            if error.kind() != io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
     }
 
     #[test]
