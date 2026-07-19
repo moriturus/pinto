@@ -40,45 +40,109 @@ fn repository_file(path: &str) -> String {
         .unwrap_or_else(|error| panic!("expected documentation file {path}: {error}"))
 }
 
+fn assert_toml_document(path: &str) {
+    let contents = repository_file(path);
+    toml::from_str::<toml::Value>(&contents)
+        .unwrap_or_else(|error| panic!("{path} is not structurally valid TOML: {error}"));
+}
+
+fn assert_json_document(path: &str) {
+    let contents = repository_file(path);
+    serde_json::from_str::<serde_json::Value>(&contents)
+        .unwrap_or_else(|error| panic!("{path} is not structurally valid JSON: {error}"));
+}
+
+fn assert_yaml_document(path: &str) {
+    let contents = repository_file(path);
+    serde_yaml::from_str::<serde_yaml::Value>(&contents)
+        .unwrap_or_else(|error| panic!("{path} is not structurally valid YAML: {error}"));
+}
+
+fn markdown_link_targets(contents: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut in_fence = false;
+
+    for line in contents.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+
+        let line = line_without_inline_code(line);
+        let mut remaining = line.as_str();
+        while let Some(link_start) = remaining.find("](") {
+            if link_start > 0 && remaining.as_bytes()[link_start - 1] == b'\\' {
+                remaining = &remaining[link_start + 2..];
+                continue;
+            }
+            let destination_start = link_start + 2;
+            let destination_end = remaining[destination_start..]
+                .find(')')
+                .unwrap_or_else(|| panic!("Markdown link has no closing parenthesis: {remaining}"));
+            let destination = remaining[destination_start..destination_start + destination_end]
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .trim_matches('<')
+                .trim_end_matches('>');
+            if !destination.is_empty() {
+                targets.push(destination.to_string());
+            }
+            remaining = &remaining[destination_start + destination_end + 1..];
+        }
+    }
+
+    assert!(
+        !in_fence,
+        "Markdown document has an unclosed fenced code block"
+    );
+    targets
+}
+
+fn line_without_inline_code(line: &str) -> String {
+    let mut masked = String::with_capacity(line.len());
+    let mut in_code = false;
+    for character in line.chars() {
+        if character == '`' {
+            in_code = !in_code;
+            masked.push(' ');
+        } else if in_code {
+            masked.push(' ');
+        } else {
+            masked.push(character);
+        }
+    }
+    masked
+}
+
 fn assert_relative_markdown_links_resolve(path: &str) {
     let contents = repository_file(path);
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let file_path = root.join(path);
     let base = file_path.parent().expect("guidance file has a parent");
-    let mut remaining = contents.as_str();
 
-    while let Some(link_start) = remaining.find("](") {
-        let destination_start = link_start + 2;
-        let destination_end = remaining[destination_start..]
-            .find(')')
-            .map(|offset| destination_start + offset)
-            .expect("Markdown link has a closing parenthesis");
-        let destination = remaining[destination_start..destination_end]
-            .split_whitespace()
-            .next()
-            .unwrap_or_default()
-            .trim_matches('<');
-        let destination = destination.trim_end_matches('>');
-
-        if !destination.is_empty()
-            && !destination.starts_with('#')
-            && !destination.starts_with("http://")
-            && !destination.starts_with("https://")
-            && !destination.starts_with("mailto:")
+    for destination in markdown_link_targets(&contents) {
+        if destination.starts_with('#')
+            || destination.starts_with("http://")
+            || destination.starts_with("https://")
+            || destination.starts_with("mailto:")
         {
-            let target = destination.split('#').next().unwrap_or_default();
-            let target_path = if target.starts_with('/') {
-                root.join(target.trim_start_matches('/'))
-            } else {
-                base.join(target)
-            };
-            assert!(
-                target_path.exists(),
-                "{path} contains a broken local link: {destination}"
-            );
+            continue;
         }
-
-        remaining = &remaining[destination_end + 1..];
+        let target = destination.split('#').next().unwrap_or_default();
+        let target_path = if target.starts_with('/') {
+            root.join(target.trim_start_matches('/'))
+        } else {
+            base.join(target)
+        };
+        assert!(
+            target_path.exists(),
+            "{path} contains a broken local link: {destination}"
+        );
     }
 }
 
@@ -156,6 +220,39 @@ fn maintained_guidance_has_resolvable_relative_links() {
     for path in MAINTAINED_GUIDANCE {
         assert_relative_markdown_links_resolve(path);
     }
+}
+
+#[test]
+fn maintained_configuration_and_metadata_have_structural_parsers() {
+    for path in [
+        "Cargo.toml",
+        "Cargo.lock",
+        "book.toml",
+        "mise.toml",
+        "fuzz/Cargo.toml",
+    ] {
+        assert_toml_document(path);
+    }
+    assert_json_document("demos/single/automation-plan/plan.json");
+    for path in [".github/workflows/ci.yml", ".github/workflows/pages.yml"] {
+        assert_yaml_document(path);
+    }
+}
+
+#[test]
+fn markdown_link_scanner_ignores_fenced_examples() {
+    let markdown = "[real](../README.md)\n[angle](<../README.md#guide>)\n`[inline](missing.md)`\n\n```markdown\n[example](missing.md)\n```\n";
+
+    assert_eq!(
+        markdown_link_targets(markdown),
+        ["../README.md", "../README.md#guide"]
+    );
+}
+
+#[test]
+#[should_panic(expected = "Markdown link has no closing parenthesis")]
+fn markdown_link_scanner_rejects_unclosed_links() {
+    markdown_link_targets("[broken](missing.md\n");
 }
 
 #[test]

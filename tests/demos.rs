@@ -24,6 +24,37 @@ const INTENTIONAL_ERROR_DEMOS: &[&str] = &[
     "single/sprint-closed-assignment",
 ];
 
+const DOCUMENTATION_DEMO_FLOW: &[&[&str]] = &[
+    &["init"],
+    &[
+        "add",
+        "Publish the project guide",
+        "--label",
+        "docs",
+        "--body",
+        "Build and review the mdBook site.",
+    ],
+    &["add", "Review the CLI examples", "--label", "docs"],
+    &[
+        "add",
+        "Review public Rustdoc wording",
+        "--label",
+        "docs",
+        "--body",
+        "Run cargo doc with warnings denied and review public API comments.",
+    ],
+    &[
+        "add",
+        "Review contributor guidance",
+        "--label",
+        "docs",
+        "--body",
+        "Check AGENTS.base.md, contributor docs, and GitHub templates for consistent English references.",
+    ],
+    &["move", "T-1", "done"],
+    &["board"],
+];
+
 #[derive(Debug)]
 struct Demo {
     name: String,
@@ -241,6 +272,22 @@ fn every_persisted_demo_board_passes_read_only_cli_smoke_checks() {
             demo.name
         );
     }
+}
+
+#[test]
+fn documentation_demo_flow_is_executable() {
+    let temp = tempdir().expect("create documentation demo workspace");
+    let board = temp.path().join("documentation-flow");
+    fs::create_dir_all(&board).expect("create documentation demo board");
+
+    for args in DOCUMENTATION_DEMO_FLOW {
+        let output = run_pinto(&board, args);
+        assert_success("documentation demo", args, &output);
+    }
+
+    let completed = json_output("documentation demo", &board, &["show", "T-1", "--json"]);
+    assert_eq!(completed[0]["status"], "done");
+    assert_eq!(completed[0]["labels"], serde_json::json!(["docs"]));
 }
 
 #[test]

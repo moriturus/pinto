@@ -22,11 +22,20 @@ use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
-use std::io::IsTerminal;
-use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::runtime::Handle;
+
+mod input;
+mod terminal;
+
+#[cfg(test)]
+use input::text_entry_key_is_accepted;
+use input::{
+    HelpKeyAction, PopupAction, QuitIntent, help_key_action, popup_action, quit_intent,
+    should_close_help_after_key,
+};
+use terminal::initialize_terminal;
 
 /// Polling interval while waiting for input.
 const POLL: Duration = Duration::from_millis(250);
@@ -124,179 +133,6 @@ pub(crate) enum ExitMode {
     Shell,
 }
 
-/// What a key press means for leaving the view when no popup is open.
-///
-/// Kept as a pure decision so the key-to-outcome mapping can be unit tested without a terminal.
-/// Both leave keys carry the [`ExitMode`] they resolve to, so the confirmation flow can honour the
-/// original intent (`q` → [`ExitMode::Quit`], `Q` → [`ExitMode::Shell`]) once confirmed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum QuitIntent {
-    /// Not a quit-related key.
-    None,
-    /// `confirm_quit` is enabled — show the confirmation popup first, then leave with this mode.
-    Confirm(ExitMode),
-    /// `confirm_quit` is disabled — leave immediately with this mode.
-    Leave(ExitMode),
-}
-
-/// Decide what pressing `key` means for leaving the view (no popup open).
-fn quit_intent(keymap: &KeyMap, key: event::KeyEvent, confirm_quit: bool) -> QuitIntent {
-    let mode = if keymap.matches(KeyAction::Shell, key) {
-        ExitMode::Shell
-    } else if keymap.matches(KeyAction::Quit, key) {
-        ExitMode::Quit
-    } else {
-        return QuitIntent::None;
-    };
-    if confirm_quit {
-        QuitIntent::Confirm(mode)
-    } else {
-        QuitIntent::Leave(mode)
-    }
-}
-
-/// What a key press means while the details popup is open.
-///
-/// Kept as a pure decision (like [`quit_intent`]) so the popup key mapping can be unit tested
-/// without a terminal. Plain arrow / vim keys keep scrolling the body, while `H`/`J`/`K`/`L`
-/// move the board selection so the popup follows it.
-/// `e` opens the shown item in `$EDITOR` without leaving the popup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PopupAction {
-    /// Not a popup key.
-    None,
-    /// Close the popup (`Esc` / `q`).
-    Close,
-    /// Scroll the body up one line (`Up` / `k`).
-    ScrollUp,
-    /// Scroll the body down one line (`Down` / `j`).
-    ScrollDown,
-    /// Select the row above (`K`).
-    SelectUp,
-    /// Select the row below (`J`).
-    SelectDown,
-    /// Select the column to the left (`H`).
-    SelectLeft,
-    /// Select the column to the right (`L`).
-    SelectRight,
-    /// Edit the shown item with `$EDITOR`, keeping the popup open (`e`).
-    Edit,
-}
-
-/// Decide what pressing `key` means while the details popup is open.
-fn popup_action(keymap: &KeyMap, key: event::KeyEvent) -> PopupAction {
-    if keymap.matches(KeyAction::PopupClose, key) || keymap.matches(KeyAction::Details, key) {
-        PopupAction::Close
-    } else if keymap.matches(KeyAction::PopupSelectUp, key) {
-        PopupAction::SelectUp
-    } else if keymap.matches(KeyAction::PopupSelectDown, key) {
-        PopupAction::SelectDown
-    } else if keymap.matches(KeyAction::PopupSelectLeft, key) {
-        PopupAction::SelectLeft
-    } else if keymap.matches(KeyAction::PopupSelectRight, key) {
-        PopupAction::SelectRight
-    } else if keymap.matches(KeyAction::PopupScrollUp, key) {
-        PopupAction::ScrollUp
-    } else if keymap.matches(KeyAction::PopupScrollDown, key) {
-        PopupAction::ScrollDown
-    } else if keymap.matches(KeyAction::Edit, key) {
-        PopupAction::Edit
-    } else {
-        PopupAction::None
-    }
-}
-
-/// What a key press means while the help window is visible.
-///
-/// Scrolling is applied to the help overlay, but the event loop deliberately does not stop after
-/// that operation: keys such as `j` and `k` are also normal cursor commands and must reach the
-/// underlying view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HelpKeyAction {
-    /// Close the help overlay and consume the toggle key.
-    Close,
-    /// Scroll the help overlay up, then continue handling the key underneath.
-    ScrollUp,
-    /// Scroll the help overlay down, then continue handling the key underneath.
-    ScrollDown,
-    /// No help-specific handling; let the underlying mode process the key.
-    PassThrough,
-}
-
-/// Decide whether the help overlay has work to do for `key` without making it modal.
-fn help_key_action(keymap: &KeyMap, key: event::KeyEvent) -> HelpKeyAction {
-    if keymap.matches(KeyAction::Help, key) {
-        HelpKeyAction::Close
-    } else if keymap.matches(KeyAction::PopupScrollUp, key) {
-        HelpKeyAction::ScrollUp
-    } else if keymap.matches(KeyAction::PopupScrollDown, key) {
-        HelpKeyAction::ScrollDown
-    } else {
-        HelpKeyAction::PassThrough
-    }
-}
-
-/// Return whether `key` is accepted by the mode underneath the help overlay.
-fn should_close_help_after_key(view: &BoardView, keymap: &KeyMap, key: event::KeyEvent) -> bool {
-    if view.is_popup_open() {
-        return popup_action(keymap, key) != PopupAction::None;
-    }
-    if view.is_input_active() {
-        let selecting_target = view.is_relation_input()
-            && view.input_buffer().is_empty()
-            && [
-                KeyAction::SelectLeft,
-                KeyAction::SelectRight,
-                KeyAction::SelectUp,
-                KeyAction::SelectDown,
-            ]
-            .into_iter()
-            .any(|action| keymap.matches(action, key));
-        return selecting_target || text_entry_key_is_accepted(key);
-    }
-    if view.is_searching() {
-        return text_entry_key_is_accepted(key);
-    }
-
-    if view.search_filter().is_some() && keymap.matches(KeyAction::ClearFilter, key) {
-        return true;
-    }
-    [
-        KeyAction::Shell,
-        KeyAction::Quit,
-        KeyAction::SelectLeft,
-        KeyAction::SelectRight,
-        KeyAction::SelectUp,
-        KeyAction::SelectDown,
-        KeyAction::MoveLeft,
-        KeyAction::MoveRight,
-        KeyAction::ReorderUp,
-        KeyAction::ReorderDown,
-        KeyAction::ToggleExpand,
-        KeyAction::Add,
-        KeyAction::DependencyAdd,
-        KeyAction::DependencyRemove,
-        KeyAction::Parent,
-        KeyAction::Edit,
-        KeyAction::Reload,
-        KeyAction::Maximize,
-        KeyAction::Search,
-        KeyAction::RegexSearch,
-        KeyAction::Details,
-    ]
-    .into_iter()
-    .any(|action| keymap.matches(action, key))
-}
-
-/// Whether a key is accepted by an active text-entry prompt.
-fn text_entry_key_is_accepted(key: event::KeyEvent) -> bool {
-    match key.code {
-        KeyCode::Esc | KeyCode::Enter | KeyCode::Backspace => true,
-        KeyCode::Char(_) if !key.modifiers.contains(KeyModifiers::CONTROL) => true,
-        _ => false,
-    }
-}
-
 /// Load the board and run the interaction loop. `confirm_quit` controls whether quitting requires confirmation.
 ///
 /// Terminal control and event polling are blocking, so the loop runs on a dedicated blocking thread
@@ -372,119 +208,6 @@ fn filter_display_columns(mut board: Board, display_columns: &[String]) -> Board
             .any(|status| status == column.status.as_str())
     });
     board
-}
-
-/// Restore the process-global panic hook when a terminal lifecycle ends.
-///
-/// `ratatui::try_init` installs its own hook. The Kanban loop adds a hook on top of it so the
-/// terminal is restored before the original hook runs. Keeping the hook that was active before
-/// initialization in this guard prevents each repeated Kanban invocation from leaving another
-/// wrapper in the process.
-type PanicHook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync + 'static>;
-
-struct PanicHookGuard {
-    previous: Option<PanicHook>,
-}
-
-impl PanicHookGuard {
-    /// Install the Kanban hook around the hook currently installed by ratatui.
-    fn install(previous: PanicHook) -> Self {
-        let terminal_hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            let _ = ratatui::try_restore();
-            terminal_hook(info);
-        }));
-        Self {
-            previous: Some(previous),
-        }
-    }
-
-    fn restore(&mut self) {
-        if let Some(previous) = self.previous.take() {
-            let _ = std::panic::take_hook();
-            std::panic::set_hook(previous);
-        }
-    }
-}
-
-impl Drop for PanicHookGuard {
-    fn drop(&mut self) {
-        self.restore();
-    }
-}
-
-/// Own the initialized terminal and restore it on every return path.
-struct TerminalGuard {
-    terminal: ratatui::DefaultTerminal,
-    restored: bool,
-}
-
-impl TerminalGuard {
-    fn new(terminal: ratatui::DefaultTerminal) -> Self {
-        Self {
-            terminal,
-            restored: false,
-        }
-    }
-
-    fn restore(&mut self) -> std::io::Result<()> {
-        if self.restored {
-            return Ok(());
-        }
-        self.restored = true;
-        ratatui::try_restore()
-    }
-}
-
-impl Deref for TerminalGuard {
-    type Target = ratatui::DefaultTerminal;
-
-    fn deref(&self) -> &Self::Target {
-        &self.terminal
-    }
-}
-
-impl DerefMut for TerminalGuard {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.terminal
-    }
-}
-
-impl Drop for TerminalGuard {
-    fn drop(&mut self) {
-        if !self.restored {
-            let _ = self.restore();
-        }
-    }
-}
-
-/// Initialize the terminal and bind the lifecycle guards to the same scope.
-fn initialize_terminal() -> Result<(TerminalGuard, PanicHookGuard)> {
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        let error = "stdin and stdout must be connected to a TTY";
-        return Err(anyhow::anyhow!(
-            current().format(Message::KanbanTerminalInitFailed, [("error", error)],)
-        ));
-    }
-
-    let previous_hook = std::panic::take_hook();
-    let terminal = match ratatui::try_init() {
-        Ok(terminal) => terminal,
-        Err(error) => {
-            // `try_init` installs ratatui's hook before enabling raw mode. Restore both the
-            // terminal and the process-global hook when any initialization step fails.
-            let _ = ratatui::try_restore();
-            let _ = std::panic::take_hook();
-            std::panic::set_hook(previous_hook);
-            let error = error.to_string();
-            return Err(anyhow::anyhow!(current().format(
-                Message::KanbanTerminalInitFailed,
-                [("error", error.as_str())]
-            )));
-        }
-    };
-    let hook = PanicHookGuard::install(previous_hook);
-    Ok((TerminalGuard::new(terminal), hook))
 }
 
 /// An interactive loop that initializes the terminal and updates the view in response to keystrokes.
@@ -2807,7 +2530,7 @@ mod ordering_tests {
 
 #[cfg(test)]
 mod lifecycle_tests {
-    use super::*;
+    use super::terminal::PanicHookGuard;
     use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
