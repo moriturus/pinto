@@ -1067,6 +1067,10 @@ fn release_gate_checks_version_and_sqlite_compatibility_contracts() {
         release_job.contains("./scripts/check-release-metadata.sh"),
         "release job does not block packaging on release metadata"
     );
+    assert!(
+        release_job.contains("fetch-depth: 0"),
+        "release job must fetch release tags for metadata validation"
+    );
 
     let stability = repository_file("docs/stability.md");
     for section in [
