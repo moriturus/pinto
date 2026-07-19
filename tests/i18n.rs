@@ -1,7 +1,10 @@
 //! Integration tests for locale selection and CLI localization.
 
 use assert_cmd::Command;
+use pinto::backlog::ItemId;
+use pinto::error::Error;
 use pinto::i18n::{Locale, Message, locale_name_from, localizer_from};
+use pinto::sprint::SprintId;
 use predicates::prelude::*;
 use std::collections::BTreeSet;
 use std::fs;
@@ -329,6 +332,67 @@ fn japanese_locale_preserves_external_parse_diagnostics() {
     let stderr = String::from_utf8_lossy(&stderr);
     assert!(stderr.contains("config.toml"));
     assert!(stderr.contains("expected") || stderr.contains("invalid"));
+}
+
+#[test]
+fn english_error_catalog_matches_display_and_external_details_survive_localization() {
+    let english = localizer_from(Some("en_US.UTF-8"), None);
+    let japanese = localizer_from(Some("ja_JP.UTF-8"), None);
+    let item = ItemId::try_new("T", 1).expect("valid item ID");
+    let sprint = SprintId::new("S-1").expect("valid sprint ID");
+
+    let actionable = [
+        Error::EmptyTitle,
+        Error::SprintClosed(sprint),
+        Error::ReferencedItem {
+            item,
+            references: "T-2".to_string(),
+        },
+    ];
+    for error in actionable {
+        assert_eq!(
+            error.localized(&english),
+            error.to_string(),
+            "English catalog must remain the library Display fallback: {error:?}"
+        );
+    }
+    assert!(
+        Error::SprintClosed(SprintId::new("S-1").expect("valid sprint ID"))
+            .localized(&english)
+            .contains("planned or active sprint")
+    );
+    assert!(
+        Error::ReferencedItem {
+            item: ItemId::try_new("T", 1).expect("valid item ID"),
+            references: "T-2".to_string(),
+        }
+        .localized(&english)
+        .contains("remove these parent/dependency links first")
+    );
+
+    let external = [
+        Error::Io {
+            path: "board.toml".into(),
+            message: "Permission denied".to_string(),
+        },
+        Error::Git("fatal: not a git repository".to_string()),
+        Error::Parse {
+            path: "config.toml".into(),
+            message: "expected newline".to_string(),
+        },
+    ];
+    for error in external {
+        let detail = match &error {
+            Error::Io { message, .. } | Error::Parse { message, .. } | Error::Git(message) => {
+                message
+            }
+            _ => unreachable!("external fixture contains only external errors"),
+        };
+        assert!(
+            error.localized(&japanese).contains(detail),
+            "localized wrapper must preserve external detail: {error:?}"
+        );
+    }
 }
 
 #[test]

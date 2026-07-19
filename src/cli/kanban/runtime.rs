@@ -775,7 +775,7 @@ fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>
             return Ok(());
         }
         Err(InputValidation::InvalidItemId(error)) => {
-            view.set_input_error(error);
+            view.set_input_error(error.localized(current()));
             return Ok(());
         }
     };
@@ -814,7 +814,7 @@ fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>
                     Ok(())
                 }
                 Err(error) if error.is_user_error() => {
-                    view.set_input_error(error.to_string());
+                    view.set_input_error(error.localized(current()));
                     Ok(())
                 }
                 Err(error) => Err(error.into()),
@@ -828,7 +828,7 @@ fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>
             let dependency = match dependency.parse::<ItemId>() {
                 Ok(dependency) => dependency,
                 Err(error) => {
-                    view.set_input_error(error.to_string());
+                    view.set_input_error(error.localized(current()));
                     return Ok(());
                 }
             };
@@ -847,7 +847,7 @@ fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>
                         Ok(())
                     }
                     Err(error) if error.is_user_error() => {
-                        view.set_input_error(error.to_string());
+                        view.set_input_error(error.localized(current()));
                         Ok(())
                     }
                     Err(error) => Err(error.into()),
@@ -873,7 +873,7 @@ fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>
                         Ok(())
                     }
                     Err(error) if error.is_user_error() => {
-                        view.set_input_error(error.to_string());
+                        view.set_input_error(error.localized(current()));
                         Ok(())
                     }
                     Err(error) => Err(error.into()),
@@ -884,7 +884,7 @@ fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>
             let parent = match parent.as_deref().map(str::parse::<ItemId>).transpose() {
                 Ok(parent) => parent,
                 Err(error) => {
-                    view.set_input_error(error.to_string());
+                    view.set_input_error(error.localized(current()));
                     return Ok(());
                 }
             };
@@ -917,7 +917,7 @@ fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>
                     Ok(())
                 }
                 Err(error) if error.is_user_error() => {
-                    view.set_input_error(error.to_string());
+                    view.set_input_error(error.localized(current()));
                     Ok(())
                 }
                 Err(error) => Err(error.into()),
@@ -1023,8 +1023,9 @@ fn edit_selected(
         // Report launch failures in the footer and keep the loop running.
         Err(e) => {
             view.set_status_message(format!(
-                "{} {e}",
-                current().text(Message::KanbanEditorFailed)
+                "{} {}",
+                current().text(Message::KanbanEditorFailed),
+                super::super::commands::format_anyhow_error(&e, current())
             ));
             return Ok(());
         }
@@ -1038,7 +1039,11 @@ fn edit_selected(
         }
         // Keep user-correctable errors in the footer and preserve the original item.
         Err(e) if e.is_user_error() => {
-            view.set_status_message(format!("{} {e}", current().text(Message::KanbanEditFailed)));
+            view.set_status_message(format!(
+                "{} {}",
+                current().text(Message::KanbanEditFailed),
+                e.localized(current())
+            ));
             Ok(())
         }
         Err(e) => Err(e.into()),
@@ -1125,7 +1130,7 @@ fn commit_search(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()
             Ok(filter) => Some(filter),
             Err(error) => {
                 // Keep editing: surface the error under the prompt rather than dropping the query.
-                view.set_search_input_error(error.to_string());
+                view.set_search_input_error(error.localized(current()));
                 return Ok(());
             }
         }

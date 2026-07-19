@@ -4,6 +4,7 @@
 use super::layout::{DisplayRow, PopupContent, board_items, column_display_rows};
 use crate::cli::dependency_display::DependencyIndex;
 use pinto::backlog::{BacklogItem, ItemId};
+use pinto::error::Error;
 use pinto::service::{Board, BoardColumn, BoardQuery, ReorderTarget, SearchFilter, SearchMode};
 use pinto::timezone::DisplayTimezone;
 use std::collections::HashSet;
@@ -73,14 +74,14 @@ pub(crate) enum InputSubmission {
 }
 
 /// Validation error raised before a form can advance.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum InputValidation {
     /// The add form requires a non-blank title.
     EmptyTitle,
     /// Dependency operations require a non-blank ID.
     EmptyDependency,
     /// A typed relationship ID uses the same parser as CLI commands.
-    InvalidItemId(String),
+    InvalidItemId(Error),
 }
 
 struct FormInput {
@@ -614,7 +615,7 @@ impl BoardView {
                     Some(
                         raw_parent
                             .parse::<ItemId>()
-                            .map_err(|error| InputValidation::InvalidItemId(error.to_string()))?,
+                            .map_err(InputValidation::InvalidItemId)?,
                     )
                 };
                 input.parent = parent;
@@ -635,7 +636,7 @@ impl BoardView {
                         .map(|value| {
                             value
                                 .parse::<ItemId>()
-                                .map_err(|error| InputValidation::InvalidItemId(error.to_string()))
+                                .map_err(InputValidation::InvalidItemId)
                         })
                         .collect::<Result<Vec<_>, _>>()?
                 };

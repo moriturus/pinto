@@ -158,6 +158,10 @@ runtime text separate from command behavior. Help, errors, board legends, and
 TUI labels use the selected locale. Every pinto-owned CLI message and structured
 domain-error variant is resolved through the catalog; the error variant's stable
 code selects its message rather than translating only the common `error:` prefix.
+For every public [`Error`](../src/error.rs) variant, the English catalog renders
+the same text as `Error::to_string()`, which remains the locale-independent
+library fallback. The CLI and TUI keep the structured error until that
+human-facing boundary and call `Error::localized()` there.
 Diagnostics supplied by the operating system, Git, TOML, or another dependency
 are inserted verbatim into the localized wrapper so their actionable source text
 is preserved.

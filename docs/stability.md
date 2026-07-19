@@ -167,4 +167,7 @@ localization catalogs. Structured domain errors select a catalog entry from a
 stable variant code, so a localized CLI does not show only a translated
 `error:` prefix. Operating-system, Git, TOML, and other dependency diagnostics
 are an explicit exception: they are inserted verbatim into a localized wrapper
-because their source wording contains the most actionable repair detail.
+because their source wording contains the most actionable repair detail. The
+English catalog is kept identical to `Error::to_string()` for every public
+variant; `Display` is the library fallback and `localized()` is used only at the
+CLI/TUI rendering boundary.

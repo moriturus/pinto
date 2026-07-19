@@ -82,7 +82,7 @@ pub(crate) async fn entrypoint() -> ExitCode {
 ///
 /// Context and external diagnostics remain in their original text; only the crate's structured
 /// [`Error`] values are selected from the Fluent catalog.
-fn format_anyhow_error(error: &anyhow::Error, localizer: &Localizer) -> String {
+pub(crate) fn format_anyhow_error(error: &anyhow::Error, localizer: &Localizer) -> String {
     error
         .chain()
         .map(|cause| {
@@ -517,8 +517,11 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         | Command::Completion(_) => Vec::new(),
     };
 
-    ids.into_iter()
-        .find_map(|raw| raw.parse::<ItemId>().err().map(|error| error.to_string()))
+    ids.into_iter().find_map(|raw| {
+        raw.parse::<ItemId>()
+            .err()
+            .map(|error| error.localized(current()))
+    })
 }
 
 async fn run_automation_command(

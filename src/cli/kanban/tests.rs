@@ -141,6 +141,7 @@ mod view_tests {
         board, board_of, completed_item, item, item_with_deps, item_with_parent,
     };
     use pinto::backlog::Status;
+    use pinto::error::Error;
 
     #[test]
     fn new_selects_first_column_and_first_row() {
@@ -612,6 +613,30 @@ mod view_tests {
             view.selected_item().map(|item| item.id.to_string()),
             Some("T-2".to_string())
         );
+    }
+
+    #[test]
+    fn invalid_relationship_ids_keep_the_structured_error_for_the_runtime_boundary() {
+        let mut view = BoardView::new(board(&[("todo", &["T-1"])]));
+        view.begin_add();
+        for c in "New item".chars() {
+            view.push_input_char(c);
+        }
+        view.submit_input().expect("title accepted");
+        for c in "body".chars() {
+            view.push_input_char(c);
+        }
+        view.submit_input().expect("body accepted");
+        for c in "bad".chars() {
+            view.push_input_char(c);
+        }
+
+        match view.submit_input() {
+            Err(InputValidation::InvalidItemId(Error::InvalidItemId(value))) => {
+                assert_eq!(value, "bad")
+            }
+            other => panic!("expected structured invalid ID error, got {other:?}"),
+        }
     }
 }
 
