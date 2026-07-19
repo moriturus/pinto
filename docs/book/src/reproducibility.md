@@ -42,6 +42,22 @@ published installation examples, the latest release tag, and the CHANGELOG.
 It also requires the [SQLite schema v1 to v2 compatibility guidance](../../stability.md)
 to remain complete.
 
+## Release and security responsibilities
+
+The release maintainer owns the version, lockfiles, changelog, package,
+release tag, and publication checks described below. The security maintainer
+owns private vulnerability intake, triage, reporter communication, and
+coordinated disclosure; see the
+[security policy](https://github.com/moriturus/pinto/blob/main/SECURITY.md). A
+primary maintainer may hold both roles, but the responsibilities and review
+record remain explicit.
+
+Release-related or security-related changes include a documented risk
+assessment, responsible maintainer, strongest applicable release and security
+checks, and follow-up actions. If one maintainer holds both roles, record that
+ownership explicitly. This documented fallback preserves traceability and does
+not waive the normal verification expectation.
+
 ## Allowlisted package contents
 
 The crate manifest uses root-anchored `package.include` entries for the

@@ -79,6 +79,27 @@ development and release toolchain is pinned by `mise.toml`; the committed
 `Cargo.lock` must be honored with `--locked` for source installs, checks, and
 release packaging.
 
+## Commit and maintainer review workflow
+
+Keep changes in small, green commits: each commit should build and pass the
+focused tests that cover it. For cross-cutting work, separate data, service,
+CLI, and documentation changes where practical. If a change cannot be split
+without obscuring the behavior, explain the boundary in the pull request.
+
+Before starting a large change, review its acceptance conditions and record the
+decisions that affect scope, persistence, migration, or release behavior. A
+destructive or release-related change must include its risk, verification, and
+recovery steps in the pull request. The primary maintainer records the final
+decision and any follow-up actions, then runs the strongest applicable checks.
+This documented fallback preserves traceability and keeps the change reviewable
+when maintainer capacity is limited.
+
+Security work follows the [security policy](SECURITY.md). The security
+maintainer owns private intake and coordinated disclosure, while the release
+maintainer owns versioning, changelog, package, tag, and publication checks.
+When responsibilities overlap, record the owner of each decision in the
+security or release record.
+
 ## Backlog
 
 pinto dogfoods its own board in `.pinto/`; it is the single source of truth

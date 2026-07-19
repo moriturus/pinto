@@ -6,6 +6,7 @@ const MAINTAINED_GUIDANCE: &[&str] = &[
     "AGENTS.base.md",
     "CONTRIBUTING.md",
     "README.md",
+    "SECURITY.md",
     ".github/ISSUE_TEMPLATE/bug_report.md",
     ".github/ISSUE_TEMPLATE/feature_request.md",
     ".github/PULL_REQUEST_TEMPLATE.md",
@@ -342,6 +343,82 @@ fn documentation_includes_the_required_operating_instructions() {
     ] {
         assert!(testing.contains(term), "testing guide omits {term}");
     }
+}
+
+#[test]
+fn maintainer_workflow_guidance_has_a_stable_policy_contract() {
+    let contributing = repository_file("CONTRIBUTING.md");
+    let contributing_compact = contributing
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for marker in [
+        "## Commit and maintainer review workflow",
+        "Keep changes in small, green commits",
+        "separate data, service, CLI, and documentation changes",
+        "review its acceptance conditions",
+        "primary maintainer records the final",
+        "documented fallback",
+    ] {
+        assert!(
+            contributing.contains(marker) || contributing_compact.contains(marker),
+            "CONTRIBUTING.md omits maintainer-workflow guidance: {marker}"
+        );
+    }
+
+    let pull_request = repository_file(".github/PULL_REQUEST_TEMPLATE.md");
+    for marker in [
+        "**Commit boundaries:**",
+        "**Acceptance review:**",
+        "**Maintainer verification:**",
+    ] {
+        assert!(
+            pull_request.contains(marker),
+            "pull-request template omits maintainer-workflow guidance: {marker}"
+        );
+    }
+
+    let security = repository_file("SECURITY.md");
+    let security_compact = security.split_whitespace().collect::<Vec<_>>().join(" ");
+    for marker in [
+        "## Responsibilities and fallback",
+        "response target, not a guarantee",
+        "risk assessment",
+    ] {
+        assert!(
+            security.contains(marker) || security_compact.contains(marker),
+            "SECURITY.md omits maintainer-workflow guidance: {marker}"
+        );
+    }
+
+    let reproducibility = repository_file("docs/book/src/reproducibility.md");
+    for marker in [
+        "## Release and security responsibilities",
+        "release maintainer",
+        "security maintainer",
+        "documented fallback",
+    ] {
+        assert!(
+            reproducibility.contains(marker),
+            "reproducibility guide omits maintainer-workflow guidance: {marker}"
+        );
+    }
+
+    let demo = repository_file("demos/single/maintainer-workflow/README.md");
+    for marker in [
+        "cargo run --manifest-path ../../../Cargo.toml -- init",
+        "small, green commits",
+        "SECURITY.md",
+        "docs/book/src/reproducibility.md",
+    ] {
+        assert!(
+            demo.contains(marker),
+            "maintainer-workflow demo omits {marker}"
+        );
+    }
+
+    let book_contributing = repository_file("docs/book/src/contributing.md");
+    assert!(book_contributing.contains("## Commit and maintainer review workflow"));
 }
 
 #[test]
