@@ -7,8 +7,10 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The next minor 0.x release is planned to add backlog discovery, recovery,
-diagnostics, machine-readable workflows, and richer Sprint and Kanban reporting.
+## [0.3.0] - 2026-07-19
+
+This minor 0.x release adds backlog discovery, recovery, diagnostics,
+machine-readable workflows, and richer Sprint and Kanban reporting.
 
 ### Added
 

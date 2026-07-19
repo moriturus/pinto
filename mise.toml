@@ -46,9 +46,13 @@ run = "cargo audit"
 description = "Check dependency license and source policies"
 run = "cargo deny check"
 
+[tasks.doctor]
+description = "Check the backlog soundness"
+run = "cargo run -q -- doctor"
+
 [tasks.check]
 description = "Pre-commit gate: test, lint, docs, and formatting"
-depends = ["test", "lint", "doc", "book"]
+depends = ["doctor", "test", "lint", "doc", "book"]
 run = "cargo fmt --check"
 
 [tasks.release-build]
