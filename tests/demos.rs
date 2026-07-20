@@ -99,6 +99,7 @@ fn discovered_demos() -> Vec<Demo> {
 
 fn run_pinto(dir: &Path, args: &[&str]) -> Output {
     let mut command = Command::cargo_bin("pinto").expect("pinto binary builds");
+    pin_english_locale(&mut command);
     command
         .current_dir(dir)
         .args(args)
@@ -108,12 +109,23 @@ fn run_pinto(dir: &Path, args: &[&str]) -> Output {
 
 fn run_pinto_with_env(dir: &Path, args: &[&str], key: &str, value: &str) -> Output {
     let mut command = Command::cargo_bin("pinto").expect("pinto binary builds");
+    // Pin English first, then apply the caller's override so a locale-specific demo (for example
+    // `single/i18n`) can still request `LC_ALL=ja_JP.UTF-8` and win.
+    pin_english_locale(&mut command);
     command
         .current_dir(dir)
         .args(args)
         .env(key, value)
         .output()
         .unwrap_or_else(|error| panic!("run pinto {args:?} in {}: {error}", dir.display()))
+}
+
+/// Pin a fixed English locale so demo output assertions do not break when the suite runs under a
+/// non-English shell. Callers that need another language override `LC_ALL`/`LANG` afterward.
+fn pin_english_locale(command: &mut Command) {
+    command
+        .env("LC_ALL", "en_US.UTF-8")
+        .env("LANG", "en_US.UTF-8");
 }
 
 fn diagnostics(output: &Output) -> String {

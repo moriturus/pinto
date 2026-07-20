@@ -11,8 +11,14 @@ pub(crate) fn pinto(dir: &Path) -> Command {
     let mut cmd = Command::cargo_bin("pinto").expect("binary builds");
     // Keep integration tests independent from a developer's real personal keybindings. Tests
     // that exercise the user file explicitly override this value with their own XDG directory.
+    //
+    // Pin a fixed English locale so assertions on English output do not break when the developer
+    // runs the suite under a non-English shell. i18n tests that need another language build their
+    // own command and set `LC_ALL`/`LANG` explicitly.
     cmd.current_dir(dir)
-        .env("XDG_CONFIG_HOME", dir.join("test-xdg-config"));
+        .env("XDG_CONFIG_HOME", dir.join("test-xdg-config"))
+        .env("LC_ALL", "en_US.UTF-8")
+        .env("LANG", "en_US.UTF-8");
     cmd
 }
 

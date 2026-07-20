@@ -232,3 +232,27 @@ fn cli_options_have_short_forms() {
         }
     }
 }
+
+/// Regression guard for P-44: the shared helper must pin a fixed English locale so spawned
+/// pinto processes emit English output regardless of the developer's `LC_ALL`/`LANG`. Inspecting
+/// the command environment keeps this deterministic across any parent locale, unlike output
+/// assertions that only diverge under a Japanese shell.
+#[test]
+fn helper_pins_english_locale_for_spawned_processes() {
+    use std::ffi::OsStr;
+
+    let dir = TempDir::new().expect("temp dir");
+    let cmd = pinto(dir.path());
+    let english = Some(OsStr::new("en_US.UTF-8"));
+    for key in ["LC_ALL", "LANG"] {
+        let value = cmd
+            .get_envs()
+            .find(|(name, _)| *name == OsStr::new(key))
+            .map(|(_, value)| value);
+        assert_eq!(
+            value,
+            Some(english),
+            "helper should pin {key} to a fixed English locale"
+        );
+    }
+}
