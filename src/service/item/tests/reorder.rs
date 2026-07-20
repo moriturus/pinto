@@ -313,3 +313,134 @@ async fn rebalance_on_already_short_ranks_changes_nothing() {
     assert_eq!(outcome.total, 2);
     assert_eq!(outcome.changed, 0, "already-balanced ranks are untouched");
 }
+
+#[tokio::test]
+async fn move_repegs_rank_onto_the_destination_scope_tail() {
+    // Rank values are unique only within a (status, parent) scope, so a move must
+    // not carry a rank into a destination scope that already holds it — the
+    // P-24/P-43 production collision. The moved item is re-pegged onto the tail
+    // instead, leaving the scope free of duplicates.
+    let dir = init_temp().await;
+    let a = add_item(dir.path(), "A", NewItem::default()).await.unwrap();
+    let b = add_item(dir.path(), "B", NewItem::default()).await.unwrap();
+    move_item(dir.path(), &b.id, "in-progress").await.unwrap();
+    // Force the exact cross-scope duplicate a per-scope rebalance can leave behind:
+    // A (todo) and B (in-progress) both at "i".
+    set_rank(dir.path(), &a.id, "i").await;
+    set_rank(dir.path(), &b.id, "i").await;
+
+    let moved = move_item(dir.path(), &b.id, "todo").await.unwrap();
+
+    assert_eq!(moved.status, Status::new("todo"), "status changed to todo");
+    let a_after = show_item(dir.path(), &a.id).await.unwrap();
+    assert_ne!(
+        moved.rank, a_after.rank,
+        "moved item must not reuse the rank already held in the destination scope"
+    );
+    assert!(
+        a_after.rank < moved.rank,
+        "moved item lands at the destination tail ({} < {})",
+        a_after.rank,
+        moved.rank
+    );
+    let report = crate::service::doctor(dir.path(), false).await.unwrap();
+    assert!(
+        !report
+            .issues
+            .iter()
+            .any(|issue| issue.kind == crate::service::DoctorIssueKind::RankAnomaly),
+        "move must not create a rank anomaly: {:?}",
+        report.issues
+    );
+}
+
+#[tokio::test]
+async fn move_to_the_same_status_preserves_rank() {
+    // Moving to the current column does not change scope, so the per-scope
+    // invariant already holds and the rank must be left untouched (no re-peg).
+    let dir = init_temp().await;
+    let a = add_item(dir.path(), "A", NewItem::default()).await.unwrap();
+    let b = add_item(dir.path(), "B", NewItem::default()).await.unwrap();
+
+    let moved = move_item(dir.path(), &b.id, "todo").await.unwrap();
+
+    assert_eq!(
+        moved.rank, b.rank,
+        "same-status move must not re-peg the rank"
+    );
+    let a_after = show_item(dir.path(), &a.id).await.unwrap();
+    assert_eq!(a_after.rank, a.rank, "the untouched sibling keeps its rank");
+}
+
+#[tokio::test]
+async fn move_without_a_rank_collision_keeps_the_carried_rank() {
+    // A cross-column move into a scope that does not already hold the item's rank
+    // keeps the rank untouched: position travels with the item, and only an actual
+    // collision forces a re-peg.
+    let dir = init_temp().await;
+    let _a = add_item(dir.path(), "A", NewItem::default()).await.unwrap();
+    let b = add_item(dir.path(), "B", NewItem::default()).await.unwrap();
+
+    // in-progress is empty, so b's rank cannot collide there.
+    let moved = move_item(dir.path(), &b.id, "in-progress").await.unwrap();
+
+    assert_eq!(
+        moved.rank, b.rank,
+        "a non-colliding move must preserve the carried rank"
+    );
+    assert_eq!(moved.status, Status::new("in-progress"), "status changed");
+}
+
+#[tokio::test]
+async fn rebalance_rewrites_scope_with_literal_duplicate_rank_at_canonical_length() {
+    let dir = init_temp().await;
+    let a = add_item(dir.path(), "A", NewItem::default()).await.unwrap();
+    let b = add_item(dir.path(), "B", NewItem::default()).await.unwrap();
+    // Corrupt the board with a literal duplicate at the already-canonical width;
+    // the length-only gate must not skip this scope.
+    set_rank(dir.path(), &a.id, "i").await;
+    set_rank(dir.path(), &b.id, "i").await;
+
+    let outcome = rebalance(dir.path(), false).await.expect("rebalance");
+
+    assert!(
+        outcome.changed > 0,
+        "a scope containing a literal duplicate rank must be rewritten"
+    );
+    let a_after = show_item(dir.path(), &a.id).await.unwrap();
+    let b_after = show_item(dir.path(), &b.id).await.unwrap();
+    assert_ne!(
+        a_after.rank, b_after.rank,
+        "rebalance must resolve literal duplicate ranks within a scope"
+    );
+}
+
+#[tokio::test]
+async fn doctor_reports_healthy_after_rebalance_resolves_duplicate_ranks() {
+    let dir = init_temp().await;
+    let a = add_item(dir.path(), "A", NewItem::default()).await.unwrap();
+    let b = add_item(dir.path(), "B", NewItem::default()).await.unwrap();
+    set_rank(dir.path(), &a.id, "i").await;
+    set_rank(dir.path(), &b.id, "i").await;
+
+    let before = crate::service::doctor(dir.path(), false).await.unwrap();
+    assert!(
+        before
+            .issues
+            .iter()
+            .any(|issue| issue.kind == crate::service::DoctorIssueKind::RankAnomaly),
+        "duplicate rank must be flagged before repair"
+    );
+
+    rebalance(dir.path(), false).await.expect("rebalance");
+
+    let after = crate::service::doctor(dir.path(), false).await.unwrap();
+    assert!(
+        !after
+            .issues
+            .iter()
+            .any(|issue| issue.kind == crate::service::DoctorIssueKind::RankAnomaly),
+        "rebalance must clear the rank anomaly: {:?}",
+        after.issues
+    );
+}

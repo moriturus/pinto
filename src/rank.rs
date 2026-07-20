@@ -182,6 +182,21 @@ impl Rank {
         }
         out
     }
+
+    /// Return the fixed rank width [`Rank::rebalance`] would use for `count`
+    /// items, without allocating the sequence.
+    ///
+    /// Callers deciding whether a scope needs rebalancing only need to compare
+    /// its current maximum rank length against this width; generating the full
+    /// replacement sequence just to measure it is wasted when the scope is left
+    /// untouched. Returns `0` for `count == 0`, matching the empty sequence.
+    #[must_use]
+    pub fn rebalance_width(count: usize) -> usize {
+        if count == 0 {
+            return 0;
+        }
+        rebalance_layout(count).0
+    }
 }
 
 /// Return the minimal fixed width and the number of canonical ranks available
@@ -573,6 +588,21 @@ mod tests {
     #[test]
     fn rebalance_zero_is_empty() {
         assert!(Rank::rebalance(0).is_empty());
+    }
+
+    #[test]
+    fn rebalance_width_matches_generated_width() {
+        // The cheap width predicate must agree with the width the full sequence
+        // actually occupies, across fixed-width boundaries (35 -> 1 digit, 36 ->
+        // 2 digits, 36^2 -> 3 digits).
+        for count in [0usize, 1, 2, 35, 36, 37, 1_000, 1_296, 1_297] {
+            let generated = RankStats::collect(Rank::rebalance(count).iter()).max_len;
+            assert_eq!(
+                Rank::rebalance_width(count),
+                generated,
+                "rebalance_width({count}) must equal the generated max width"
+            );
+        }
     }
 
     #[test]

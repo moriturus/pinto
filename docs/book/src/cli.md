@@ -212,6 +212,10 @@ warning on stderr but the transition remains successful. An item with no task-li
 produce this warning. See the [Acceptance Criteria demo](https://github.com/moriturus/pinto/tree/main/demos/single/acceptance-criteria)
 for a runnable example.
 
+A move keeps the item's rank, so its relative position travels with it into the new column. The one
+exception is a rank that already exists in the destination column: to keep ranks unique within a
+column, the item is re-pegged to the column's tail instead.
+
 `pinto reorder` (and Kanban `K` / `J`) moves a PBI only **within its sibling
 group** — `--top` / `--bottom` go to the front/back of that group, and
 `--before` / `--after` take a sibling as reference. Reordering relative to a

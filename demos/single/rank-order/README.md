@@ -2,7 +2,12 @@
 
 Dataset for backlog rank operations. Five items are arranged in the `todo` column.
 `rebalance` generates short, evenly spaced ranks per `(status, parent)` sibling
-scope; unrelated columns and parent groups are not rewritten.
+scope; unrelated columns and parent groups are not rewritten. A scope is rewritten
+when it grew too long or already holds a literal duplicate rank. Equal-size scopes
+may end up with the same rank values, which is harmless: ranks are only compared
+within a scope, and if a later `move` would carry a rank into a scope that already
+holds it, the item is re-pegged to the backlog tail instead — so no in-scope
+duplicate is ever created.
 
 ```bash
 cargo run --manifest-path ../../../Cargo.toml -- list                     # current order

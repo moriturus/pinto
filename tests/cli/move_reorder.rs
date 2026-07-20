@@ -480,3 +480,54 @@ fn reorder_before_a_non_sibling_is_user_error_code_1() {
         .code(1)
         .stderr(predicate::str::contains("not siblings"));
 }
+
+#[test]
+fn move_does_not_duplicate_a_rank_already_held_in_the_destination_scope() {
+    // Reproduces the P-24/P-43 production collision end-to-end. A rank value can
+    // live in two scopes at once (a per-scope `rebalance` hands equal-size scopes
+    // matching sequences), and `doctor` treats that as healthy because ranks are
+    // only compared within a scope. Moving such an item into the scope that
+    // already holds its value must not create an in-scope duplicate: the move
+    // re-pegs the item onto the destination tail instead.
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    for title in ["Todo", "WIP"] {
+        pinto(dir.path()).args(["add", title]).assert().success();
+    }
+    pinto(dir.path())
+        .args(["move", "T-2", "in-progress"])
+        .assert()
+        .success();
+
+    // Force the cross-scope duplicate: T-1 (todo) and T-2 (in-progress) both "m".
+    let items = json_stdout(pinto(dir.path()).args(["list", "--json"]));
+    let old_ranks: std::collections::HashMap<String, String> = items
+        .as_array()
+        .expect("list --json is an array")
+        .iter()
+        .map(|item| {
+            (
+                item["id"].as_str().unwrap().to_string(),
+                item["rank"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    for id in ["T-1", "T-2"] {
+        let path = dir.path().join(format!(".pinto/tasks/{id}.md"));
+        let content = std::fs::read_to_string(&path).expect("read item fixture");
+        let content = content.replacen(&format!("rank = \"{}\"", old_ranks[id]), "rank = \"m\"", 1);
+        std::fs::write(&path, content).expect("write item fixture");
+    }
+
+    // Moving T-2 into todo, where T-1 already holds "m", must not collide.
+    pinto(dir.path())
+        .args(["move", "T-2", "todo"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("healthy"));
+}

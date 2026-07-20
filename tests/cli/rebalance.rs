@@ -73,3 +73,8 @@ fn rebalance_reports_when_an_empty_board_is_already_balanced() {
         .success()
         .stdout(predicate::str::contains("Ranks already balanced"));
 }
+
+// The end-to-end guard for a `move` carrying a rank into a scope that already
+// holds it (the P-24/P-43 production collision) lives with the other move flows
+// in `move_reorder.rs`, since the invariant is now upheld at `move`, not by
+// making rebalanced scopes globally disjoint.

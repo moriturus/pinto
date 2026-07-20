@@ -290,9 +290,39 @@ pub async fn move_item_with_outcome(
 ) -> Result<MoveOutcome> {
     let (_board_dir, repo, config, _lock) = open_board_locked(project_dir).await?;
     let workflow = Workflow::new(config.columns.iter().map(Status::new));
+    let now = Utc::now();
 
     let mut item = repo.load(id).await?;
-    item.transition_to(Status::new(to), &workflow, Utc::now())?;
+    let from_status = item.status.clone();
+    item.transition_to(Status::new(to), &workflow, now)?;
+
+    // A status change moves the item into a different (status, parent) sibling
+    // scope. `transition_to` carries the rank across unchanged; the item keeps its
+    // rank so its relative position travels with it — unless that rank already
+    // exists in the destination scope. Rank values are unique only within a scope,
+    // not across the board (a per-scope `rebalance` even hands equal-size scopes
+    // matching sequences), so a carried duplicate is the one way a normal operation
+    // could break the per-scope uniqueness invariant. On that collision alone,
+    // re-peg the item after the backlog's maximum rank (like `add`) so it lands at
+    // the destination tail with a value that cannot duplicate an existing one.
+    if item.status != from_status {
+        let others = repo.list().await?;
+        let collides = others.iter().any(|it| {
+            it.id != item.id
+                && it.status == item.status
+                && it.parent == item.parent
+                && it.rank == item.rank
+        });
+        if collides {
+            let backlog_max = others
+                .iter()
+                .filter(|it| it.id != item.id)
+                .map(|it| &it.rank)
+                .max();
+            item.rank = Rank::after(backlog_max);
+        }
+    }
+
     let acceptance_criteria = AcceptanceCriteriaProgress::from_markdown(&item.body);
     let entered_done_column = to == config.done_column;
 
