@@ -27,10 +27,10 @@ cd pinto
 cargo install --path . --locked
 ```
 
-The latest published release is `0.3.0`. Install it from crates.io with:
+The latest published release is `0.3.1`. Install it from crates.io with:
 
 ```bash
-cargo install pinto-cli --version 0.3.0
+cargo install pinto-cli --version 0.3.1
 ```
 
 The installed binary remains `pinto`.

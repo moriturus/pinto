@@ -7,6 +7,18 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-20
+
+This patch release reorganizes internal implementation and test modules
+without changing the CLI, public Rust API, or board data formats.
+
+### Changed
+
+- Split oversized CLI command, formatting, Kanban runtime, SQLite repository,
+  service, and integration-test files into focused Rust modules.
+- Preserved existing module paths and runtime behavior through parent-module
+  re-exports.
+
 ## [0.3.0] - 2026-07-19
 
 This minor 0.x release adds backlog discovery, recovery, diagnostics,
