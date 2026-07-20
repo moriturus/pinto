@@ -4,11 +4,9 @@ use pinto::i18n::current;
 use pinto::service::Board;
 
 use super::item::{ListLongOptions, format_list_long};
-use super::{
-    MIN_TITLE_WIDTH, dependency_legend, dependency_marker_line, display_width, render_column_tree,
-    truncate,
-};
-use crate::cli::dependency_display::DependencyIndex;
+use super::text::{MIN_TITLE_WIDTH, display_width, truncate};
+use super::tree::{dependency_marker_line, render_column_tree};
+use crate::cli::dependency_display::{DependencyIndex, dependency_legend};
 
 /// Format the board using the shared layout and dependency renderers.
 pub(crate) fn format_board(board: &Board, max_width: usize) -> String {

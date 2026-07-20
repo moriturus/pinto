@@ -3,9 +3,10 @@
 //! These helpers support persistence-level tests (DESIGN §8) using isolated `tempfile` boards.
 //! They live in a separate module because multiple service submodules share them.
 
-use super::{ItemEdit, NewItem, add_item, init_board};
+use super::{ItemEdit, NewItem, add_item, create_sprint, init_board};
 use crate::backlog::{BacklogItem, ItemId};
 use crate::config::Config;
+use crate::sprint::SprintId;
 use std::path::Path;
 use tempfile::TempDir;
 
@@ -54,4 +55,12 @@ pub(super) fn parent_edit(parent: Option<ItemId>) -> ItemEdit {
         parent: Some(parent),
         ..Default::default()
     }
+}
+
+/// Create a sprint so item tests can reference a valid sprint ID.
+pub(super) async fn create_sprint_for_test(dir: &Path, id: &str) {
+    let sprint_id = SprintId::new(id).expect("valid sprint id");
+    create_sprint(dir, &sprint_id, id, None, None)
+        .await
+        .expect("create sprint");
 }
