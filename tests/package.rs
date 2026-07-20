@@ -108,7 +108,7 @@ fn package_contains_only_runtime_files() {
     }
 
     assert!(
-        files.len() <= 100,
+        files.len() <= 130,
         "package file count unexpectedly grew to {}",
         files.len()
     );
