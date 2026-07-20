@@ -29,6 +29,7 @@ const MAINTAINED_GUIDANCE: &[&str] = &[
     "docs/book/src/introduction.md",
     "docs/book/src/kanban.md",
     "docs/book/src/local-ci.md",
+    "docs/book/src/merging.md",
     "docs/book/src/quickstart.md",
     "docs/book/src/reproducibility.md",
     "docs/book/src/testing.md",
@@ -1117,4 +1118,48 @@ fn coverage_gate_checks_the_uploaded_cobertura_metric() {
         .expect("workflow contains a bounded coverage job");
     assert!(coverage_job.contains("if: success()"));
     assert!(!coverage_job.contains("if: always()"));
+}
+
+#[test]
+fn merge_runbook_documents_conflict_recovery() {
+    let summary = repository_file("docs/book/src/SUMMARY.md");
+    assert!(
+        summary.contains("merging.md"),
+        "SUMMARY.md does not link the merge runbook"
+    );
+
+    let runbook = repository_file("docs/book/src/merging.md");
+    // Explains how parallel clones allocate colliding IDs and where the
+    // conflicts surface.
+    for marker in [
+        "issued_ids",
+        ".pinto/tasks/",
+        "add/add",
+        "union",
+        "pinto add",
+    ] {
+        assert!(
+            runbook.contains(marker),
+            "merge runbook omits ID-collision guidance: {marker}"
+        );
+    }
+
+    // Includes doctor-based verification steps for the merged board.
+    for marker in [
+        "pinto doctor",
+        "pinto doctor --fix",
+        "Board is healthy.",
+        "duplicate ID",
+    ] {
+        assert!(
+            runbook.contains(marker),
+            "merge runbook omits doctor verification: {marker}"
+        );
+    }
+
+    // Points readers at the shared demo board so the runbook stays runnable.
+    assert!(
+        runbook.contains("merge-conflict"),
+        "merge runbook does not reference the merge-conflict demo"
+    );
 }

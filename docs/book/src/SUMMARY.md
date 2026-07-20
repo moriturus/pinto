@@ -14,6 +14,7 @@
 - [Kanban (TUI)](kanban.md)
 - [Configuration](configuration.md)
 - [Data format](data-format.md)
+- [Merging shared boards](merging.md)
 - [Dogfooding](dogfooding.md)
 
 ## Contributing
