@@ -23,3 +23,23 @@ catalog. The last command demonstrates actionable localized validation. OS, Git,
 and TOML diagnostics remain in their original wording inside the localized error
 wrapper, so repair details are not lost. `list --json` and `board --json` remain
 machine-readable in either locale.
+
+## Localized `--help` argument descriptions
+
+Every `#[arg]` help string resolves from the Fluent catalog, so a localized
+`--help` screen never mixes translated headings with English argument text
+(P-43). Compare the same screen in both locales:
+
+```bash
+LC_ALL=en_US.UTF-8 cargo run --manifest-path ../../../Cargo.toml -- board --help
+LC_ALL=ja_JP.UTF-8 cargo run --manifest-path ../../../Cargo.toml -- board --help
+LC_ALL=ja_JP.UTF-8 cargo run --manifest-path ../../../Cargo.toml -- reorder --help
+LC_ALL=ja_JP.UTF-8 cargo run --manifest-path ../../../Cargo.toml -- sprint new --help
+```
+
+Under `ja_JP`, the argument descriptions (for example, `--roots-only`,
+`--sort`, and `--goal`) are Japanese rather than falling back to English. A few
+strings that `clap` generates itself stay in English by design: the `Usage:`
+prefix, the `-h`/`--help` and `-V`/`--version` flag descriptions, the generated
+`help` subcommand, and the `Possible values:` block rendered from `ValueEnum`
+variants.

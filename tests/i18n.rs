@@ -161,6 +161,52 @@ fn clap_help_localizes_variable_length_label_setting_options() {
     }
 }
 
+/// Guard against mixed-language help (P-43): a supported non-English locale must not fall back to
+/// the English `#[arg]` doc comment for any argument description. Each case pins the Japanese
+/// locale, asserts the localized text is present, and asserts the previous English fallback is
+/// absent from the same `--help` screen.
+#[test]
+fn japanese_help_never_falls_back_to_english_argument_text() {
+    let cases: [(&[&str], &str, &str); 5] = [
+        (
+            &["board", "--help"],
+            "親を持たない PBI のみ表示する（子 PBI は省略する）。",
+            "Display only PBIs without a parent; child PBIs are omitted",
+        ),
+        (
+            &["list", "--help"],
+            "アクティブな PBI ではなくアーカイブ済みの PBI を一覧表示する。",
+            "List archived PBIs instead of active PBIs",
+        ),
+        (
+            &["reorder", "--help"],
+            "この PBI の兄弟グループの先頭に移動する。",
+            "Move to the front of this PBI's sibling group",
+        ),
+        (
+            &["sprint", "new", "--help"],
+            "Sprint のゴール（自由記述）。",
+            "Sprint goal (free description)",
+        ),
+        (
+            &["restore", "--help"],
+            "復元するアーカイブ済み PBI の ID（例: `T-1`）。",
+            "ID of the archived PBI to restore",
+        ),
+    ];
+
+    for (arguments, japanese, english_fallback) in cases {
+        let mut command = Command::cargo_bin("pinto").expect("binary builds");
+        command
+            .args(arguments)
+            .env("LC_ALL", "ja_JP.UTF-8")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(japanese))
+            .stdout(predicate::str::contains(english_fallback).not());
+    }
+}
+
 #[test]
 fn cli_uses_japanese_messages_for_a_japanese_locale() {
     let dir = TempDir::new().expect("temp dir");

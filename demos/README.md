@@ -33,7 +33,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`rank-order`](single/rank-order) — reorder (before/after/top/bottom) and rebalance
   - [`wip-limit`](single/wip-limit) — WIP limit warnings and `--no-wip-check`
   - [`dependencies`](single/dependencies) — dependencies and board markers
-  - [`i18n`](single/i18n) — English/Japanese CLI messages and diagnostic policy
+  - [`i18n`](single/i18n) — English/Japanese CLI messages, `--help` argument descriptions, and diagnostic policy
   - [`i18n-localizer-cache`](single/i18n-localizer-cache) — repeated localized list, show, board, and Kanban rendering
   - [`parse-error-classification`](single/parse-error-classification) — hand-edited config/frontmatter diagnostics and exit-code classification
   - [`config-validation`](single/config-validation) — strict config schema and workflow semantic validation
