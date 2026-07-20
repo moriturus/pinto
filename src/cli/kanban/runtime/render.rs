@@ -4,7 +4,7 @@ use super::effective_capacity;
 use crate::cli::kanban::keymap::KeyMap;
 use crate::cli::kanban::{BoardView, InputMode, PopupContent, display_width, wrap};
 use pinto::backlog::ItemId;
-use pinto::i18n::{Message, current};
+use pinto::i18n::{Localizer, Message, current};
 use pinto::kanban_keys::KeyAction;
 use pinto::service::SearchMode;
 use pinto::timezone::DisplayTimezone;
@@ -27,6 +27,15 @@ pub(crate) fn popup_max_scroll(
     size: Option<ratatui::layout::Size>,
     keymap: &KeyMap,
 ) -> u16 {
+    popup_max_scroll_with_localizer(view, size, keymap, current())
+}
+
+fn popup_max_scroll_with_localizer(
+    view: &BoardView,
+    size: Option<ratatui::layout::Size>,
+    keymap: &KeyMap,
+    localizer: &Localizer,
+) -> u16 {
     let Some(content) = view.popup_content() else {
         return 0;
     };
@@ -35,16 +44,17 @@ pub(crate) fn popup_max_scroll(
     });
     // `render` overlays the popup in the center area excluding the header and variable height footer.
     // Use the same base height as `render` so scrolling matches the drawn popup.
-    let footer_height = footer_lines(view, width.saturating_sub(2), keymap).len() as u16;
+    let footer_height = footer_lines(view, width.saturating_sub(2), keymap, localizer).len() as u16;
     let board_area_height = height.saturating_sub(1 + footer_height);
     let area = popup_rect(Rect::new(0, 0, width, board_area_height));
     let inner_width = area.width.saturating_sub(2) as usize; // left and right frames.
     let inner_height = area.height.saturating_sub(2); // upper and lower frames.
-    let total_lines = popup_lines_with_timezone(
+    let total_lines = popup_lines_with_timezone_and_localizer(
         &content,
         inner_width,
         view.render_markdown(),
         view.display_timezone(),
+        localizer,
     )
     .len() as u16;
     total_lines.saturating_sub(inner_height)
@@ -56,21 +66,31 @@ pub(crate) fn help_max_scroll(
     size: Option<ratatui::layout::Size>,
     keymap: &KeyMap,
 ) -> u16 {
+    help_max_scroll_with_localizer(view, size, keymap, current())
+}
+
+fn help_max_scroll_with_localizer(
+    view: &BoardView,
+    size: Option<ratatui::layout::Size>,
+    keymap: &KeyMap,
+    localizer: &Localizer,
+) -> u16 {
     let (width, height) = size.map_or((DEFAULT_POPUP_AREA.0, DEFAULT_POPUP_AREA.1), |s| {
         (s.width, s.height)
     });
     // Keep this calculation in sync with `render`: the board area excludes the one-line header
     // and the variable-height prompt/status/footer area.
-    let footer_height = footer_lines(view, width.saturating_sub(2), keymap).len() as u16;
+    let footer_height = footer_lines(view, width.saturating_sub(2), keymap, localizer).len() as u16;
     let board_area_height = height.saturating_sub(1 + footer_height);
     let show_clear_filter = view.search_filter().is_some();
     let area = help_popup_rect(
         Rect::new(0, 0, width, board_area_height),
         show_clear_filter,
         keymap,
+        localizer,
     );
     let inner_height = area.height.saturating_sub(2);
-    help_lines(keymap, show_clear_filter)
+    help_lines(keymap, show_clear_filter, localizer)
         .len()
         .try_into()
         .unwrap_or(u16::MAX)
@@ -81,8 +101,23 @@ pub(crate) fn help_max_scroll(
 const DEFAULT_POPUP_AREA: (u16, u16) = (80, 24);
 
 pub(crate) fn render(frame: &mut Frame, view: &BoardView, confirming: bool, keymap: &KeyMap) {
+    render_with_localizer(frame, view, confirming, keymap, current());
+}
+
+/// Render one Kanban frame with an explicit localizer.
+///
+/// The interactive runtime calls [`render`], preserving environment-driven locale selection.
+/// Tests use this seam to make text assertions deterministic without mutating process-global
+/// locale variables.
+pub(crate) fn render_with_localizer(
+    frame: &mut Frame,
+    view: &BoardView,
+    confirming: bool,
+    keymap: &KeyMap,
+    localizer: &Localizer,
+) {
     let footer_width = frame.area().width.saturating_sub(2);
-    let footer_lines = footer_lines(view, footer_width, keymap);
+    let footer_lines = footer_lines(view, footer_width, keymap, localizer);
     let footer_height = footer_lines
         .len()
         .min(frame.area().height.saturating_sub(1) as usize) as u16;
@@ -94,8 +129,11 @@ pub(crate) fn render(frame: &mut Frame, view: &BoardView, confirming: bool, keym
     .split(frame.area());
     let footer_area = footer_content_area(rows[2]);
 
-    frame.render_widget(header(view, rows[0].width), rows[0]);
-    render_columns(frame, view, rows[1]);
+    frame.render_widget(
+        header_with_localizer(view, rows[0].width, localizer),
+        rows[0],
+    );
+    render_columns(frame, view, rows[1], localizer);
     // Footer: input/search prompts are shown directly (like Vim), any temporary status (for example, a WIP
     // warning) is highlighted, and otherwise the key guide is dimmed.
     let footer = Paragraph::new(Text::from(footer_lines)).style(
@@ -113,7 +151,7 @@ pub(crate) fn render(frame: &mut Frame, view: &BoardView, confirming: bool, keym
         let prompt_row = footer_area.bottom().saturating_sub(1);
         let prompt_width = view
             .input_mode()
-            .map(input_prompt)
+            .map(|mode| input_prompt(mode, localizer))
             .map_or(1, |prompt| display_width(&prompt) as u16 + 1);
         let cursor_x = footer_area
             .x
@@ -143,13 +181,14 @@ pub(crate) fn render(frame: &mut Frame, view: &BoardView, confirming: bool, keym
                 view.render_markdown(),
                 view.display_timezone(),
                 rows[1],
+                localizer,
             ),
-            None => render_empty_popup(frame, rows[1]),
+            None => render_empty_popup(frame, rows[1], localizer),
         }
         // Repair any full-width board glyph whose right half spills onto the popup's left border.
         sanitize_left_border(frame.buffer_mut(), popup);
     } else if confirming {
-        render_quit_popup(frame, rows[1]);
+        render_quit_popup(frame, rows[1], localizer);
     }
 
     // Help is a second-level overlay: it can be opened from either board or details mode while
@@ -161,6 +200,7 @@ pub(crate) fn render(frame: &mut Frame, view: &BoardView, confirming: bool, keym
             view.search_filter().is_some(),
             keymap,
             rows[1],
+            localizer,
         );
     }
 }
@@ -200,10 +240,15 @@ pub(super) fn sanitize_left_border(buf: &mut Buffer, popup: Rect) {
 /// never misses it. Input prompts likewise own the footer while active. Otherwise the details
 /// popup uses its own close/scroll/select/edit guide, while board mode shows the five primary
 /// operations and keeps secondary operations in help.
-pub(super) fn footer_lines(view: &BoardView, width: u16, keymap: &KeyMap) -> Vec<Line<'static>> {
+pub(super) fn footer_lines(
+    view: &BoardView,
+    width: u16,
+    keymap: &KeyMap,
+    localizer: &Localizer,
+) -> Vec<Line<'static>> {
     // The add/relation form and vim-style search prompt own the bottom line while open.
     if let Some(mode) = view.input_mode() {
-        return input_prompt_lines(mode, view.input_buffer(), view.input_error());
+        return input_prompt_lines(mode, view.input_buffer(), view.input_error(), localizer);
     }
     if let Some(mode) = view.search_input_mode() {
         return search_prompt_lines(mode, view.search_input_buffer(), view.search_input_error());
@@ -212,17 +257,17 @@ pub(super) fn footer_lines(view: &BoardView, width: u16, keymap: &KeyMap) -> Vec
         return vec![Line::from(format!(" {message} "))];
     }
     if view.is_popup_open() {
-        return wrap_hint_groups(&popup_hints(keymap), width);
+        return wrap_hint_groups(&popup_hints(keymap, localizer), width);
     }
-    footer_hint_lines(keymap, width)
+    footer_hint_lines(keymap, width, localizer)
 }
 
 /// Build the fixed footer guide from the first configured key of the five primary operations.
-fn key_hints(keymap: &KeyMap) -> String {
+fn key_hints(keymap: &KeyMap, localizer: &Localizer) -> String {
     let columns = key_pair(keymap, KeyAction::SelectLeft, KeyAction::SelectRight);
     let select = key_pair(keymap, KeyAction::SelectDown, KeyAction::SelectUp);
     let cursor = format!("{columns},{select}");
-    current().format(
+    localizer.format(
         Message::KanbanKeyHints,
         [
             ("cursor", cursor.as_str()),
@@ -234,14 +279,14 @@ fn key_hints(keymap: &KeyMap) -> String {
 }
 
 /// Build the footer lines with the help hint anchored to the right edge.
-fn footer_hint_lines(keymap: &KeyMap, width: u16) -> Vec<Line<'static>> {
+fn footer_hint_lines(keymap: &KeyMap, width: u16, localizer: &Localizer) -> Vec<Line<'static>> {
     let width = usize::from(width).max(1);
-    let help = current().format(
+    let help = localizer.format(
         Message::KanbanHelpHint,
         [("help", keymap.first(KeyAction::Help))],
     );
     let help_width = display_width(&help);
-    let mut lines = wrap_hint_groups(&key_hints(keymap), width as u16);
+    let mut lines = wrap_hint_groups(&key_hints(keymap, localizer), width as u16);
     let Some(last) = lines.last_mut() else {
         return vec![right_aligned_hint(&help, width)];
     };
@@ -277,8 +322,8 @@ fn key_pair(keymap: &KeyMap, first: KeyAction, second: KeyAction) -> String {
 }
 
 /// Build the details-popup key guide from the first configured key of every popup operation.
-fn popup_hints(keymap: &KeyMap) -> String {
-    current().format(
+fn popup_hints(keymap: &KeyMap, localizer: &Localizer) -> String {
+    localizer.format(
         Message::KanbanPopupHints,
         [
             ("close", keymap.first(KeyAction::PopupClose)),
@@ -299,7 +344,11 @@ fn help_key(keymap: &KeyMap, action: KeyAction) -> String {
 }
 
 /// Build the help window entries from every accepted operation outside the fixed footer guide.
-fn help_lines(keymap: &KeyMap, show_clear_filter: bool) -> Vec<Line<'static>> {
+fn help_lines(
+    keymap: &KeyMap,
+    show_clear_filter: bool,
+    localizer: &Localizer,
+) -> Vec<Line<'static>> {
     let shell = help_key(keymap, KeyAction::Shell);
     let move_keys = key_pair(keymap, KeyAction::MoveLeft, KeyAction::MoveRight);
     let reorder = key_pair(keymap, KeyAction::ReorderUp, KeyAction::ReorderDown);
@@ -352,7 +401,7 @@ fn help_lines(keymap: &KeyMap, show_clear_filter: bool) -> Vec<Line<'static>> {
     let search = pad(&search);
     let regex_search = pad(&regex_search);
     let clear_filter = clear_filter.map(|key| pad(&key));
-    let entries = current().format(
+    let entries = localizer.format(
         Message::KanbanHelpEntries,
         [
             ("shell", shell.as_str()),
@@ -374,7 +423,7 @@ fn help_lines(keymap: &KeyMap, show_clear_filter: bool) -> Vec<Line<'static>> {
         .map(|line| Line::from(line.to_string()))
         .collect();
     if let Some(clear_filter) = clear_filter {
-        let clear_filter = current().format(
+        let clear_filter = localizer.format(
             Message::KanbanHelpClearFilter,
             [("clear_filter", clear_filter.as_str())],
         );
@@ -401,8 +450,13 @@ fn search_prompt_lines(mode: SearchMode, buffer: &str, error: Option<&str>) -> V
 }
 
 /// Build the add/relation prompt and optional inline validation line.
-fn input_prompt_lines(mode: InputMode, buffer: &str, error: Option<&str>) -> Vec<Line<'static>> {
-    let prompt = input_prompt(mode);
+fn input_prompt_lines(
+    mode: InputMode,
+    buffer: &str,
+    error: Option<&str>,
+    localizer: &Localizer,
+) -> Vec<Line<'static>> {
+    let prompt = input_prompt(mode, localizer);
     let mut lines = Vec::new();
     if let Some(error) = error {
         lines.push(Line::from(format!(" {error} ")));
@@ -412,15 +466,15 @@ fn input_prompt_lines(mode: InputMode, buffer: &str, error: Option<&str>) -> Vec
 }
 
 /// Localized label for an add/relation prompt, without the input separator.
-fn input_prompt(mode: InputMode) -> String {
+fn input_prompt(mode: InputMode, localizer: &Localizer) -> String {
     match mode {
-        InputMode::AddTitle => current().text(Message::KanbanAddTitlePrompt),
-        InputMode::AddBody => current().text(Message::KanbanAddBodyPrompt),
-        InputMode::AddParent => current().text(Message::KanbanAddParentPrompt),
-        InputMode::AddDependencies => current().text(Message::KanbanAddDependenciesPrompt),
-        InputMode::DependencyAdd => current().text(Message::KanbanDependencyAddPrompt),
-        InputMode::DependencyRemove => current().text(Message::KanbanDependencyRemovePrompt),
-        InputMode::Parent => current().text(Message::KanbanParentPrompt),
+        InputMode::AddTitle => localizer.text(Message::KanbanAddTitlePrompt),
+        InputMode::AddBody => localizer.text(Message::KanbanAddBodyPrompt),
+        InputMode::AddParent => localizer.text(Message::KanbanAddParentPrompt),
+        InputMode::AddDependencies => localizer.text(Message::KanbanAddDependenciesPrompt),
+        InputMode::DependencyAdd => localizer.text(Message::KanbanDependencyAddPrompt),
+        InputMode::DependencyRemove => localizer.text(Message::KanbanDependencyRemovePrompt),
+        InputMode::Parent => localizer.text(Message::KanbanParentPrompt),
     }
 }
 
@@ -460,7 +514,12 @@ fn wrap_hint_groups(hints: &str, width: u16) -> Vec<Line<'static>> {
 }
 
 /// header row. Title, visibility range/direction indicator during horizontal scrolling, and legend for dependent markers.
+#[cfg(test)]
 pub(crate) fn header(view: &BoardView, width: u16) -> Line<'static> {
+    header_with_localizer(view, width, current())
+}
+
+fn header_with_localizer(view: &BoardView, width: u16, localizer: &Localizer) -> Line<'static> {
     let total = view.columns().len();
     let capacity = effective_capacity(width, view.is_maximized());
     let start = view.col_offset();
@@ -474,7 +533,7 @@ pub(crate) fn header(view: &BoardView, width: u16) -> Line<'static> {
         let total = total.to_string();
         label.push_str(&format!(
             " {} ",
-            current().format(
+            localizer.format(
                 Message::KanbanColumnRange,
                 [
                     ("left", left),
@@ -497,7 +556,7 @@ pub(crate) fn header(view: &BoardView, width: u16) -> Line<'static> {
             SearchMode::Contains => Message::KanbanActiveFilter,
             SearchMode::Regex => Message::KanbanActiveRegexFilter,
         };
-        let indicator = current().format(message, [("pattern", filter.pattern())]);
+        let indicator = localizer.format(message, [("pattern", filter.pattern())]);
         spans.push(Span::styled(
             format!(" {indicator} "),
             Style::new().fg(Color::Black).bg(Color::Yellow),
@@ -505,7 +564,7 @@ pub(crate) fn header(view: &BoardView, width: u16) -> Line<'static> {
     }
     // Dependency marker legend (string shared with board). Display more modestly than the main text.
     spans.push(Span::styled(
-        format!(" {} ", crate::cli::kanban::dependency_legend(current())),
+        format!(" {} ", crate::cli::kanban::dependency_legend(localizer)),
         Style::new().fg(Color::DarkGray),
     ));
     Line::from(spans)
@@ -515,11 +574,11 @@ pub(crate) fn header(view: &BoardView, width: u16) -> Line<'static> {
 ///
 /// Highlight selected columns with a frame and selected rows with a background color. Each card
 /// starts with its ID in the first row; the title is wrapped to the column width.
-fn render_columns(frame: &mut Frame, view: &BoardView, area: Rect) {
+fn render_columns(frame: &mut Frame, view: &BoardView, area: Rect, localizer: &Localizer) {
     let columns = view.columns();
     if columns.is_empty() {
         frame.render_widget(
-            Paragraph::new(current().text(Message::KanbanEmptyColumns)),
+            Paragraph::new(localizer.text(Message::KanbanEmptyColumns)),
             area,
         );
         return;
@@ -772,10 +831,10 @@ fn dependency_line(
 }
 
 /// Draw the completion confirmation popup overlapping the center. Make it the smallest size that fits the text.
-fn render_quit_popup(frame: &mut Frame, area: Rect) {
-    let body_text = current().text(Message::KanbanQuitBody);
+fn render_quit_popup(frame: &mut Frame, area: Rect, localizer: &Localizer) {
+    let body_text = localizer.text(Message::KanbanQuitBody);
     // Minimum width of 2 digits for frame + 2 digits for left and right padding. Match the title to the wider of the body.
-    let title = format!(" {} ", current().text(Message::KanbanQuitPrompt));
+    let title = format!(" {} ", localizer.text(Message::KanbanQuitPrompt));
     let content_width = display_width(&body_text).max(display_width(&title)) as u16;
     let popup = centered_fixed(content_width + 4, 3, area); // 1 line of text + top and bottom frames.
     frame.render_widget(Clear, popup);
@@ -791,8 +850,13 @@ fn render_quit_popup(frame: &mut Frame, area: Rect) {
 }
 
 /// Rectangle for the secondary-operation help window.
-fn help_popup_rect(area: Rect, show_clear_filter: bool, keymap: &KeyMap) -> Rect {
-    let lines = help_lines(keymap, show_clear_filter);
+fn help_popup_rect(
+    area: Rect,
+    show_clear_filter: bool,
+    keymap: &KeyMap,
+    localizer: &Localizer,
+) -> Rect {
+    let lines = help_lines(keymap, show_clear_filter, localizer);
     let content_width = lines
         .iter()
         .map(|line| display_width(&line.to_string()))
@@ -817,15 +881,16 @@ fn render_help_popup(
     show_clear_filter: bool,
     keymap: &KeyMap,
     area: Rect,
+    localizer: &Localizer,
 ) {
-    let popup = help_popup_rect(area, show_clear_filter, keymap);
+    let popup = help_popup_rect(area, show_clear_filter, keymap, localizer);
     frame.render_widget(Clear, popup);
-    let title = format!(" {} ", current().text(Message::KanbanHelpTitle));
+    let title = format!(" {} ", localizer.text(Message::KanbanHelpTitle));
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::new().fg(Color::Cyan))
         .title(title);
-    let body = Paragraph::new(Text::from(help_lines(keymap, show_clear_filter)))
+    let body = Paragraph::new(Text::from(help_lines(keymap, show_clear_filter, localizer)))
         .block(block)
         .scroll((scroll, 0));
     frame.render_widget(body, popup);
@@ -856,11 +921,22 @@ pub(super) fn popup_rect(area: Rect) -> Rect {
 ///
 /// `width` is the inner display width excluding the frame. The same width is used to calculate
 /// scrolling, so this remains a pure function independent of drawing.
+#[cfg(test)]
 pub(super) fn popup_lines_with_timezone(
     content: &PopupContent,
     width: usize,
     markdown: bool,
     timezone: DisplayTimezone,
+) -> Vec<Line<'static>> {
+    popup_lines_with_timezone_and_localizer(content, width, markdown, timezone, current())
+}
+
+fn popup_lines_with_timezone_and_localizer(
+    content: &PopupContent,
+    width: usize,
+    markdown: bool,
+    timezone: DisplayTimezone,
+    localizer: &Localizer,
 ) -> Vec<Line<'static>> {
     fn field(label: &str, value: String) -> Line<'static> {
         Line::from(vec![
@@ -956,7 +1032,7 @@ pub(super) fn popup_lines_with_timezone(
 
     if content.body.is_empty() {
         lines.push(Line::from(Span::styled(
-            current().text(Message::KanbanNoBody),
+            localizer.text(Message::KanbanNoBody),
             Style::new().fg(Color::DarkGray),
         )));
     } else if markdown {
@@ -988,20 +1064,27 @@ fn render_item_popup(
     markdown: bool,
     timezone: DisplayTimezone,
     area: Rect,
+    localizer: &Localizer,
 ) {
     let popup = popup_rect(area);
     frame.render_widget(Clear, popup);
     let title = format!(
         " {} — {} ",
         content.id,
-        current().text(Message::KanbanDetailsTitle),
+        localizer.text(Message::KanbanDetailsTitle),
     );
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::new().fg(Color::Cyan))
         .title(title);
     let inner_width = popup.width.saturating_sub(2) as usize;
-    let lines = popup_lines_with_timezone(content, inner_width, markdown, timezone);
+    let lines = popup_lines_with_timezone_and_localizer(
+        content,
+        inner_width,
+        markdown,
+        timezone,
+        localizer,
+    );
     let body = Paragraph::new(Text::from(lines))
         .block(block)
         .wrap(Wrap { trim: false })
@@ -1012,15 +1095,15 @@ fn render_item_popup(
 /// Draws the details popup with a "no item selected" placeholder, used when the popup is open but
 /// the selection is empty (e.g. after navigating to a column with no cards). Keeps the popup frame
 /// on screen so the detail mode stays visible, and the title keeps advertising the close key.
-fn render_empty_popup(frame: &mut Frame, area: Rect) {
+fn render_empty_popup(frame: &mut Frame, area: Rect, localizer: &Localizer) {
     let popup = popup_rect(area);
     frame.render_widget(Clear, popup);
-    let title = format!(" {} ", current().text(Message::KanbanDetailsTitle));
+    let title = format!(" {} ", localizer.text(Message::KanbanDetailsTitle));
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::new().fg(Color::Cyan))
         .title(title);
-    let body = Paragraph::new(current().text(Message::KanbanNoSelection))
+    let body = Paragraph::new(localizer.text(Message::KanbanNoSelection))
         .block(block)
         .style(Style::new().fg(Color::DarkGray))
         .alignment(Alignment::Center)

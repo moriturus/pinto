@@ -1,5 +1,6 @@
 use super::super::*;
 use super::fixtures::{board, board_of, item, item_with_parent};
+use pinto::i18n::localizer_from;
 use pinto::kanban_keys::KeyBindings;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -10,9 +11,12 @@ fn default_keymap() -> super::super::keymap::KeyMap {
 
 fn draw(view: &BoardView, confirming: bool, w: u16, h: u16) -> String {
     let keymap = default_keymap();
+    let localizer = localizer_from(Some("en_US.UTF-8"), None);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
     terminal
-        .draw(|frame| runtime::render(frame, view, confirming, &keymap))
+        .draw(|frame| {
+            runtime::render_with_localizer(frame, view, confirming, &keymap, &localizer);
+        })
         .unwrap();
     terminal
         .backend()
@@ -26,9 +30,12 @@ fn draw(view: &BoardView, confirming: bool, w: u16, h: u16) -> String {
 /// Returns the buffer as a row-major string. To inspect header lines and body text separately.
 fn draw_rows(view: &BoardView, w: u16, h: u16) -> Vec<String> {
     let keymap = default_keymap();
+    let localizer = localizer_from(Some("en_US.UTF-8"), None);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
     terminal
-        .draw(|frame| runtime::render(frame, view, false, &keymap))
+        .draw(|frame| {
+            runtime::render_with_localizer(frame, view, false, &keymap, &localizer);
+        })
         .unwrap();
     terminal
         .backend()

@@ -1,15 +1,16 @@
 use super::automation::{
     AutomationExecution, ValidatedAutomationCommand, automation_command_name,
-    automation_execution_result, automation_target_ids, first_item_id_in_output, parsed_item_id,
-    read_automation_plan,
+    automation_execution_result_with_localizer, automation_target_ids, first_item_id_in_output,
+    parsed_item_id, read_automation_plan,
 };
 use super::item::{combine_template_body, report_failures};
-use super::sprint::cmd_sprint;
+use super::sprint::cmd_sprint_with_localizer;
 use crate::cli::args::{Cli, SprintArgs, SprintCommand};
 use clap::CommandFactory;
 use pinto::automation::AutomationPlan;
 use pinto::backlog::ItemId;
 use pinto::error::Error;
+use pinto::i18n::localizer_from;
 use std::path::Path;
 
 fn argv(values: &[&str]) -> Vec<String> {
@@ -97,13 +98,14 @@ fn automation_schema_tracks_safe_cli_commands_and_aliases() {
 
 #[test]
 fn automation_results_extract_created_ids_and_sanitize_errors() {
+    let localizer = localizer_from(Some("en_US.UTF-8"), None);
     let command = ValidatedAutomationCommand {
         index: 1,
         argv: argv(&["add", "Task"]),
         name: "add".to_string(),
         error: None,
     };
-    let created = automation_execution_result(
+    let created = automation_execution_result_with_localizer(
         &command,
         &AutomationExecution {
             success: true,
@@ -112,6 +114,7 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
             stderr: String::new(),
         },
         "succeeded",
+        &localizer,
     );
     assert_eq!(created.created_ids, ["T-42"]);
     assert_eq!(created.error, None);
@@ -120,7 +123,7 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
         (Some(1), "command exited with status 1"),
         (None, "command exited with status unknown"),
     ] {
-        let failed = automation_execution_result(
+        let failed = automation_execution_result_with_localizer(
             &command,
             &AutomationExecution {
                 success: false,
@@ -129,11 +132,12 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
                 stderr: String::new(),
             },
             "failed",
+            &localizer,
         );
         assert_eq!(failed.error.as_deref(), Some(expected));
     }
 
-    let stderr = automation_execution_result(
+    let stderr = automation_execution_result_with_localizer(
         &command,
         &AutomationExecution {
             success: false,
@@ -142,6 +146,7 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
             stderr: "  user-facing failure\n".to_string(),
         },
         "failed",
+        &localizer,
     );
     assert_eq!(stderr.error.as_deref(), Some("user-facing failure"));
     assert_eq!(
@@ -189,15 +194,19 @@ fn template_body_and_failure_reporting_keep_edge_cases_explicit() {
 
 #[tokio::test]
 async fn sprint_capacity_rejects_an_incomplete_programmatic_argument_set() {
-    let error = cmd_sprint(SprintArgs {
-        command: SprintCommand::Capacity {
-            id: "S-1".to_string(),
-            daily_hours: Some(8.0),
-            holidays: None,
-            deduction_factor: None,
-            json: false,
+    let localizer = localizer_from(Some("en_US.UTF-8"), None);
+    let error = cmd_sprint_with_localizer(
+        SprintArgs {
+            command: SprintCommand::Capacity {
+                id: "S-1".to_string(),
+                daily_hours: Some(8.0),
+                holidays: None,
+                deduction_factor: None,
+                json: false,
+            },
         },
-    })
+        &localizer,
+    )
     .await
     .expect_err("partial capacity settings must be rejected");
 

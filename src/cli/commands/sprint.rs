@@ -7,7 +7,7 @@ use crate::cli::format::sprint::{
 };
 use crate::cli::json::{burndown_json, sprint_capacity_json, sprints_json};
 use pinto::backlog::ItemId;
-use pinto::i18n::{Message, current};
+use pinto::i18n::{Localizer, Message, current};
 use pinto::service::{
     SprintCloseAction, assign_sprint_by_status, assign_sprint_raw, burndown, close_sprint,
     create_sprint, delete_sprint, display_settings, edit_sprint, list_sprints, set_sprint_capacity,
@@ -22,13 +22,13 @@ use std::process::ExitCode;
 use super::terminal_width;
 
 /// Warn to stderr when assigned Sprint points exceed a configured planning threshold.
-async fn warn_sprint_load(dir: &Path, id: &SprintId) -> anyhow::Result<()> {
+async fn warn_sprint_load(dir: &Path, id: &SprintId, localizer: &Localizer) -> anyhow::Result<()> {
     for warning in sprint_load_warnings(dir, id).await? {
         let points = warning.points.to_string();
         let threshold = format!("{:.1} {}", warning.threshold, warning.kind.unit());
         eprintln!(
             "{}",
-            current().format(
+            localizer.format(
                 Message::SprintLoadWarning,
                 [
                     ("sprint", id.as_str()),
@@ -46,6 +46,18 @@ async fn warn_sprint_load(dir: &Path, id: &SprintId) -> anyhow::Result<()> {
 ///
 /// User errors such as invalid ID format, non-existent ID, invalid state transition, etc. will be assigned code 1 by `main`.
 pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
+    cmd_sprint_with_localizer(args, current()).await
+}
+
+/// Execute a Sprint command with an explicit localizer.
+///
+/// Production dispatch uses [`cmd_sprint`], which selects the locale from the process
+/// environment. Tests can call this seam with a deterministic localizer without mutating
+/// process-global environment variables.
+pub(super) async fn cmd_sprint_with_localizer(
+    args: SprintArgs,
+    localizer: &Localizer,
+) -> anyhow::Result<ExitCode> {
     let dir = std::env::current_dir()?;
     match args.command {
         SprintCommand::New {
@@ -72,7 +84,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
             let sprint = create_sprint(&dir, &id, &title, goal, period).await?;
             println!(
                 "{}",
-                current().format(
+                localizer.format(
                     Message::CreatedSprint,
                     [
                         ("id", sprint.id.to_string().as_str()),
@@ -96,7 +108,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
             let sprint = edit_sprint(&dir, &id, title, goal, period).await?;
             println!(
                 "{}",
-                current().format(
+                localizer.format(
                     Message::UpdatedSprint,
                     [("id", sprint.id.to_string().as_str())],
                 )
@@ -107,7 +119,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
             delete_sprint(&dir, &id).await?;
             println!(
                 "{}",
-                current().format(Message::DeletedSprint, [("id", id.to_string().as_str())])
+                localizer.format(Message::DeletedSprint, [("id", id.to_string().as_str())])
             );
         }
         SprintCommand::Start { id } => {
@@ -115,12 +127,12 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
             let sprint = start_sprint(&dir, &id).await?;
             println!(
                 "{}",
-                current().format(
+                localizer.format(
                     Message::StartedSprint,
                     [("id", sprint.id.to_string().as_str())],
                 )
             );
-            warn_sprint_load(&dir, &sprint.id).await?;
+            warn_sprint_load(&dir, &sprint.id, localizer).await?;
         }
         SprintCommand::Close {
             id,
@@ -138,7 +150,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
             let sprint = close_sprint(&dir, &id, action).await?;
             println!(
                 "{}",
-                current().format(
+                localizer.format(
                     Message::ClosedSprint,
                     [("id", sprint.id.to_string().as_str())],
                 )
@@ -156,7 +168,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                 let item = assign_sprint_raw(&dir, sprint_id.as_str(), &item_id).await?;
                 println!(
                     "{}",
-                    current().format(
+                    localizer.format(
                         Message::AssignedToSprint,
                         [
                             ("id", item.id.to_string().as_str()),
@@ -164,14 +176,14 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                         ],
                     )
                 );
-                warn_sprint_load(&dir, &sprint_id).await?;
+                warn_sprint_load(&dir, &sprint_id, localizer).await?;
             } else if let Some(status) = status {
                 let sprint_id: SprintId = sprint_id.parse()?;
                 let assigned = assign_sprint_by_status(&dir, &sprint_id, &status, limit).await?;
                 for item in &assigned {
                     println!(
                         "{}",
-                        current().format(
+                        localizer.format(
                             Message::AssignedToSprint,
                             [
                                 ("id", item.id.to_string().as_str()),
@@ -181,12 +193,12 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                     );
                 }
                 if !assigned.is_empty() {
-                    warn_sprint_load(&dir, &sprint_id).await?;
+                    warn_sprint_load(&dir, &sprint_id, localizer).await?;
                 }
             } else {
                 return Err(anyhow::anyhow!(
                     "{}",
-                    current().text(Message::SprintAddRequiresItemOrStatus)
+                    localizer.text(Message::SprintAddRequiresItemOrStatus)
                 ));
             }
         }
@@ -196,7 +208,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
             let item = unassign_sprint(&dir, &sprint_id, &item_id).await?;
             println!(
                 "{}",
-                current().format(
+                localizer.format(
                     Message::UnassignedFromSprint,
                     [
                         ("id", item.id.to_string().as_str()),
@@ -210,7 +222,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
             if json {
                 println!("{}", sprints_json(&sprints)?);
             } else if sprints.is_empty() {
-                println!("{}", current().text(Message::NoSprints));
+                println!("{}", localizer.text(Message::NoSprints));
             } else {
                 let timezone = display_settings(&dir).await?.timezone;
                 print!("{}", format_sprints_with_timezone(&sprints, timezone));
@@ -228,7 +240,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
         SprintCommand::Velocity { recent } => {
             let report = velocity(&dir, recent).await?;
             if report.sprints.is_empty() {
-                println!("{}", current().text(Message::NoSprints));
+                println!("{}", localizer.text(Message::NoSprints));
             } else {
                 print!("{}", format_velocity(&report, recent));
             }
@@ -249,7 +261,7 @@ pub(super) async fn cmd_sprint(args: SprintArgs) -> anyhow::Result<ExitCode> {
                 _ => {
                     return Err(anyhow::anyhow!(
                         "{}",
-                        current().text(Message::InvalidCapacityOptions)
+                        localizer.text(Message::InvalidCapacityOptions)
                     ));
                 }
             };

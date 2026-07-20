@@ -26,6 +26,8 @@ use actions::{
 };
 #[cfg(test)]
 pub(super) use render::header;
+#[cfg(test)]
+pub(super) use render::render_with_localizer;
 pub(super) use render::{help_max_scroll, popup_max_scroll, render};
 
 #[cfg(test)]

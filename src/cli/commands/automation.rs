@@ -583,6 +583,20 @@ pub(super) fn automation_execution_result(
     execution: &AutomationExecution,
     status: &str,
 ) -> AutomationCommandResult {
+    automation_execution_result_with_localizer(command, execution, status, current())
+}
+
+/// Build a command result with an explicit localizer.
+///
+/// The production entry point [`automation_execution_result`] forwards the process localizer
+/// ([`current`]); tests inject a deterministic localizer so their English assertions do not
+/// depend on the parent process locale.
+pub(super) fn automation_execution_result_with_localizer(
+    command: &ValidatedAutomationCommand,
+    execution: &AutomationExecution,
+    status: &str,
+    localizer: &pinto::i18n::Localizer,
+) -> AutomationCommandResult {
     let created_ids = (command.argv.first().map(String::as_str) == Some("add"))
         .then(|| first_item_id_in_output(&execution.stdout))
         .flatten()
@@ -600,7 +614,7 @@ pub(super) fn automation_execution_result(
                 let status = execution
                     .exit_code
                     .map_or_else(|| "unknown".to_string(), |code| code.to_string());
-                current().format(
+                localizer.format(
                     Message::AutomationCommandExited,
                     [("status", status.as_str())],
                 )
