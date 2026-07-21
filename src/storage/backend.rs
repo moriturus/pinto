@@ -14,7 +14,7 @@ use super::repository::{BacklogItemRepository, SprintRepository};
 use super::sqlite_repository::SqliteRepository;
 use crate::backlog::{BacklogItem, ItemId};
 use crate::config::StorageBackend;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::sprint::{Sprint, SprintId};
 use std::path::PathBuf;
 
@@ -67,6 +67,24 @@ impl Backend {
             Backend::Git(repository) => repository.commit(message).await,
             #[cfg(feature = "sqlite")]
             Backend::Sqlite(_) => Ok(()),
+        }
+    }
+
+    /// Undo the most recent completed board mutation and return its subject.
+    ///
+    /// Only the Git backend records history, so it delegates to [`GitRepository::undo_last`]. The
+    /// historyless backends fail with [`Error::UndoUnsupported`], which names the backend and the
+    /// recovery options.
+    pub(crate) async fn undo(&self) -> Result<String> {
+        match self {
+            Backend::File(_) => Err(Error::UndoUnsupported {
+                backend: "file".to_string(),
+            }),
+            Backend::Git(repository) => repository.undo_last().await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(_) => Err(Error::UndoUnsupported {
+                backend: "sqlite".to_string(),
+            }),
         }
     }
 }

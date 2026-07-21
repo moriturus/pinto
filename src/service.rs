@@ -24,6 +24,7 @@ mod sprint;
 mod template;
 #[cfg(test)]
 mod test_support;
+mod undo;
 mod velocity;
 mod wip;
 
@@ -65,6 +66,7 @@ pub use sprint::{
 use std::path::{Path, PathBuf};
 pub use template::template_body;
 use tokio::fs;
+pub use undo::{UndoOutcome, undo_last_mutation};
 pub use velocity::{VelocityReport, VelocitySprint, velocity};
 pub use wip::{WipViolation, check_wip, wip_violations};
 

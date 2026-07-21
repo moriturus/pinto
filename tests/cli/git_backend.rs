@@ -75,6 +75,108 @@ fn assert_git_commit_and_clean(dir: &Path, subject: &str) {
 }
 
 #[test]
+fn undo_reverts_the_most_recent_git_mutation() {
+    // On the Git backend `undo` creates a revert commit for the last mutation and reports the
+    // reverted subject, while leaving the worktree clean and earlier items intact.
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["add", "Keep task"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Undo task"])
+        .assert()
+        .success();
+    pinto_isolated_git(dir.path())
+        .args(["migrate", "--to", "git"])
+        .assert()
+        .success();
+
+    // Mutate once more so the mutation under test is a plain add, then undo it.
+    pinto_isolated_git(dir.path())
+        .args(["add", "Latest task"])
+        .assert()
+        .success();
+    assert_eq!(
+        git_log_field(dir.path(), "%s").first().map(String::as_str),
+        Some("pinto: add T-3")
+    );
+
+    pinto_isolated_git(dir.path())
+        .arg("undo")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Reverted the most recent board mutation: pinto: add T-3",
+        ));
+
+    // A revert commit tops the history; the reverted item is gone, the others remain.
+    assert_git_commit_and_clean(dir.path(), "Revert \"pinto: add T-3\"");
+    pinto_isolated_git(dir.path())
+        .args(["show", "T-3"])
+        .assert()
+        .failure();
+    pinto_isolated_git(dir.path())
+        .args(["list", "--long"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Keep task"))
+        .stdout(predicate::str::contains("Undo task"))
+        .stdout(predicate::str::contains("Latest task").not());
+}
+
+#[test]
+fn undo_refuses_when_head_is_not_a_pinto_commit() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["add", "Tracked task"])
+        .assert()
+        .success();
+    pinto_isolated_git(dir.path())
+        .args(["migrate", "--to", "git"])
+        .assert()
+        .success();
+
+    // A user commit lands on top of the pinto mutation.
+    std::fs::write(dir.path().join("NOTES.md"), "notes\n").expect("write note");
+    run_git(dir.path(), &["add", "NOTES.md"]);
+    run_git(dir.path(), &["config", "user.name", "Fixture"]);
+    run_git(
+        dir.path(),
+        &["config", "user.email", "fixture@example.test"],
+    );
+    run_git(dir.path(), &["commit", "-m", "chore: notes"]);
+
+    pinto_isolated_git(dir.path())
+        .arg("undo")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("is not a pinto board mutation"));
+}
+
+#[test]
+fn undo_on_file_backend_reports_no_history() {
+    // The default file backend keeps no history, so `undo` fails fast with recovery guidance.
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["add", "Only task"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .arg("undo")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("undo requires the git backend"))
+        .stderr(predicate::str::contains("file backend keeps no history"));
+}
+
+#[test]
 fn git_backend_commits_item_sprint_dod_and_removal_mutations() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

@@ -336,6 +336,7 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         | Command::Rebalance(_)
         | Command::Migrate(_)
         | Command::Doctor(_)
+        | Command::Undo
         | Command::Automate(_)
         | Command::Shell
         | Command::Kanban(_)

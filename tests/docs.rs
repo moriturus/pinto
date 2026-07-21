@@ -33,6 +33,7 @@ const MAINTAINED_GUIDANCE: &[&str] = &[
     "docs/book/src/quickstart.md",
     "docs/book/src/reproducibility.md",
     "docs/book/src/testing.md",
+    "docs/book/src/undo.md",
 ];
 
 fn repository_file(path: &str) -> String {
@@ -1118,6 +1119,82 @@ fn coverage_gate_checks_the_uploaded_cobertura_metric() {
         .expect("workflow contains a bounded coverage job");
     assert!(coverage_job.contains("if: success()"));
     assert!(!coverage_job.contains("if: always()"));
+}
+
+#[test]
+fn undo_decision_record_documents_scope_and_per_backend_behavior() {
+    let summary = repository_file("docs/book/src/SUMMARY.md");
+    assert!(
+        summary.contains("undo.md"),
+        "SUMMARY.md does not link the undo decision record"
+    );
+
+    let record = repository_file("docs/book/src/undo.md");
+    // Scope: a guided one-level revert, excluded from automation plans.
+    for marker in ["feature decision record", "one-level", "pinto automate"] {
+        assert!(
+            record.contains(marker),
+            "undo decision record omits scope guidance: {marker}"
+        );
+    }
+    // Per-backend behavior: git reverts HEAD; historyless backends refuse with options.
+    for marker in [
+        "git revert --no-edit HEAD",
+        "pinto: <verb> <id>",
+        "git log -- .pinto",
+        "keep no history",
+        "backend = \"git\"",
+    ] {
+        assert!(
+            record.contains(marker),
+            "undo decision record omits per-backend behavior: {marker}"
+        );
+    }
+    // Compatibility impact.
+    for marker in [
+        "No data-format or schema change",
+        "No migration",
+        "No new dependency",
+    ] {
+        assert!(
+            record.contains(marker),
+            "undo decision record omits compatibility impact: {marker}"
+        );
+    }
+
+    // The CLI reference documents the command and links the record.
+    let cli = repository_file("docs/book/src/cli.md");
+    assert!(cli.contains("pinto undo"), "CLI guide omits pinto undo");
+    assert!(
+        cli.contains("undo.md"),
+        "CLI guide does not link the undo decision record"
+    );
+
+    // Points readers at the runnable demo board.
+    assert!(
+        record.contains("demos/single/undo"),
+        "undo decision record does not reference the undo demo"
+    );
+}
+
+#[test]
+fn undo_demo_contains_a_reproducible_git_board_and_guide() {
+    let readme = repository_file("demos/single/undo/README.md");
+    for marker in [
+        "cargo run --manifest-path ../../../Cargo.toml -- migrate --to git",
+        "cargo run --manifest-path ../../../Cargo.toml -- undo",
+        "backend = \"git\"",
+        "git log",
+        "Revert",
+    ] {
+        assert!(readme.contains(marker), "undo demo omits {marker}");
+    }
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let board = root.join("demos/single/undo/.pinto");
+    assert!(board.join("config.toml").is_file());
+    assert!(board.join("tasks/T-1.md").is_file());
+    assert!(board.join("tasks/T-2.md").is_file());
 }
 
 #[test]

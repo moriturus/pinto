@@ -297,6 +297,7 @@ pinto rebalance                    # rewrite only scopes that need it
 pinto migrate --to git             # switch the storage backend
 pinto import snapshot.json         # restore a board from an export --json snapshot
 pinto import --force snapshot.json # replace an existing non-empty board
+pinto undo                         # revert the most recent completed mutation (git backend)
 ```
 
 `pinto import` is the inverse of `pinto export --json`: it rebuilds the PBIs,
@@ -305,6 +306,30 @@ standard input). Importing into a board that already holds PBIs or Sprints is
 refused unless `--force` is given. See
 [JSON output](https://github.com/moriturus/pinto/blob/main/docs/json-schema.md)
 for the round-trip contract.
+
+### Undoing the last mutation
+
+`pinto undo` reverts the most recent completed board mutation. It is a guided,
+one-level recovery for a mistaken `move`, `edit`, or `rm --force`, and it only
+works on the **git backend**, where each mutation is recorded as a
+`pinto: <verb> <id>` commit:
+
+```bash
+pinto undo   # git revert HEAD, recorded as a new "Revert ..." commit
+```
+
+Undo creates a *new* commit that reverses the last one (it never rewrites
+history), so the undo itself is reviewable with `git diff` and can be undone in
+turn. It refuses when the latest commit was not made by pinto — for example a
+user commit stacked on top of the board — and points at `git log -- .pinto` so
+you can revert the right commit by hand.
+
+On the historyless backends (`file`, `sqlite`) there is nothing to revert, so
+`pinto undo` fails with exit code 1 and explains the recovery options: restore
+from a backup or version-control checkout, or switch to
+`[storage] backend = "git"` to enable undo for future mutations. The rationale
+and per-backend contract live in
+[Undoing a mutation](undo.md).
 
 ## Automation and shell integration
 

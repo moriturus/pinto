@@ -58,6 +58,9 @@ const UNSAFE_COMMAND_NAMES: &[&str] = &[
     // `import` replaces the entire board from a snapshot; it is a manual restore, not an
     // agent-plan step.
     "import",
+    // `undo` reverts the most recent mutation; it is a human corrective action, not an agent-plan
+    // step (a plan should not reverse its own earlier commands).
+    "undo",
 ];
 
 /// Why an automation plan cannot be run safely.

@@ -5,7 +5,7 @@ use crate::cli::json::parse_export;
 use pinto::i18n::{Message, current};
 use pinto::service::{
     ImportOutcome, InitOutcome, MigrateOutcome, import_board, init_board, migrate_storage,
-    rebalance,
+    rebalance, undo_last_mutation,
 };
 
 use anyhow::Context;
@@ -202,6 +202,24 @@ fn doctor_issue_kind_name(
         }
         pinto::service::DoctorIssueKind::Filename => localizer.text(Message::DoctorKindFilename),
     }
+}
+
+/// `pinto undo` — Revert the most recent completed board mutation.
+///
+/// On the Git backend this creates a revert commit and reports the reverted subject. On backends
+/// without history the service returns [`pinto::error::Error::UndoUnsupported`], which `main` maps to
+/// exit code 1 with actionable recovery guidance.
+pub(super) async fn cmd_undo() -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    let outcome = undo_last_mutation(&dir).await?;
+    println!(
+        "{}",
+        current().format(
+            Message::UndoReverted,
+            [("subject", outcome.reverted.as_str())],
+        )
+    );
+    Ok(ExitCode::SUCCESS)
 }
 
 /// `pinto init` — Initialize the board in the current directory.

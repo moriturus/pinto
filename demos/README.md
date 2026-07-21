@@ -41,6 +41,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`git-boundary`](single/git-boundary) — Git commit boundaries, staged-change isolation, and recovery
   - [`git-link-sync`](single/git-link-sync) — synchronize Git commit links from PBI IDs in commit messages
   - [`merge-conflict`](single/merge-conflict) — resolve parallel-clone ID collisions in `issued_ids` and task files, then verify with doctor
+  - [`undo`](single/undo) — revert the most recent completed board mutation on the Git backend
   - [`migration-race`](single/migration-race) — backend migration lock ordering and writer visibility
   - [`quality-validation`](single/quality-validation) — Markdown parser, public API, and Kanban smoke-test data
   - [`toolchain-reproducibility`](single/toolchain-reproducibility) — pinned toolchain, locked installs, and release package checks

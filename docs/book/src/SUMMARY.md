@@ -15,6 +15,7 @@
 - [Configuration](configuration.md)
 - [Data format](data-format.md)
 - [Merging shared boards](merging.md)
+- [Undoing a mutation](undo.md)
 - [Dogfooding](dogfooding.md)
 
 ## Contributing

@@ -108,6 +108,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
         Command::Rebalance(args) => maintenance::cmd_rebalance(args).await,
         Command::Migrate(args) => maintenance::cmd_migrate(args).await,
         Command::Doctor(args) => maintenance::cmd_doctor(args).await,
+        Command::Undo => maintenance::cmd_undo().await,
         Command::Automate(args) => automation::cmd_automate(args).await,
         Command::Shell => session::cmd_shell().await,
         Command::Kanban(args) => session::cmd_kanban(args, in_shell).await,

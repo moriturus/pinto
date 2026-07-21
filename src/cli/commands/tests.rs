@@ -69,7 +69,7 @@ fn automation_schema_tracks_safe_cli_commands_and_aliases() {
     let is_unsafe = |name: &str| {
         matches!(
             name,
-            "automate" | "auto" | "shell" | "kanban" | "k" | "completion" | "import"
+            "automate" | "auto" | "shell" | "kanban" | "k" | "completion" | "import" | "undo"
         )
     };
 

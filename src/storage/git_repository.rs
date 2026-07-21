@@ -333,6 +333,52 @@ impl GitRepository {
         }
     }
 
+    /// Revert the most recent completed board mutation by committing its inverse.
+    ///
+    /// pinto records each board mutation as a `pinto: <verb> <id>` commit, so the most recent
+    /// mutation is the current `HEAD`. `git revert --no-edit HEAD` writes a new commit that reverses
+    /// it. Revert (rather than reset) keeps history intact, and the undo itself stays reviewable with
+    /// `git diff` and reversible. The reverted commit's subject is returned for the caller's report.
+    ///
+    /// Refuses without touching the repository when there is nothing pinto can undo: an empty
+    /// repository, or a `HEAD` whose subject was not authored by pinto. This prevents undo from
+    /// silently reversing an unrelated user commit stacked on top of the board.
+    pub(crate) async fn undo_last(&self) -> Result<String> {
+        self.ensure_repo().await?;
+        let head = self.head().await?.ok_or_else(|| {
+            Error::UndoUnavailable(
+                "the board has no commits yet, so there is nothing to undo".to_string(),
+            )
+        })?;
+        let subject = self.commit_subject("HEAD").await?;
+        if !subject.starts_with("pinto: ") {
+            let short = &head[..head.len().min(7)];
+            return Err(Error::UndoUnavailable(format!(
+                "the most recent commit ({short} {subject}) is not a pinto board mutation; revert it yourself with `git revert {short}` or inspect `git log -- .pinto`"
+            )));
+        }
+
+        // A revert creates a commit, so it needs an identity just like `commit`.
+        let identity = self.fallback_identity_args().await?;
+        let mut args: Vec<String> = identity;
+        args.extend([
+            "revert".to_string(),
+            "--no-edit".to_string(),
+            "HEAD".to_string(),
+        ]);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.git_checked(&args).await?;
+        Ok(subject)
+    }
+
+    /// Return the subject line of `revision` (the first line of its commit message).
+    async fn commit_subject(&self, revision: &str) -> Result<String> {
+        let output = self
+            .git_checked(&["show", "-s", "--format=%s", revision])
+            .await?;
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
     /// Return the current commit ID, or `None` for an initialized repository without a `HEAD`.
     async fn head(&self) -> Result<Option<String>> {
         let output = self.run_git(&["rev-parse", "--verify", "HEAD"]).await?;
@@ -745,6 +791,99 @@ mod tests {
             .expect_err("missing sprint delete errors");
         assert_eq!(err, Error::SprintNotFound(SprintId::new("S-9").unwrap()));
         assert_eq!(commit_subjects(dir.path()).await, ["pinto: add T-1"]);
+    }
+
+    #[tokio::test]
+    async fn undo_last_reverts_the_most_recent_pinto_commit() {
+        let (dir, git) = repo();
+        BacklogItemRepository::save(&git, &item(1, "First"))
+            .await
+            .expect("add");
+        git.commit("pinto: add T-1").await.expect("add commit");
+        BacklogItemRepository::save(&git, &item(2, "Second"))
+            .await
+            .expect("add");
+        git.commit("pinto: add T-2").await.expect("add commit");
+
+        let subject = git.undo_last().await.expect("undo");
+        assert_eq!(subject, "pinto: add T-2");
+
+        // A revert commit is recorded on top; the original commits are preserved.
+        assert_eq!(
+            commit_subjects(dir.path()).await,
+            [
+                "Revert \"pinto: add T-2\"",
+                "pinto: add T-2",
+                "pinto: add T-1"
+            ]
+        );
+        // The reverted mutation's file is gone; the earlier item remains.
+        let missing = BacklogItemRepository::load(&git, &ItemId::new("T", 2))
+            .await
+            .expect_err("T-2 should be reverted");
+        assert_eq!(missing, Error::NotFound(ItemId::new("T", 2)));
+        let kept = BacklogItemRepository::load(&git, &ItemId::new("T", 1))
+            .await
+            .expect("T-1 remains");
+        assert_eq!(kept.title, "First");
+    }
+
+    #[tokio::test]
+    async fn undo_last_refuses_when_head_is_not_a_pinto_commit() {
+        let (dir, git) = repo();
+        BacklogItemRepository::save(&git, &item(1, "First"))
+            .await
+            .expect("add");
+        git.commit("pinto: add T-1").await.expect("add commit");
+        // A user commit lands on top of the board mutation.
+        tokio::fs::write(dir.path().join("NOTES.md"), "notes")
+            .await
+            .expect("write file");
+        for args in [
+            vec!["add", "NOTES.md"],
+            vec![
+                "-c",
+                "user.name=tester",
+                "-c",
+                "user.email=tester@localhost",
+                "commit",
+                "-m",
+                "chore: notes",
+            ],
+        ] {
+            let out = Command::new("git")
+                .args(&args)
+                .current_dir(dir.path())
+                .output()
+                .await
+                .expect("git");
+            assert!(out.status.success(), "git {args:?} failed: {out:?}");
+        }
+
+        let err = git.undo_last().await.expect_err("non-pinto head refused");
+        assert!(
+            matches!(err, Error::UndoUnavailable(_)),
+            "expected UndoUnavailable, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn undo_last_refuses_when_there_are_no_commits() {
+        let dir = TempDir::new().expect("temp dir");
+        let out = Command::new("git")
+            .args(["init"])
+            .current_dir(dir.path())
+            .output()
+            .await
+            .expect("git init");
+        assert!(out.status.success());
+        let git = GitRepository::new(dir.path().join(".pinto"));
+
+        let err = git.undo_last().await.expect_err("empty repo refused");
+        assert!(
+            matches!(err, Error::UndoUnavailable(_)),
+            "expected UndoUnavailable, got {err:?}"
+        );
     }
 
     #[tokio::test]

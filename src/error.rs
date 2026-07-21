@@ -270,6 +270,25 @@ pub enum Error {
     #[error("git backend error: {0}")]
     Git(String),
 
+    /// `undo` cannot proceed on the Git backend because there is no pinto mutation to revert.
+    ///
+    /// The repository has no commits yet, or the most recent commit was not authored by pinto.
+    /// The embedded reason explains how to recover manually.
+    #[error("cannot undo: {0}")]
+    UndoUnavailable(String),
+
+    /// `undo` is not supported because the selected backend keeps no history.
+    ///
+    /// Only the Git backend records each mutation as a commit. The message names the current
+    /// backend and lists the recovery options.
+    #[error(
+        "undo requires the git backend; the {backend} backend keeps no history. Recover from a backup or version-control checkout, or set `[storage] backend = \"git\"` to enable undo for future mutations"
+    )]
+    UndoUnsupported {
+        /// The configured backend that lacks history (`file` or `sqlite`).
+        backend: String,
+    },
+
     /// Neither `$EDITOR` nor `$VISUAL` is set, so editing cannot start.
     ///
     /// Set one of those environment variables or provide the content directly with `--body`.
@@ -358,6 +377,8 @@ impl Error {
             Self::NotSibling { .. } => "not-sibling",
             Self::Task(_) => "task",
             Self::Git(_) => "git",
+            Self::UndoUnavailable(_) => "undo-unavailable",
+            Self::UndoUnsupported { .. } => "undo-unsupported",
             Self::EditorNotSet => "editor-not-set",
             Self::EditorLaunch { .. } => "editor-launch",
             Self::EditorInvalid { .. } => "editor-invalid",
@@ -539,6 +560,12 @@ impl Error {
             ),
             Self::Task(detail) => message!(Message::ErrorTask, "message" => detail),
             Self::Git(detail) => message!(Message::ErrorGit, "message" => detail),
+            Self::UndoUnavailable(reason) => {
+                message!(Message::ErrorUndoUnavailable, "reason" => reason)
+            }
+            Self::UndoUnsupported { backend } => {
+                message!(Message::ErrorUndoUnsupported, "backend" => backend)
+            }
             Self::EditorNotSet => localizer.text(Message::ErrorEditorNotSet),
             Self::EditorLaunch {
                 editor,
@@ -629,6 +656,8 @@ impl Error {
                 | Error::EditorLaunch { .. }
                 | Error::EditorInvalid { .. }
                 | Error::Locked { .. }
+                | Error::UndoUnavailable(_)
+                | Error::UndoUnsupported { .. }
         )
     }
 }
