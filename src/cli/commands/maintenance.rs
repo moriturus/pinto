@@ -1,10 +1,17 @@
-//! Board maintenance commands: `init`, `rebalance`, `migrate`, and `doctor`.
+//! Board maintenance commands: `init`, `rebalance`, `migrate`, `doctor`, and `import`.
 
 use crate::cli::args::*;
+use crate::cli::json::parse_export;
 use pinto::i18n::{Message, current};
-use pinto::service::{InitOutcome, MigrateOutcome, init_board, migrate_storage, rebalance};
+use pinto::service::{
+    ImportOutcome, InitOutcome, MigrateOutcome, import_board, init_board, migrate_storage,
+    rebalance,
+};
 
+use anyhow::Context;
 use pinto::storage::StorageBackend;
+use std::io::Read;
+use std::path::Path;
 use std::process::ExitCode;
 
 /// `pinto rebalance` — Reassign oversized ranks within sibling scopes while preserving their order.
@@ -221,4 +228,64 @@ pub(super) async fn cmd_init() -> anyhow::Result<ExitCode> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `pinto import` — Restore a board from an `export --json` snapshot.
+///
+/// Reads the snapshot from a file path (or standard input when the source is `-`), parses the
+/// stable export contract, and rebuilds the board. Importing into a board that already holds PBIs
+/// or Sprints fails with exit code 1 unless `--force` is given, in which case the snapshot replaces
+/// the existing data.
+pub(super) async fn cmd_import(args: ImportArgs) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    let json = read_import_source(&args.source).await?;
+    let snapshot = parse_export(&json)?;
+    let localizer = current();
+    match import_board(&dir, snapshot, args.force).await? {
+        ImportOutcome::Imported { items, sprints } => {
+            println!(
+                "{}",
+                localizer.format(
+                    Message::ImportCompleted,
+                    [
+                        ("items", items.to_string().as_str()),
+                        ("sprints", sprints.to_string().as_str()),
+                    ],
+                )
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        ImportOutcome::Refused { items, sprints } => {
+            eprintln!(
+                "{} {}",
+                localizer.text(Message::ErrorPrefix),
+                localizer.format(
+                    Message::ImportRefused,
+                    [
+                        ("items", items.to_string().as_str()),
+                        ("sprints", sprints.to_string().as_str()),
+                    ],
+                )
+            );
+            Ok(ExitCode::from(1))
+        }
+    }
+}
+
+/// Read the import source: standard input for `-`, otherwise the file at `source`.
+async fn read_import_source(source: &str) -> anyhow::Result<String> {
+    if source == "-" {
+        let input = tokio::task::spawn_blocking(|| {
+            let mut input = String::new();
+            std::io::stdin().read_to_string(&mut input)?;
+            Ok::<String, std::io::Error>(input)
+        })
+        .await??;
+        return Ok(input);
+    }
+
+    let path = Path::new(source);
+    tokio::fs::read_to_string(path)
+        .await
+        .with_context(|| format!("cannot read import source {}", path.display()))
 }

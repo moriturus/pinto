@@ -54,6 +54,32 @@ non-blocking and do not provide board-wide snapshot isolation; use
 board state. Archived PBIs are excluded, matching the default active-backlog
 behavior of `list --json`.
 
+## Restoring a board (`import`)
+
+`pinto import <SOURCE>` is the inverse of `export --json`. It reads an export
+document (from a file path, or from standard input when `SOURCE` is `-`) and
+rebuilds the board's PBIs, Sprints, configuration, and shared DoD. The board
+must already be initialized (`pinto init`).
+
+- **Fail-fast on a populated board.** Importing into a board that already holds
+  active PBIs or Sprints is refused unless `--force` is given. With `--force`
+  the snapshot replaces the existing data: active PBIs and Sprints absent from
+  the snapshot are removed, and `config.toml` and the shared DoD are overwritten
+  to match. The whole operation runs under the board write lock.
+- **Round-trip contract.** `export` → `import` → `export` reproduces the same
+  JSON document. Equivalence is defined against this contract, not byte-identical
+  storage files.
+- **Persistence impact.** Import reuses the existing plain-text persistence.
+  Items and Sprints are written to the backend selected by the snapshot's
+  `config`, and their IDs are recorded in `issued_ids` so a later `add` never
+  reuses a restored ID. No new on-disk format or schema is introduced.
+- **Compatibility impact.** Import consumes the stable `export --json` schema
+  documented here. Because added keys are non-destructive, a snapshot from an
+  older pinto imports into a newer one; capacity inputs (daily hours, holidays,
+  deduction factor) are not part of the export contract, so imported Sprints
+  restore with capacity unset. `import` is a manual restore and is intentionally
+  excluded from `automate` plans.
+
 ## Sprint close fields
 
 Every object from `sprint list --json` includes `closed_at`,

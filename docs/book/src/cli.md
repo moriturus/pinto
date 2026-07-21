@@ -295,7 +295,16 @@ These commands keep storage tidy and are not part of the daily loop:
 pinto rebalance --dry-run          # preview oversized sibling scopes and shorter ranks
 pinto rebalance                    # rewrite only scopes that need it
 pinto migrate --to git             # switch the storage backend
+pinto import snapshot.json         # restore a board from an export --json snapshot
+pinto import --force snapshot.json # replace an existing non-empty board
 ```
+
+`pinto import` is the inverse of `pinto export --json`: it rebuilds the PBIs,
+Sprints, configuration, and shared DoD from a snapshot (a file, or `-` for
+standard input). Importing into a board that already holds PBIs or Sprints is
+refused unless `--force` is given. See
+[JSON output](https://github.com/moriturus/pinto/blob/main/docs/json-schema.md)
+for the round-trip contract.
 
 ## Automation and shell integration
 

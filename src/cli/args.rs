@@ -225,6 +225,8 @@ pub(super) enum Command {
     Dod(DodArgs),
     /// Export the complete board as machine-readable JSON.
     Export(ExportArgs),
+    /// Restore a board from an `export --json` snapshot.
+    Import(ImportArgs),
     /// Manage sprints (create, start, close, assign, list).
     #[command(visible_alias = "sp")]
     Sprint(SprintArgs),
@@ -656,6 +658,17 @@ pub(super) struct ExportArgs {
     /// Output the complete board snapshot as machine-readable JSON.
     #[arg(long, short = 'j', required = true)]
     pub(super) json: bool,
+}
+
+/// Arguments for the `import` subcommand.
+#[derive(Debug, Args)]
+pub(super) struct ImportArgs {
+    /// Path to an `export --json` document, or `-` to read the JSON from standard input.
+    #[arg(value_name = "SOURCE")]
+    pub(super) source: String,
+    /// Replace an existing non-empty board instead of failing fast.
+    #[arg(long, short = 'f')]
+    pub(super) force: bool,
 }
 
 /// `dod` operation (setting/deleting). Displayed if omitted.

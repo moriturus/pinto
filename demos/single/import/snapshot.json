@@ -1,0 +1,90 @@
+{
+  "items": [
+    {
+      "id": "T-1",
+      "title": "Restore the shared board",
+      "status": "todo",
+      "rank": "i",
+      "points": null,
+      "labels": [
+        "ops"
+      ],
+      "assignee": null,
+      "sprint": "S-1",
+      "parent": null,
+      "depends_on": [],
+      "start_at": null,
+      "done_at": null,
+      "commits": [],
+      "created": "2026-07-21T09:09:42.055402+00:00",
+      "updated": "2026-07-21T09:09:42.092007+00:00",
+      "body": "Rebuild from a snapshot."
+    },
+    {
+      "id": "T-2",
+      "title": "Verify the imported data",
+      "status": "todo",
+      "rank": "j",
+      "points": null,
+      "labels": [
+        "ops"
+      ],
+      "assignee": null,
+      "sprint": null,
+      "parent": null,
+      "depends_on": [],
+      "start_at": null,
+      "done_at": null,
+      "commits": [],
+      "created": "2026-07-21T09:09:42.067876+00:00",
+      "updated": "2026-07-21T09:09:42.067876+00:00",
+      "body": ""
+    }
+  ],
+  "sprints": [
+    {
+      "id": "S-1",
+      "title": "Recovery sprint",
+      "state": "planned",
+      "goal": "",
+      "start": null,
+      "end": null,
+      "closed_at": null,
+      "spillover_points": 0,
+      "spillover_items": 0,
+      "unestimated_spillover_items": 0,
+      "created": "2026-07-21T09:09:42.079573+00:00",
+      "updated": "2026-07-21T09:09:42.079573+00:00"
+    }
+  ],
+  "config": {
+    "columns": [
+      "todo",
+      "in-progress",
+      "review",
+      "done"
+    ],
+    "display": {
+      "markdown": true,
+      "timezone": "local"
+    },
+    "done_column": "done",
+    "points": {
+      "aggregate_children": false
+    },
+    "project": {
+      "key": "T",
+      "name": "demo_src"
+    },
+    "storage": {
+      "backend": "file"
+    },
+    "tui": {
+      "confirm_quit": true
+    },
+    "wip": {
+      "enabled": true
+    }
+  },
+  "dod": "- [ ] board matches the snapshot"
+}

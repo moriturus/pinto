@@ -223,6 +223,16 @@ impl Config {
         Ok(config)
     }
 
+    /// Validate the semantic invariants of an in-memory configuration.
+    ///
+    /// This is the same check [`Config::load`] runs after parsing, exposed so callers that build a
+    /// [`Config`] from another source (for example `import`, which deserializes the `export --json`
+    /// configuration object) can reject a malformed board before persisting it. `path` only labels
+    /// any resulting [`Error::Parse`]; no file is read.
+    pub fn validate(&self, path: &Path) -> Result<()> {
+        validate_semantics(path, self)
+    }
+
     /// Export settings to TOML file (create parent directory if necessary, I/O is asynchronous).
     ///
     /// Writing is performed by replacing the temporary file → `rename` with corruption resistance ([`crate::storage::atomic_write`]).

@@ -25,6 +25,8 @@ mod dod;
 mod export;
 #[path = "cli/git_backend.rs"]
 mod git_backend;
+#[path = "cli/import.rs"]
+mod import;
 #[path = "cli/init_discovery.rs"]
 mod init_discovery;
 #[path = "cli/item.rs"]

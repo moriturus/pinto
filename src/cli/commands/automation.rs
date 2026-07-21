@@ -330,6 +330,7 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         | Command::Next(_)
         | Command::Dod(_)
         | Command::Export(_)
+        | Command::Import(_)
         | Command::Board(_)
         | Command::CycleTime(_)
         | Command::Rebalance(_)

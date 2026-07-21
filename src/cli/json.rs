@@ -7,18 +7,23 @@
 //! Deleting, renaming, or changing the type of an existing key is a breaking change; adding keys
 //! is non-destructive. Optional fields always appear and use `null` when unset.
 
-use pinto::backlog::{BacklogItem, ItemId};
+use chrono::{DateTime, Utc};
+use pinto::backlog::{BacklogItem, ItemId, Status};
+use pinto::error::Error;
+use pinto::rank::Rank;
 use pinto::service::{
     Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail,
 };
-use pinto::sprint::{Sprint, SprintCapacity};
-use serde::Serialize;
+use pinto::sprint::{Sprint, SprintCapacity, SprintId, SprintSpillover, SprintState};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::str::FromStr;
 
 /// JSON representation of a backlog item.
 ///
 /// Dates and times use RFC3339 strings. Optional fields always appear as keys and use `null` when
 /// unset; collection fields use an empty array.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ItemJson {
     id: String,
     title: String,
@@ -90,7 +95,7 @@ struct BoardJson {
 }
 
 /// JSON representation of a sprint (`sprint list`).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct SprintJson {
     id: String,
     title: String,
@@ -181,7 +186,7 @@ pub(super) fn sprints_json(sprints: &[Sprint]) -> serde_json::Result<String> {
 }
 
 /// JSON representation of a complete board export.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ExportJson {
     items: Vec<ItemJson>,
     sprints: Vec<SprintJson>,
@@ -202,6 +207,109 @@ pub(super) fn export_json(snapshot: &BoardSnapshot) -> serde_json::Result<String
         dod: snapshot.dod.clone(),
     };
     serde_json::to_string_pretty(&dto)
+}
+
+/// Synthetic path label for parse errors surfaced from an in-memory `export --json` document.
+const SNAPSHOT_LABEL: &str = "<export snapshot>";
+
+/// Parse an `export --json` document back into a [`BoardSnapshot`] for `import`.
+///
+/// This is the inverse of [`export_json`]: the string fields of the JSON contract are converted
+/// back into their domain types (`ItemId`, `Rank`, `Status`, `SprintId`, `SprintState`, and
+/// RFC3339 `DateTime<Utc>`). The `config` object is kept as raw JSON and validated by the import
+/// service; `dod` is passed through unchanged. Sprint capacity settings are absent from the export
+/// contract, so imported sprints carry no capacity (see `docs/json-schema.md`).
+pub(super) fn parse_export(json: &str) -> Result<BoardSnapshot, Error> {
+    let dto: ExportJson = serde_json::from_str(json).map_err(snapshot_parse_error)?;
+    let items = dto
+        .items
+        .into_iter()
+        .map(ItemJson::into_item)
+        .collect::<Result<Vec<_>, _>>()?;
+    let sprints = dto
+        .sprints
+        .into_iter()
+        .map(SprintJson::into_sprint)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(BoardSnapshot {
+        items,
+        sprints,
+        config: dto.config,
+        dod: dto.dod,
+    })
+}
+
+impl ItemJson {
+    /// Convert the parsed DTO back into a domain [`BacklogItem`].
+    fn into_item(self) -> Result<BacklogItem, Error> {
+        Ok(BacklogItem {
+            id: self.id.parse()?,
+            title: self.title,
+            status: Status::new(self.status),
+            rank: Rank::parse(&self.rank)?,
+            points: self.points,
+            labels: self.labels,
+            assignee: self.assignee,
+            sprint: self.sprint,
+            parent: self.parent.map(|parent| parent.parse()).transpose()?,
+            depends_on: self
+                .depends_on
+                .iter()
+                .map(|dependency| dependency.parse())
+                .collect::<Result<Vec<_>, _>>()?,
+            start_at: self.start_at.as_deref().map(parse_timestamp).transpose()?,
+            done_at: self.done_at.as_deref().map(parse_timestamp).transpose()?,
+            commits: self.commits,
+            created: parse_timestamp(&self.created)?,
+            updated: parse_timestamp(&self.updated)?,
+            body: self.body,
+        })
+    }
+}
+
+impl SprintJson {
+    /// Convert the parsed DTO back into a domain [`Sprint`].
+    ///
+    /// Capacity inputs are not part of the export contract, so they are restored as unset.
+    fn into_sprint(self) -> Result<Sprint, Error> {
+        Ok(Sprint {
+            id: SprintId::from_str(&self.id)?,
+            title: self.title,
+            goal: self.goal,
+            start: self.start.as_deref().map(parse_timestamp).transpose()?,
+            end: self.end.as_deref().map(parse_timestamp).transpose()?,
+            daily_work_hours: None,
+            holiday_days: None,
+            deduction_factor: None,
+            spillover: SprintSpillover {
+                points: self.spillover_points,
+                items: self.spillover_items,
+                unestimated_items: self.unestimated_spillover_items,
+            },
+            state: SprintState::from_str(&self.state)?,
+            closed_at: self.closed_at.as_deref().map(parse_timestamp).transpose()?,
+            created: parse_timestamp(&self.created)?,
+            updated: parse_timestamp(&self.updated)?,
+        })
+    }
+}
+
+/// Parse an RFC3339 timestamp from the export contract into a UTC instant.
+fn parse_timestamp(value: &str) -> Result<DateTime<Utc>, Error> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(|error| Error::Parse {
+            path: PathBuf::from(SNAPSHOT_LABEL),
+            message: format!("invalid RFC3339 timestamp {value:?}: {error}"),
+        })
+}
+
+/// Map a malformed `export --json` document to a user-facing parse error.
+fn snapshot_parse_error(error: serde_json::Error) -> Error {
+    Error::Parse {
+        path: PathBuf::from(SNAPSHOT_LABEL),
+        message: error.to_string(),
+    }
 }
 
 /// A JSON representation of one day of burndown (`sprint burndown`).

@@ -48,7 +48,17 @@ const SAFE_COMMAND_NAMES: &[&str] = &[
     "dr",
 ];
 
-const UNSAFE_COMMAND_NAMES: &[&str] = &["automate", "auto", "shell", "kanban", "k", "completion"];
+const UNSAFE_COMMAND_NAMES: &[&str] = &[
+    "automate",
+    "auto",
+    "shell",
+    "kanban",
+    "k",
+    "completion",
+    // `import` replaces the entire board from a snapshot; it is a manual restore, not an
+    // agent-plan step.
+    "import",
+];
 
 /// Why an automation plan cannot be run safely.
 ///

@@ -101,6 +101,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
         Command::Link(args) => relations::cmd_link(args).await,
         Command::Dod(args) => relations::cmd_dod(args).await,
         Command::Export(args) => board::cmd_export(args).await,
+        Command::Import(args) => maintenance::cmd_import(args).await,
         Command::Sprint(args) => sprint::cmd_sprint(args).await,
         Command::Board(args) => board::cmd_board(args).await,
         Command::CycleTime(args) => board::cmd_cycletime(args).await,
