@@ -29,3 +29,7 @@ matching parent/dependency lineages. It does not choose which relationship,
 status, rank, or storage collision should be removed. A rank anomaly names
 `pinto rebalance` as its repair; see the [`rank-order`](../rank-order) demo for
 that command.
+
+Both modes inspect the board once up front. `doctor --fix` re-inspects only
+after it actually applied a repair, so the report reflects the repaired board
+without doubling I/O and parsing on a healthy one.

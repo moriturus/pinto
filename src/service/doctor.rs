@@ -18,6 +18,7 @@ use crate::storage::{
 use crate::storage::{BacklogItemRepository, SprintRepository};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::task::JoinSet;
@@ -78,26 +79,57 @@ async fn run_doctor(
     config: &Config,
     fix: bool,
 ) -> Result<DoctorReport> {
-    let initial = inspect_board(board_dir, backend, config).await?;
-    let fixes = if fix {
-        // Renumber duplicate IDs first, then re-inspect so the filename and issued-history repairs
-        // see the post-renumber board (for example, a surviving copy whose filename still needs to
-        // be normalized). Only pay for the extra inspection when a duplicate was actually repaired.
-        let mut fixes = repair_duplicate_item_ids(board_dir, &initial).await?;
-        let inspection = if fixes.is_empty() {
-            initial
-        } else {
-            inspect_board(board_dir, backend, config).await?
-        };
-        fixes.extend(apply_safe_fixes(board_dir, &inspection).await?);
-        fixes
-    } else {
-        Vec::new()
-    };
-    if !fixes.is_empty() {
-        backend.commit("pinto: doctor --fix").await?;
+    run_doctor_with(board_dir, backend, fix, || {
+        inspect_board(board_dir, backend, config)
+    })
+    .await
+}
+
+/// Drive the inspect/fix/report flow with an injected inspection step so tests
+/// can observe exactly how many full inspections one doctor run performs.
+async fn run_doctor_with<F, Fut>(
+    board_dir: &Path,
+    backend: &Backend,
+    fix: bool,
+    mut inspect: F,
+) -> Result<DoctorReport>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<Inspection>>,
+{
+    let initial = inspect().await?;
+    if !fix {
+        return Ok(DoctorReport {
+            issues: initial.issues,
+            fixes: Vec::new(),
+        });
     }
-    let final_state = inspect_board(board_dir, backend, config).await?;
+    // Renumber duplicate IDs first, then re-inspect so the filename and issued-history repairs
+    // see the post-renumber board (for example, a surviving copy whose filename still needs to
+    // be normalized). Only pay for the extra inspection when a duplicate was actually repaired.
+    let mut fixes = repair_duplicate_item_ids(board_dir, &initial).await?;
+    let inspection = if fixes.is_empty() {
+        initial
+    } else {
+        inspect().await?
+    };
+    let safe_fixes = apply_safe_fixes(board_dir, &inspection).await?;
+    let board_changed_after_inspection = !safe_fixes.is_empty();
+    fixes.extend(safe_fixes);
+    if fixes.is_empty() {
+        return Ok(DoctorReport {
+            issues: inspection.issues,
+            fixes,
+        });
+    }
+    backend.commit("pinto: doctor --fix").await?;
+    // The report must describe the post-fix board, so re-inspect only when the
+    // safe-fix stage changed the board after the latest inspection.
+    let final_state = if board_changed_after_inspection {
+        inspect().await?
+    } else {
+        inspection
+    };
     Ok(DoctorReport {
         issues: final_state.issues,
         fixes,
@@ -1638,6 +1670,133 @@ mod tests {
                 vec!["T-1".to_string(), "T-3".to_string()],
             ]
         );
+    }
+
+    async fn doctor_with_counted_inspections(
+        project_dir: &Path,
+        fix: bool,
+    ) -> (DoctorReport, usize) {
+        let (board_dir, backend, config) = open_board(project_dir).await.expect("open board");
+        let inspections = std::cell::Cell::new(0usize);
+        let report = run_doctor_with(&board_dir, &backend, fix, || {
+            inspections.set(inspections.get() + 1);
+            inspect_board(&board_dir, &backend, &config)
+        })
+        .await
+        .expect("doctor run");
+        (report, inspections.get())
+    }
+
+    async fn write_task_fixture(board_dir: &Path, filename: &str, fields: &str) {
+        let path = board_dir.join("tasks").join(filename);
+        fs::write(&path, format!("+++\n{fields}\n+++\n"))
+            .await
+            .expect("write task fixture");
+    }
+
+    #[tokio::test]
+    async fn doctor_without_fix_inspects_the_board_exactly_once() {
+        let dir = TempDir::new().expect("temp dir");
+        crate::service::init_board(dir.path())
+            .await
+            .expect("initialize board");
+
+        let (report, inspections) = doctor_with_counted_inspections(dir.path(), false).await;
+
+        assert!(report.issues.is_empty(), "issues: {:?}", report.issues);
+        assert!(report.fixes.is_empty());
+        assert_eq!(inspections, 1);
+    }
+
+    #[tokio::test]
+    async fn doctor_fix_inspects_once_when_no_fix_is_applied() {
+        let dir = TempDir::new().expect("temp dir");
+        crate::service::init_board(dir.path())
+            .await
+            .expect("initialize board");
+        let board_dir = dir.path().join(".pinto");
+        write_task_fixture(
+            &board_dir,
+            "T-1.md",
+            "id = \"T-1\"\ntitle = \"Dangling parent\"\nstatus = \"todo\"\nrank = \"i\"\nparent = \"T-99\"\ncreated = \"1970-01-01T00:00:00Z\"\nupdated = \"1970-01-01T00:00:00Z\"",
+        )
+        .await;
+        record_issued_id(&board_dir, &ItemId::new("T", 1))
+            .await
+            .expect("record issued ID");
+
+        let (report, inspections) = doctor_with_counted_inspections(dir.path(), true).await;
+
+        assert!(has_issue_kind(
+            &report.issues,
+            DoctorIssueKind::DanglingParent
+        ));
+        assert!(report.fixes.is_empty(), "fixes: {:?}", report.fixes);
+        assert_eq!(inspections, 1);
+    }
+
+    #[tokio::test]
+    async fn doctor_fix_reinspects_only_once_after_renumbering_duplicates() {
+        let dir = TempDir::new().expect("temp dir");
+        crate::service::init_board(dir.path())
+            .await
+            .expect("initialize board");
+        let board_dir = dir.path().join(".pinto");
+        let canonical = "id = \"T-1\"\ntitle = \"Canonical\"\nstatus = \"todo\"\nrank = \"i\"\ncreated = \"1970-01-01T00:00:00Z\"\nupdated = \"1970-01-01T00:00:00Z\"";
+        write_task_fixture(&board_dir, "T-1.md", canonical).await;
+        write_task_fixture(
+            &board_dir,
+            "z-copy.md",
+            &canonical.replace("rank = \"i\"", "rank = \"j\""),
+        )
+        .await;
+        record_issued_id(&board_dir, &ItemId::new("T", 1))
+            .await
+            .expect("record issued ID");
+
+        let (report, inspections) = doctor_with_counted_inspections(dir.path(), true).await;
+
+        assert!(
+            report
+                .fixes
+                .iter()
+                .any(|fix| fix.description.starts_with("renumbered ")),
+            "fixes: {:?}",
+            report.fixes
+        );
+        assert!(report.issues.is_empty(), "issues: {:?}", report.issues);
+        assert_eq!(inspections, 2);
+    }
+
+    #[tokio::test]
+    async fn doctor_fix_reinspects_once_after_safe_fixes() {
+        let dir = TempDir::new().expect("temp dir");
+        crate::service::init_board(dir.path())
+            .await
+            .expect("initialize board");
+        let board_dir = dir.path().join(".pinto");
+        write_task_fixture(
+            &board_dir,
+            "renamed.md",
+            "id = \"T-1\"\ntitle = \"Rename me\"\nstatus = \"todo\"\nrank = \"i\"\ncreated = \"1970-01-01T00:00:00Z\"\nupdated = \"1970-01-01T00:00:00Z\"",
+        )
+        .await;
+        record_issued_id(&board_dir, &ItemId::new("T", 1))
+            .await
+            .expect("record issued ID");
+
+        let (report, inspections) = doctor_with_counted_inspections(dir.path(), true).await;
+
+        assert!(
+            report
+                .fixes
+                .iter()
+                .any(|fix| fix.description.starts_with("renamed ")),
+            "fixes: {:?}",
+            report.fixes
+        );
+        assert!(report.issues.is_empty(), "issues: {:?}", report.issues);
+        assert_eq!(inspections, 2);
     }
 
     #[tokio::test]

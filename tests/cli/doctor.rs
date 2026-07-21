@@ -80,6 +80,21 @@ fn doctor_fix_repairs_only_unambiguous_filename_and_issued_history() {
 }
 
 #[test]
+fn doctor_fix_reports_unfixable_issues_without_applying_fixes() {
+    let dir = TempDir::new().expect("temp dir");
+    init_with_items(dir.path(), &["first"]);
+    let item_path = dir.path().join(".pinto/tasks/T-1.md");
+    rewrite_item(&item_path, &[("updated =", "parent = \"T-99\"\nupdated =")]);
+
+    pinto(dir.path())
+        .args(["doctor", "--fix"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("dangling parent"))
+        .stdout(predicate::str::contains("Fixed:").not());
+}
+
+#[test]
 fn doctor_reports_duplicate_ids_collisions_and_issued_history_errors() {
     let dir = TempDir::new().expect("temp dir");
     init_with_items(dir.path(), &["first", "second"]);
