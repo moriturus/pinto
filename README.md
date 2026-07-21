@@ -180,8 +180,8 @@ pinto rebalance --dry-run
 Run `pinto doctor` after hand-editing board files, recovering from an
 interrupted migration, or copying records between boards. It reports the
 location and repair direction for each integrity issue; `--fix` applies only
-unambiguous mechanical repairs and leaves relationship, duplicate, status,
-rank, and collision decisions for you.
+mechanical repairs, including deterministic duplicate-ID renumbering, and
+leaves ambiguous relationship, status, rank, and collision decisions for you.
 
 `pinto next` is read-only. It considers PBIs in the first configured workflow column as
 unstarted, excludes the configured `done_column`, and returns only items whose declared

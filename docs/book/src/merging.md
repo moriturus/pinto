@@ -121,17 +121,46 @@ Board is healthy.
 ```
 
 If a naive resolution left two files sharing an ID, `doctor` reports a
-`duplicate ID` finding and refuses to guess which one to drop:
+`duplicate ID` finding for each copy:
 
 ```console
 $ pinto doctor
-Found 1 unresolved board issue(s).
+Found 2 unresolved board issue(s).
 [duplicate ID] .pinto/tasks/T-2-alice.md: item ID T-2 is also present at ...
-Repair: keep one record for the ID and rename or remove the duplicate manually
+Repair: run pinto doctor --fix to renumber duplicates, or resolve them manually
 ```
 
-Resolve duplicates by hand (keep one file, re-home the other with `pinto add` as
-above), then re-run `pinto doctor` until it prints `Board is healthy.`
+`pinto doctor --fix` renumbers the collision deterministically: the first copy
+(active tasks before archived items, then by path) keeps the shared ID, and each
+later copy is re-homed to a fresh ID above every issued number. The fix rewrites
+`parent` and `depends_on` references that point at a renumbered copy, appends the
+new IDs to `issued_ids`, and leaves the canonical record untouched:
+
+```console
+$ pinto doctor --fix
+Found 2 unresolved board issue(s).
+Fixed: renumbered T-2 as T-5: .pinto/tasks/T-2-alice.md -> .pinto/tasks/T-5.md
+[rank anomaly] .pinto/tasks/T-2.md: rank "j" duplicated in status "todo" parent scope ""
+Repair: run pinto rebalance affected workflow scope
+[rank anomaly] .pinto/tasks/T-5.md: rank "j" duplicated in status "todo" parent scope ""
+Repair: run pinto rebalance affected workflow scope
+```
+
+Independent clones usually allocate the same rank alongside the same ID, so the
+two renumbered copies now share a rank in one scope. `doctor` will not choose
+their order for you; run `pinto rebalance` to spread the collision, then re-run
+`pinto doctor`:
+
+```console
+$ pinto rebalance
+Rebalanced 2/3 item(s) (max rank length 1 -> 1).
+$ pinto doctor
+Board is healthy.
+```
+
+Prefer this over hand surgery. If you would rather choose the surviving item
+yourself, keep one file and re-home the other with `pinto add` as above, then
+re-run `pinto doctor` until it prints `Board is healthy.`
 
 If you accidentally dropped a line from `issued_ids` while resolving the
 conflict, `doctor` detects the gap and `pinto doctor --fix` backfills it — it
@@ -151,7 +180,8 @@ Fixed: recorded T-4 in .pinto/issued_ids
 ## Checklist
 
 1. Union `.pinto/issued_ids`; never drop an issued number.
-2. Keep one item per conflicting task file; re-home the other with `pinto add`.
-3. Run `pinto doctor` (and `pinto doctor --fix` for history gaps) until the
-   board is healthy.
-4. Confirm the item list with `pinto list` before pushing the merge.
+2. Preserve both versions of a conflicting task under distinct filenames.
+3. Run `pinto doctor --fix` to renumber duplicates and repair history gaps.
+4. Run `pinto rebalance` when the renumbered copies collide on rank, then re-run
+   `pinto doctor` until the board is healthy.
+5. Confirm the item list with `pinto list` before pushing the merge.

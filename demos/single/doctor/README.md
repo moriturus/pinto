@@ -23,7 +23,9 @@ mv .pinto/tasks/T-1.md .pinto/tasks/renamed.md
 cargo run --manifest-path ../../../Cargo.toml -- doctor --fix
 ```
 
-The fixer can restore an unambiguous filename and append an existing PBI ID
-to `issued_ids`. It does not choose which relationship, duplicate, status,
-rank, or collision should be removed. A rank anomaly names `pinto rebalance`
-as its repair; see the [`rank-order`](../rank-order) demo for that command.
+The fixer can restore an unambiguous filename, append an existing PBI ID to
+`issued_ids`, and deterministically renumber duplicate PBI IDs while preserving
+matching parent/dependency lineages. It does not choose which relationship,
+status, rank, or storage collision should be removed. A rank anomaly names
+`pinto rebalance` as its repair; see the [`rank-order`](../rank-order) demo for
+that command.

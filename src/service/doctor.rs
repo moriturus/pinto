@@ -10,7 +10,10 @@ use crate::rank::Rank;
 #[cfg(feature = "sqlite")]
 use crate::sprint::Sprint;
 use crate::sprint::{SprintId, SprintState};
-use crate::storage::{Backend, item_issued_ids_path, parse_frontmatter, record_issued_id};
+use crate::storage::{
+    Backend, atomic_write, item_from_markdown, item_issued_ids_path, item_to_markdown,
+    parse_frontmatter, record_issued_id,
+};
 #[cfg(feature = "sqlite")]
 use crate::storage::{BacklogItemRepository, SprintRepository};
 use rayon::prelude::*;
@@ -77,7 +80,17 @@ async fn run_doctor(
 ) -> Result<DoctorReport> {
     let initial = inspect_board(board_dir, backend, config).await?;
     let fixes = if fix {
-        apply_safe_fixes(board_dir, &initial).await?
+        // Renumber duplicate IDs first, then re-inspect so the filename and issued-history repairs
+        // see the post-renumber board (for example, a surviving copy whose filename still needs to
+        // be normalized). Only pay for the extra inspection when a duplicate was actually repaired.
+        let mut fixes = repair_duplicate_item_ids(board_dir, &initial).await?;
+        let inspection = if fixes.is_empty() {
+            initial
+        } else {
+            inspect_board(board_dir, backend, config).await?
+        };
+        fixes.extend(apply_safe_fixes(board_dir, &inspection).await?);
+        fixes
     } else {
         Vec::new()
     };
@@ -137,6 +150,7 @@ impl<T> RawField<T> {
 struct RawItemRecord {
     path: PathBuf,
     area: RecordArea,
+    document: Option<String>,
     filename: Option<String>,
     frontmatter_error: Option<String>,
     id: RawField<String>,
@@ -157,6 +171,7 @@ impl RawItemRecord {
         let missing = || Self {
             path: path.clone(),
             area,
+            document: Some(text.clone()),
             filename: filename.clone(),
             frontmatter_error: None,
             id: RawField::Missing,
@@ -188,6 +203,7 @@ impl RawItemRecord {
         Self {
             path,
             area,
+            document: Some(text),
             filename,
             frontmatter_error: None,
             id: string_field(table, "id"),
@@ -207,6 +223,7 @@ impl RawItemRecord {
                 .join("board.sqlite3#items")
                 .join(item.id.to_string()),
             area: RecordArea::Database,
+            document: None,
             filename: None,
             frontmatter_error: None,
             id: RawField::Present(item.id.to_string()),
@@ -803,7 +820,7 @@ fn analyze_records(
                     DoctorIssueKind::DuplicateId,
                     record.location(),
                     format!("item ID {id} is also present at {locations}"),
-                    "keep one record for the ID and rename or remove the duplicate manually",
+                    "run pinto doctor --fix to renumber duplicates, or resolve them manually",
                 ));
             }
         }
@@ -1057,6 +1074,174 @@ async fn apply_safe_fixes(board_dir: &Path, inspection: &Inspection) -> Result<V
         });
     }
     Ok(fixes)
+}
+
+#[derive(Debug)]
+struct DuplicateRepair {
+    source: PathBuf,
+    area: RecordArea,
+    old_id: ItemId,
+    new_id: ItemId,
+    occurrence: usize,
+    item: crate::backlog::BacklogItem,
+}
+
+/// Deterministic plan for repairing every duplicate PBI ID in a single inspection.
+///
+/// `lineages` maps each shared ID to the ordered IDs assigned to its occurrences (index `0` is the
+/// canonical record that keeps the original ID), so `parent`/`depends_on` references can follow the
+/// same merge lineage they belonged to before renumbering.
+#[derive(Debug, Default)]
+struct DuplicateRepairPlan {
+    repairs: Vec<DuplicateRepair>,
+    lineages: BTreeMap<String, Vec<ItemId>>,
+}
+
+async fn repair_duplicate_item_ids(
+    board_dir: &Path,
+    inspection: &Inspection,
+) -> Result<Vec<DoctorFix>> {
+    let DuplicateRepairPlan { repairs, lineages } = plan_duplicate_item_repairs(inspection)?;
+    let mut fixes = Vec::with_capacity(repairs.len());
+
+    for mut repair in repairs {
+        repair.item.id = repair.new_id.clone();
+        if let Some(parent) = repair.item.parent.as_mut()
+            && let Some(ids) = lineages.get(&parent.to_string())
+            && let Some(replacement) = ids.get(repair.occurrence)
+        {
+            *parent = replacement.clone();
+        }
+        for dependency in &mut repair.item.depends_on {
+            if let Some(ids) = lineages.get(&dependency.to_string())
+                && let Some(replacement) = ids.get(repair.occurrence)
+            {
+                *dependency = replacement.clone();
+            }
+        }
+
+        let Some(directory) = repair.area.directory(board_dir) else {
+            continue;
+        };
+        let destination = directory.join(format!("{}.md", repair.new_id));
+        let text = item_to_markdown(&repair.item)?;
+        atomic_write(&destination, &text).await?;
+        fs::remove_file(&repair.source)
+            .await
+            .map_err(|error| Error::io(&repair.source, &error))?;
+        record_issued_id(board_dir, &repair.new_id).await?;
+        fixes.push(DoctorFix {
+            description: format!(
+                "renumbered {} as {}: {} -> {}",
+                repair.old_id,
+                repair.new_id,
+                repair.source.display(),
+                destination.display()
+            ),
+        });
+    }
+
+    Ok(fixes)
+}
+
+fn plan_duplicate_item_repairs(inspection: &Inspection) -> Result<DuplicateRepairPlan> {
+    let mut groups = BTreeMap::<String, Vec<&RawItemRecord>>::new();
+    let mut maximum_by_prefix = BTreeMap::<String, u32>::new();
+
+    for record in &inspection.records {
+        if let Some(id) = record.valid_id() {
+            maximum_by_prefix
+                .entry(id.prefix().to_string())
+                .and_modify(|maximum| *maximum = (*maximum).max(id.number()))
+                .or_insert(id.number());
+            groups.entry(id.to_string()).or_default().push(record);
+        }
+        if let Some(filename) = record
+            .filename
+            .as_deref()
+            .and_then(|filename| filename.strip_suffix(".md"))
+            .and_then(|stem| stem.parse::<ItemId>().ok())
+        {
+            maximum_by_prefix
+                .entry(filename.prefix().to_string())
+                .and_modify(|maximum| *maximum = (*maximum).max(filename.number()))
+                .or_insert(filename.number());
+        }
+    }
+    for id in &inspection.issued.ids {
+        maximum_by_prefix
+            .entry(id.prefix().to_string())
+            .and_modify(|maximum| *maximum = (*maximum).max(id.number()))
+            .or_insert(id.number());
+    }
+
+    let mut duplicate_groups = groups
+        .into_iter()
+        .filter_map(|(id, records)| {
+            (records.len() > 1)
+                .then(|| id.parse::<ItemId>().ok().map(|id| (id, records)))
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    duplicate_groups.sort_by(|(left, _), (right, _)| {
+        (left.prefix(), left.number()).cmp(&(right.prefix(), right.number()))
+    });
+
+    let mut repairs = Vec::new();
+    let mut lineages = BTreeMap::new();
+    for (old_id, mut records) in duplicate_groups {
+        records.sort_by(|left, right| {
+            record_area_priority(left.area)
+                .cmp(&record_area_priority(right.area))
+                .then_with(|| left.path.cmp(&right.path))
+        });
+        // A duplicate with any malformed field is not safe to rewrite. Leave that group for the
+        // final scan instead of turning a recoverable diagnostic into a failed repair command.
+        let parsed = records
+            .iter()
+            .map(|record| {
+                let document = record.document.as_deref()?;
+                item_from_markdown(document, &record.path).ok()
+            })
+            .collect::<Option<Vec<_>>>();
+        let Some(parsed) = parsed else {
+            continue;
+        };
+
+        let mut ids = vec![old_id.clone()];
+        let mut group_repairs = Vec::new();
+        for (occurrence, (record, item)) in records.iter().zip(parsed).enumerate().skip(1) {
+            let maximum = maximum_by_prefix
+                .entry(old_id.prefix().to_string())
+                .or_default();
+            *maximum = maximum
+                .checked_add(1)
+                .ok_or_else(|| Error::InvalidItemId(old_id.to_string()))?;
+            let new_id = ItemId::try_new(old_id.prefix(), *maximum)?;
+            ids.push(new_id.clone());
+            group_repairs.push(DuplicateRepair {
+                source: record.path.clone(),
+                area: record.area,
+                old_id: old_id.clone(),
+                new_id,
+                occurrence,
+                item,
+            });
+        }
+        lineages.insert(old_id.to_string(), ids);
+        repairs.extend(group_repairs);
+    }
+
+    Ok(DuplicateRepairPlan { repairs, lineages })
+}
+
+fn record_area_priority(area: RecordArea) -> u8 {
+    match area {
+        RecordArea::Tasks => 0,
+        RecordArea::Archive => 1,
+        #[cfg(feature = "sqlite")]
+        RecordArea::Database => 2,
+    }
 }
 
 fn string_field(table: &toml::map::Map<String, toml::Value>, name: &str) -> RawField<String> {

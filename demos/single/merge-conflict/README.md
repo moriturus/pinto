@@ -36,12 +36,24 @@ git add -A && git commit -m bob
 git merge alice        # CONFLICT in .pinto/issued_ids and .pinto/tasks/*.md
 ```
 
-Resolve `issued_ids` to the union of both sides, keep one item per conflicting
-task file, re-home the other with `pinto add`, then verify:
+Resolve `issued_ids` to the union of both sides and preserve both versions of a
+conflicting task under distinct temporary filenames. Then let `doctor --fix`
+re-home the duplicate to a fresh ID:
 
 ```bash
 cargo run --manifest-path ../../../Cargo.toml -- doctor
-cargo run --manifest-path ../../../Cargo.toml -- doctor --fix   # backfills issued_ids gaps
+cargo run --manifest-path ../../../Cargo.toml -- doctor --fix
+```
+
+The repair keeps the first active/path-ordered copy on its original ID,
+renumbers later copies above every issued number, rewrites matching parent and
+dependency references, and records the new IDs in `issued_ids`. Because both
+copies usually carry the same rank, `doctor --fix` leaves a rank collision it
+will not resolve on its own; clear it with `rebalance`, then confirm:
+
+```bash
+cargo run --manifest-path ../../../Cargo.toml -- rebalance
+cargo run --manifest-path ../../../Cargo.toml -- doctor
 ```
 
 Re-run `doctor` until it prints `Board is healthy.` See the runbook for the full
