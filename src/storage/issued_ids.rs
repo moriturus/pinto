@@ -6,6 +6,7 @@
 use super::atomic_write;
 use crate::backlog::ItemId;
 use crate::error::{Error, Result};
+use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -40,6 +41,44 @@ pub(crate) async fn record(root: &Path, id: &ItemId) -> Result<()> {
     }
     updated.push_str(&id);
     updated.push('\n');
+    atomic_write(&path, &updated).await
+}
+
+/// Record a batch of item IDs with one read and one atomic replacement.
+pub(crate) async fn record_many(root: &Path, ids: &[ItemId]) -> Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    fs::create_dir_all(root)
+        .await
+        .map_err(|error| Error::io(root, &error))?;
+
+    let path = path(root);
+    let contents = match fs::read_to_string(&path).await {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(Error::io(&path, &error)),
+    };
+    let mut known = contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    let mut updated = contents;
+    for id in ids {
+        let id = id.to_string();
+        if !known.insert(id.clone()) {
+            continue;
+        }
+        if !updated.is_empty() && !updated.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated.push_str(&id);
+        updated.push('\n');
+    }
+
     atomic_write(&path, &updated).await
 }
 
@@ -93,6 +132,26 @@ mod tests {
             .expect("duplicate record is a no-op");
 
         assert_eq!(max_number(dir.path(), "T").await.expect("max"), 3);
+        assert_eq!(
+            fs::read_to_string(path(dir.path())).await.expect("history"),
+            "T-3\nT-1\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn records_a_batch_once_without_duplicate_history() {
+        let dir = tempdir().expect("tempdir");
+        record_many(
+            dir.path(),
+            &[
+                ItemId::new("T", 3),
+                ItemId::new("T", 1),
+                ItemId::new("T", 3),
+            ],
+        )
+        .await
+        .expect("record batch");
+
         assert_eq!(
             fs::read_to_string(path(dir.path())).await.expect("history"),
             "T-3\nT-1\n"

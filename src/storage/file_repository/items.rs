@@ -6,7 +6,7 @@ use crate::backlog::{BacklogItem, ItemId};
 use crate::error::Error;
 use crate::error::Result;
 use crate::storage::atomic_write;
-use crate::storage::issued_ids::{max_number, record};
+use crate::storage::issued_ids::{max_number, record, record_many};
 use crate::storage::markdown::{from_markdown, to_markdown};
 use crate::storage::repository::BacklogItemRepository;
 use rayon::prelude::*;
@@ -15,6 +15,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::task::JoinSet;
+
+/// Keep concurrent file reads below common per-process descriptor limits while retaining async
+/// I/O parallelism. A bounded JoinSet is enough because parsing is performed separately by Rayon.
+const MAX_CONCURRENT_FILE_READS: usize = 64;
 
 impl BacklogItemRepository for FileRepository {
     async fn save(&self, item: &BacklogItem) -> Result<()> {
@@ -184,6 +188,43 @@ impl BacklogItemRepository for FileRepository {
 }
 
 impl FileRepository {
+    /// Save a validated batch without re-reading the growing task set for every item.
+    pub(crate) async fn save_batch(&self, items: &[BacklogItem]) -> Result<()> {
+        let (_, archived) = self.read_all_item_records().await?;
+        let dir = self.tasks_dir();
+        fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| Error::io(&dir, &e))?;
+
+        for item in items {
+            let path = self.path_for(&item.id)?;
+            if let Some((archive_path, _)) =
+                archived.iter().find(|(_, existing)| existing.id == item.id)
+            {
+                return Err(Error::parse(
+                    &path,
+                    format!(
+                        "cannot save item `{}`: archive file {} already exists; remove the archived copy before restoring the item",
+                        item.id,
+                        archive_path.display()
+                    ),
+                ));
+            }
+        }
+
+        record_many(
+            &self.root,
+            &items.iter().map(|item| item.id.clone()).collect::<Vec<_>>(),
+        )
+        .await?;
+        for item in items {
+            let path = self.path_for(&item.id)?;
+            let text = to_markdown(item)?;
+            atomic_write(&path, &text).await?;
+        }
+        Ok(())
+    }
+
     /// Read and validate every active and archived item before exposing the active set.
     async fn read_all_item_records(&self) -> Result<(Vec<ItemRecord>, Vec<ItemRecord>)> {
         let active = self.read_item_records(&self.tasks_dir()).await?;
@@ -201,7 +242,13 @@ impl FileRepository {
 
         // Read all files concurrently; this is I/O-bound work.
         let mut reads = JoinSet::new();
+        let mut contents = Vec::with_capacity(paths.len());
         for path in paths {
+            if reads.len() >= MAX_CONCURRENT_FILE_READS
+                && let Some(joined) = reads.join_next().await
+            {
+                contents.push(joined.map_err(Error::task)??);
+            }
             reads.spawn(async move {
                 fs::read_to_string(&path)
                     .await
@@ -209,7 +256,6 @@ impl FileRepository {
                     .map(|text| (path, text))
             });
         }
-        let mut contents = Vec::new();
         while let Some(joined) = reads.join_next().await {
             contents.push(joined.map_err(Error::task)??);
         }

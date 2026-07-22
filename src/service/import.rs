@@ -90,9 +90,7 @@ pub async fn import_board(
     }
 
     // Saving an item records its issued ID, so a later `add` never reuses a restored ID.
-    for item in &snapshot.items {
-        BacklogItemRepository::save(&target, item).await?;
-    }
+    target.save_item_batch(&snapshot.items).await?;
     for sprint in &snapshot.sprints {
         SprintRepository::save(&target, sprint).await?;
     }

@@ -33,6 +33,8 @@ mod init_discovery;
 mod item;
 #[path = "cli/kanban.rs"]
 mod kanban;
+#[path = "cli/large_board_benchmark.rs"]
+mod large_board_benchmark;
 #[path = "cli/list_show.rs"]
 mod list_show;
 #[path = "cli/move_reorder.rs"]

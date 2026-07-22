@@ -31,6 +31,27 @@ pub enum Backend {
 }
 
 impl Backend {
+    /// Save a batch of items efficiently on the file backend while preserving regular per-item
+    /// repository semantics for the other backends.
+    pub(crate) async fn save_item_batch(&self, items: &[BacklogItem]) -> Result<()> {
+        match self {
+            Backend::File(repository) => repository.save_batch(items).await,
+            Backend::Git(repository) => {
+                for item in items {
+                    BacklogItemRepository::save(repository, item).await?;
+                }
+                Ok(())
+            }
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(repository) => {
+                for item in items {
+                    BacklogItemRepository::save(repository, item).await?;
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// Build from the board root (`.pinto/`) and the selected backend type.
     ///
     /// No I/O is performed during construction; Git repository preparation is delayed until the

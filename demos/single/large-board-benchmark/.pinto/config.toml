@@ -1,0 +1,27 @@
+columns = [
+    "todo",
+    "in-progress",
+    "review",
+    "done",
+]
+done_column = "done"
+
+[project]
+name = "large-board-benchmark"
+key = "T"
+
+[tui]
+confirm_quit = true
+
+[storage]
+backend = "file"
+
+[wip]
+enabled = true
+
+[display]
+markdown = true
+timezone = "local"
+
+[points]
+aggregate_children = false

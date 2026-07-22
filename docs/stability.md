@@ -1,5 +1,19 @@
 # Stability decisions
 
+## Single-item read scaling
+
+The file backend intentionally uses complete task and archive validation for
+every operation, including `show` for one known item. The large-board benchmark
+in [`docs/benchmarks.md`](benchmarks.md) records the resulting linear scaling at
+1,000 and 10,000 items for `list`, `show`, `add`, and `move`.
+
+Single-item reads do not bypass full-board parsing. The fail-fast contract means
+that a malformed or inconsistent unrelated record must stop the command rather
+than remain hidden behind a healthy target. This preserves the repair workflow:
+fix the reported record and rerun `pinto list` before continuing. A future
+indexed or incremental read path would need a separate compatibility decision
+that preserves this integrity guarantee.
+
 ## Item ID allocation
 
 All backends reserve issued PBI IDs in the plain-text `.pinto/issued_ids`
