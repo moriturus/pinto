@@ -33,6 +33,7 @@ const MAINTAINED_GUIDANCE: &[&str] = &[
     "docs/book/src/quickstart.md",
     "docs/book/src/reproducibility.md",
     "docs/book/src/testing.md",
+    "docs/book/src/team-scale.md",
     "docs/book/src/undo.md",
 ];
 
@@ -271,6 +272,7 @@ fn mdbook_structure_covers_user_and_contributor_workflows() {
         "quickstart.md",
         "cli.md",
         "data-format.md",
+        "team-scale.md",
         "dogfooding.md",
         "contributing.md",
         "reproducibility.md",
@@ -344,6 +346,63 @@ fn documentation_includes_the_required_operating_instructions() {
         "Cobertura line-rate",
     ] {
         assert!(testing.contains(term), "testing guide omits {term}");
+    }
+}
+
+#[test]
+fn book_documents_team_scale_best_practices() {
+    let summary = repository_file("docs/book/src/SUMMARY.md");
+    assert!(
+        summary.contains("[Team-scale best practices](team-scale.md)"),
+        "SUMMARY.md does not link the team-scale best-practices page"
+    );
+
+    let guidance = repository_file("docs/book/src/team-scale.md");
+    for marker in [
+        "# Team-scale best practices",
+        "## Individual development",
+        "## Small teams",
+        "## Larger teams",
+    ] {
+        assert!(
+            guidance.contains(marker),
+            "team-scale guidance omits {marker}"
+        );
+    }
+
+    let individual = guidance
+        .split_once("## Individual development")
+        .and_then(|(_, rest)| rest.split_once("## Small teams"))
+        .map(|(section, _)| section)
+        .expect("team-scale guidance has an individual-development section");
+    assert!(
+        individual.contains("use pinto without Scrum features"),
+        "individual-development guidance must omit Scrum features"
+    );
+
+    let small_team = guidance
+        .split_once("## Small teams")
+        .and_then(|(_, rest)| rest.split_once("## Larger teams"))
+        .map(|(section, _)| section)
+        .expect("team-scale guidance has a small-team section");
+    assert!(
+        small_team.contains("use pinto with Scrum features"),
+        "small-team guidance must recommend Scrum features"
+    );
+
+    let larger_team = guidance
+        .split_once("## Larger teams")
+        .map(|(_, section)| section)
+        .expect("team-scale guidance has a larger-team section");
+    for marker in [
+        "use the Git backend",
+        "dedicated repository",
+        "backend = \"git\"",
+    ] {
+        assert!(
+            larger_team.contains(marker),
+            "larger-team guidance omits {marker}"
+        );
     }
 }
 

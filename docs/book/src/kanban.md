@@ -112,8 +112,9 @@ modifiers:
 
 Terminal protocols do not represent every modified key identically. The
 matcher accepts crossterm's control-byte forms, including lowercase control
-letters, `Ctrl+?` as `Backspace` or `?` with Control, and the other
-ASCII control punctuation aliases. Non-Control modifier bits are preserved. A legacy
+letters, `Ctrl+?` as `Backspace`, `?` with Control, or `Ctrl+7` (the
+Ghostty/Zellij `Ctrl+Shift+/` encoding), and the other ASCII control
+punctuation aliases. Non-Control modifier bits are preserved. A legacy
 terminal may make `Ctrl+?` indistinguishable from `Backspace`, but the plain
 `?` help binding remains separate.
 

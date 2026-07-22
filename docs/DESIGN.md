@@ -128,8 +128,8 @@ leave the form and selection intact.
 Terminal protocols may encode ASCII control bindings as different crossterm
 events. The shared matcher normalizes those aliases, including control-letter
 case, while retaining non-Control modifier bits; legacy encodings that collapse
-`Ctrl+?` to `Backspace` therefore still reach regex search. Plain `?` remains
-the help binding.
+`Ctrl+?` to `Backspace`, or Ghostty/Zellij's `Ctrl+Shift+/` to `Ctrl+7`,
+therefore still reach regex search. Plain `?` remains the help binding.
 
 The `[display].timezone` setting affects only human-readable timestamp rendering.
 It accepts `local` (the default), `UTC`, or a fixed `±HH:MM` offset. Stored

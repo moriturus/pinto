@@ -27,10 +27,10 @@ cd pinto
 cargo install --path . --locked
 ```
 
-The latest published release is `0.3.2`. Install it from crates.io with:
+The latest published release is `0.3.3`. Install it from crates.io with:
 
 ```bash
-cargo install pinto-cli --version 0.3.2
+cargo install pinto-cli --version 0.3.3
 ```
 
 The installed binary remains `pinto`.
@@ -54,6 +54,10 @@ Run `mdbook serve` to preview the site locally. The source is in
 [`docs/book/src`](docs/book/src), and the generated site is written to `target/book/`. The
 repository's design, JSON, migration, and dogfooding reference documents remain available under
 [`docs/`](docs/).
+
+For guidance by team size, see [Team-scale best practices](docs/book/src/team-scale.md):
+individual developers can use pinto without Scrum features, small teams can use Scrum features,
+and larger teams should use the Git backend in a dedicated repository.
 
 The published book is available at [moriturus.github.io/pinto](https://moriturus.github.io/pinto/).
 The [`pages.yml`](.github/workflows/pages.yml) workflow rebuilds and deploys it to GitHub Pages on

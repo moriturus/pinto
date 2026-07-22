@@ -383,9 +383,14 @@ fn question_mark_terminal_alias_matches(
     }
 
     // Legacy Unix input sends Ctrl+? as DEL. crossterm exposes that byte as
-    // Backspace and cannot retain the Control bit. CSI-u can instead expose
+    // Backspace and cannot retain the Control bit. Zellij can instead encode
+    // Ctrl+Shift+/ as 0x1f, which crossterm exposes as Ctrl+7. CSI-u can expose
     // the question-mark character with the Control bit. Other modifier bits
     // must remain unchanged.
+    if actual_code == KeyCode::Char('7') {
+        return configured_modifiers == actual_modifiers;
+    }
+
     actual_code == KeyCode::Backspace
         && (configured_modifiers == actual_modifiers
             || (configured_modifiers.contains(Modifiers::CONTROL)
@@ -718,7 +723,7 @@ mod tests {
         let regex_search = KeyStroke::parse("Ctrl+?").expect("regex search key is valid");
         assert!(regex_search.matches(KeyCode::Backspace, Modifiers::NONE));
         assert!(regex_search.matches(KeyCode::Char('?'), Modifiers::CONTROL));
-        assert!(!regex_search.matches(KeyCode::Char('7'), Modifiers::CONTROL));
+        assert!(regex_search.matches(KeyCode::Char('7'), Modifiers::CONTROL));
 
         let alt_regex_search = KeyStroke::parse("Alt+?").expect("Alt binding is valid");
         assert!(alt_regex_search.matches(KeyCode::Backspace, Modifiers::ALT));

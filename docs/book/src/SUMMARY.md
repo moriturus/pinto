@@ -14,6 +14,7 @@
 - [Kanban (TUI)](kanban.md)
 - [Configuration](configuration.md)
 - [Data format](data-format.md)
+- [Team-scale best practices](team-scale.md)
 - [Merging shared boards](merging.md)
 - [Undoing a mutation](undo.md)
 - [Dogfooding](dogfooding.md)

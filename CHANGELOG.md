@@ -7,6 +7,23 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-22
+
+This patch release improves Kanban modified-key handling across terminal event
+encodings without changing the board data format or CLI contract.
+
+### Fixed
+
+- Fixed configurable Kanban modified-key bindings across crossterm terminal
+  event encodings, including the documented `Ctrl+?` regular-expression
+  search shortcut.
+
+### Documentation
+
+- Added team-scale best-practice guidance to the book: individual development without Scrum
+  features, Scrum features for small teams, and the Git backend in a dedicated repository for
+  larger teams.
+
 ## [0.3.2] - 2026-07-22
 
 This patch release adds Git-backed undo and board import/recovery workflows

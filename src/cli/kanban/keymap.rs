@@ -150,7 +150,7 @@ mod tests {
             KeyAction::RegexSearch,
             KeyEvent::new(KeyCode::Char('?'), KeyModifiers::CONTROL)
         ));
-        assert!(!keymap.matches(
+        assert!(keymap.matches(
             KeyAction::RegexSearch,
             KeyEvent::new(KeyCode::Char('7'), KeyModifiers::CONTROL)
         ));
