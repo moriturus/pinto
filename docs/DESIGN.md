@@ -125,6 +125,12 @@ parent form clears the parent when submitted on the source card with an empty
 buffer. `Esc` cancels before any service call, and user-facing validation errors
 leave the form and selection intact.
 
+Terminal protocols may encode ASCII control bindings as different crossterm
+events. The shared matcher normalizes those aliases, including control-letter
+case, while retaining non-Control modifier bits; legacy encodings that collapse
+`Ctrl+?` to `Backspace` therefore still reach regex search. Plain `?` remains
+the help binding.
+
 The `[display].timezone` setting affects only human-readable timestamp rendering.
 It accepts `local` (the default), `UTC`, or a fixed `±HH:MM` offset. Stored
 timestamps and JSON output remain UTC RFC3339 values, so display preferences do

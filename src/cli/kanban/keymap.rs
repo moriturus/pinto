@@ -137,6 +137,75 @@ mod tests {
     }
 
     #[test]
+    fn keymap_matches_terminal_aliases_for_control_and_other_modifiers() {
+        let mut bindings = KeyBindings::default();
+        bindings.set(KeyAction::RegexSearch, vec!["Ctrl+?".to_string()]);
+        let keymap = KeyMap::from_bindings(&bindings).expect("valid regex search binding");
+
+        assert!(keymap.matches(
+            KeyAction::RegexSearch,
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)
+        ));
+        assert!(keymap.matches(
+            KeyAction::RegexSearch,
+            KeyEvent::new(KeyCode::Char('?'), KeyModifiers::CONTROL)
+        ));
+        assert!(!keymap.matches(
+            KeyAction::RegexSearch,
+            KeyEvent::new(KeyCode::Char('7'), KeyModifiers::CONTROL)
+        ));
+
+        let modifier_cases = [
+            ("Alt+?", KeyModifiers::ALT),
+            ("Cmd+?", KeyModifiers::SUPER),
+            ("Meta+?", KeyModifiers::META),
+            ("Hyper+?", KeyModifiers::HYPER),
+            ("Ctrl+Alt+?", KeyModifiers::ALT),
+        ];
+        let mut modifier_bindings = KeyBindings::default();
+        modifier_bindings.set(
+            KeyAction::Details,
+            modifier_cases
+                .iter()
+                .map(|(binding, _)| (*binding).to_string())
+                .collect(),
+        );
+        modifier_bindings.set(KeyAction::Help, vec!["?".to_string()]);
+        let keymap = KeyMap::from_bindings(&modifier_bindings).expect("valid modifier bindings");
+
+        for (binding, modifiers) in modifier_cases {
+            assert!(
+                keymap.matches(
+                    KeyAction::Details,
+                    KeyEvent::new(KeyCode::Backspace, modifiers)
+                ),
+                "binding: {binding}"
+            );
+        }
+        assert!(keymap.matches(
+            KeyAction::Help,
+            KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE)
+        ));
+        assert!(!keymap.matches(
+            KeyAction::Help,
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)
+        ));
+
+        bindings.set(KeyAction::Details, vec!["Ctrl+A".to_string()]);
+        bindings.set(KeyAction::Edit, vec!["Alt+?".to_string()]);
+        let keymap = KeyMap::from_bindings(&bindings).expect("valid modified bindings");
+
+        assert!(keymap.matches(
+            KeyAction::Details,
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)
+        ));
+        assert!(keymap.matches(
+            KeyAction::Edit,
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT)
+        ));
+    }
+
+    #[test]
     fn keymap_exposes_the_first_configured_key_for_guides() {
         let mut bindings = KeyBindings::default();
         bindings.set(

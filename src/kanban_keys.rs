@@ -310,11 +310,86 @@ impl KeyStroke {
         &self.display
     }
 
-    /// Compare an input event with this configured stroke.
+    /// Compare an input event with this configured stroke, including terminal
+    /// aliases for ASCII control-byte encodings.
     #[must_use]
     pub fn matches(&self, code: KeyCode, modifiers: Modifiers) -> bool {
-        self.code == code && self.modifiers == modifiers
+        (self.code == code && self.modifiers == modifiers)
+            || control_letter_matches(self.code, self.modifiers, code, modifiers)
+            || control_character_terminal_alias_matches(self.code, self.modifiers, code, modifiers)
+            || question_mark_terminal_alias_matches(self.code, self.modifiers, code, modifiers)
     }
+}
+
+fn control_letter_matches(
+    configured_code: KeyCode,
+    configured_modifiers: Modifiers,
+    actual_code: KeyCode,
+    actual_modifiers: Modifiers,
+) -> bool {
+    if configured_modifiers != actual_modifiers
+        || !configured_modifiers.contains(Modifiers::CONTROL)
+    {
+        return false;
+    }
+
+    match (configured_code, actual_code) {
+        (KeyCode::Char(configured), KeyCode::Char(actual)) => {
+            configured.is_ascii_alphabetic() && configured.eq_ignore_ascii_case(&actual)
+        }
+        _ => false,
+    }
+}
+
+fn control_character_terminal_alias_matches(
+    configured_code: KeyCode,
+    configured_modifiers: Modifiers,
+    actual_code: KeyCode,
+    actual_modifiers: Modifiers,
+) -> bool {
+    let KeyCode::Char(configured) = configured_code else {
+        return false;
+    };
+    if !configured_modifiers.contains(Modifiers::CONTROL) {
+        return false;
+    }
+
+    let actual_code_matches = match configured {
+        '@' => actual_code == KeyCode::Char(' '),
+        '[' => actual_code == KeyCode::Esc,
+        '\\' => actual_code == KeyCode::Char('4'),
+        ']' => actual_code == KeyCode::Char('5'),
+        '^' => actual_code == KeyCode::Char('6'),
+        '_' => actual_code == KeyCode::Char('7'),
+        _ => false,
+    };
+    if !actual_code_matches {
+        return false;
+    }
+
+    configured_modifiers == actual_modifiers
+        || (actual_code == KeyCode::Esc
+            && configured_modifiers == (actual_modifiers | Modifiers::CONTROL))
+}
+
+fn question_mark_terminal_alias_matches(
+    configured_code: KeyCode,
+    configured_modifiers: Modifiers,
+    actual_code: KeyCode,
+    actual_modifiers: Modifiers,
+) -> bool {
+    if configured_code != KeyCode::Char('?') || configured_modifiers == Modifiers::NONE {
+        return false;
+    }
+
+    // Legacy Unix input sends Ctrl+? as DEL. crossterm exposes that byte as
+    // Backspace and cannot retain the Control bit. CSI-u can instead expose
+    // the question-mark character with the Control bit. Other modifier bits
+    // must remain unchanged.
+    actual_code == KeyCode::Backspace
+        && (configured_modifiers == actual_modifiers
+            || (configured_modifiers.contains(Modifiers::CONTROL)
+                && configured_modifiers == (actual_modifiers | Modifiers::CONTROL)))
 }
 
 /// A malformed key expression from the configuration file.
@@ -620,6 +695,37 @@ mod tests {
         let command = KeyStroke::parse("Cmd+q").expect("command key is valid");
         assert!(command.matches(KeyCode::Char('q'), Modifiers::SUPER));
         assert_eq!(command.display(), "Cmd+q");
+    }
+
+    #[test]
+    fn terminal_aliases_match_modified_printable_bindings() {
+        let control_letter = KeyStroke::parse("Ctrl+A").expect("control letter is valid");
+        assert!(control_letter.matches(KeyCode::Char('a'), Modifiers::CONTROL));
+
+        let unix_control_aliases = [
+            ("Ctrl+@", KeyCode::Char(' '), Modifiers::CONTROL),
+            ("Ctrl+[", KeyCode::Esc, Modifiers::NONE),
+            ("Ctrl+\\", KeyCode::Char('4'), Modifiers::CONTROL),
+            ("Ctrl+]", KeyCode::Char('5'), Modifiers::CONTROL),
+            ("Ctrl+^", KeyCode::Char('6'), Modifiers::CONTROL),
+            ("Ctrl+_", KeyCode::Char('7'), Modifiers::CONTROL),
+        ];
+        for (input, code, modifiers) in unix_control_aliases {
+            let stroke = KeyStroke::parse(input).expect("control punctuation is valid");
+            assert!(stroke.matches(code, modifiers), "input: {input}");
+        }
+
+        let regex_search = KeyStroke::parse("Ctrl+?").expect("regex search key is valid");
+        assert!(regex_search.matches(KeyCode::Backspace, Modifiers::NONE));
+        assert!(regex_search.matches(KeyCode::Char('?'), Modifiers::CONTROL));
+        assert!(!regex_search.matches(KeyCode::Char('7'), Modifiers::CONTROL));
+
+        let alt_regex_search = KeyStroke::parse("Alt+?").expect("Alt binding is valid");
+        assert!(alt_regex_search.matches(KeyCode::Backspace, Modifiers::ALT));
+
+        let combined_regex_search =
+            KeyStroke::parse("Ctrl+Alt+?").expect("combined binding is valid");
+        assert!(combined_regex_search.matches(KeyCode::Backspace, Modifiers::ALT));
     }
 
     #[test]

@@ -110,6 +110,13 @@ modifiers:
 - Modifiers: `Ctrl`, `Alt`, `Shift`, `Cmd`, `Meta`, and `Hyper` — for example
   `Ctrl+a` or `Alt+Shift+Left`. Write the literal plus key as `Plus`.
 
+Terminal protocols do not represent every modified key identically. The
+matcher accepts crossterm's control-byte forms, including lowercase control
+letters, `Ctrl+?` as `Backspace` or `?` with Control, and the other
+ASCII control punctuation aliases. Non-Control modifier bits are preserved. A legacy
+terminal may make `Ctrl+?` indistinguishable from `Backspace`, but the plain
+`?` help binding remains separate.
+
 Invalid expressions (an empty name, an unknown modifier, or `Shift+` on a
 printable character) are reported when the user configuration loads, so a bad
 binding is caught before the TUI starts rather than failing silently.
