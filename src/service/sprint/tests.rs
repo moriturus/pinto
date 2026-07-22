@@ -181,6 +181,37 @@ async fn create_on_uninitialized_dir_prompts_init() {
 }
 
 #[tokio::test]
+async fn edit_updates_title_goal_and_period() {
+    let dir = init_temp().await;
+    create_sprint(
+        dir.path(),
+        &sid("S-1"),
+        "Initial title",
+        Some("Initial goal".to_string()),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let start = date(2026, 8, 3);
+    let end = date(2026, 8, 14);
+    let edited = edit_sprint(
+        dir.path(),
+        &sid("S-1"),
+        Some("Updated title".to_string()),
+        Some("Updated goal".to_string()),
+        Some((start, end)),
+    )
+    .await
+    .expect("edit succeeds");
+
+    assert_eq!(edited.title, "Updated title");
+    assert_eq!(edited.goal, "Updated goal");
+    assert_eq!(edited.start, Some(start));
+    assert_eq!(edited.end, Some(end));
+}
+
+#[tokio::test]
 async fn start_moves_planned_to_active_and_persists() {
     let dir = init_temp().await;
     create_sprint(
@@ -742,6 +773,41 @@ async fn unassign_item_not_in_sprint_returns_error() {
             item: item.id,
             sprint: sid("S-1"),
         }
+    );
+}
+
+#[tokio::test]
+async fn delete_clears_assignments_before_removing_sprint() {
+    let dir = init_temp().await;
+    create_sprint(dir.path(), &sid("S-1"), "Sprint 1", None, None)
+        .await
+        .unwrap();
+    let item = add_item(
+        dir.path(),
+        "Assigned task",
+        NewItem {
+            sprint: Some("S-1".to_string()),
+            ..NewItem::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    delete_sprint(dir.path(), &sid("S-1"))
+        .await
+        .expect("delete succeeds");
+
+    let repo = FileRepository::new(dir.path().join(".pinto"));
+    assert!(matches!(
+        SprintRepository::load(&repo, &sid("S-1")).await,
+        Err(Error::SprintNotFound(_))
+    ));
+    assert_eq!(
+        BacklogItemRepository::load(&repo, &item.id)
+            .await
+            .unwrap()
+            .sprint,
+        None
     );
 }
 

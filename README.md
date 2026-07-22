@@ -27,10 +27,10 @@ cd pinto
 cargo install --path . --locked
 ```
 
-The latest published release is `0.3.1`. Install it from crates.io with:
+The latest published release is `0.3.2`. Install it from crates.io with:
 
 ```bash
-cargo install pinto-cli --version 0.3.1
+cargo install pinto-cli --version 0.3.2
 ```
 
 The installed binary remains `pinto`.
@@ -126,6 +126,8 @@ done (0)
 | `pinto link add/rm/sync` | Associate Git commits with PBIs, or synchronize links from commit messages containing item IDs. |
 | `pinto dod` | View, set, or clear the shared Definition of Done. |
 | `pinto export --json` | Export all active PBIs, Sprints, effective board configuration, and the shared Definition of Done as one consistent JSON snapshot; it waits for an active writer. |
+| `pinto import <SOURCE>` | Restore a board from an `export --json` snapshot; use `-` for standard input or `--force` to replace a populated board. |
+| `pinto undo` | Undo the most recent completed board mutation on the Git backend. |
 | `pinto sprint` | Create, edit, delete, start, close, list, assign, and report on Sprints (`burndown`, `velocity`, `capacity`). |
 | `pinto cycletime` / `pinto ct` | Report cycle and lead-time metrics. |
 | `pinto rebalance` | Reassign oversized ranks while preserving item order. Use `--dry-run` to preview changes. |
@@ -157,6 +159,8 @@ pinto list --stale 7d --status todo --json          # unchanged for at least sev
 pinto list --roots-only --status todo --json       # roots only, machine-readable
 pinto list --archived --json                        # archived PBIs only
 pinto export --json                                 # complete active-board snapshot
+pinto import snapshot.json                           # restore a board snapshot
+pinto undo                                           # undo the latest Git-backed mutation
 pinto next                                           # highest-ranked actionable PBI
 pinto next -n 3 --sprint S-1 --json                  # several candidates for one Sprint
 pinto show T-1

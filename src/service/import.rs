@@ -260,6 +260,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn import_removes_an_existing_dod_when_snapshot_has_none() {
+        let (_source, mut snapshot) = populated_snapshot().await;
+        snapshot.dod = None;
+
+        let dest = TempDir::new().expect("temp dir");
+        init_board(dest.path()).await.expect("init dest");
+        set_common_dod(dest.path(), "- [x] old DoD")
+            .await
+            .expect("old dod");
+
+        import_board(dest.path(), snapshot, true)
+            .await
+            .expect("forced import");
+        assert_eq!(crate::service::common_dod(dest.path()).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn import_treats_blank_snapshot_dod_as_absent() {
+        let (_source, mut snapshot) = populated_snapshot().await;
+        snapshot.dod = Some(" \n\t ".to_string());
+
+        let dest = TempDir::new().expect("temp dir");
+        init_board(dest.path()).await.expect("init dest");
+        import_board(dest.path(), snapshot, false)
+            .await
+            .expect("import");
+        assert_eq!(crate::service::common_dod(dest.path()).await.unwrap(), None);
+    }
+
+    #[tokio::test]
     async fn import_uninitialized_board_errors() {
         let (_source, snapshot) = populated_snapshot().await;
         let dir = TempDir::new().expect("temp dir");

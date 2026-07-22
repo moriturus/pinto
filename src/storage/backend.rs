@@ -291,4 +291,62 @@ mod tests {
             .expect("load via backend");
         assert_eq!(loaded, item);
     }
+
+    #[tokio::test]
+    async fn save_item_batch_dispatches_to_git_and_sqlite_backends() {
+        let item = BacklogItem::new(
+            ItemId::new("T", 1),
+            "Batch",
+            Status::new("todo"),
+            Rank::after(None),
+            Utc.timestamp_opt(1_000, 0).single().unwrap(),
+        )
+        .expect("valid item");
+
+        let git_dir = TempDir::new().expect("git temp dir");
+        let git = Backend::Git(GitRepository::new(git_dir.path().join(".pinto")));
+        git.save_item_batch(std::slice::from_ref(&item))
+            .await
+            .expect("git batch save");
+        assert_eq!(
+            BacklogItemRepository::list(&git).await.unwrap(),
+            vec![item.clone()]
+        );
+
+        #[cfg(feature = "sqlite")]
+        {
+            let sqlite_dir = TempDir::new().expect("sqlite temp dir");
+            let sqlite = Backend::Sqlite(SqliteRepository::new(sqlite_dir.path().join(".pinto")));
+            sqlite
+                .save_item_batch(std::slice::from_ref(&item))
+                .await
+                .expect("sqlite batch save");
+            assert_eq!(
+                BacklogItemRepository::list(&sqlite).await.unwrap(),
+                vec![item]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn historyless_backends_report_undo_unsupported() {
+        let file_dir = TempDir::new().expect("file temp dir");
+        assert!(matches!(
+            Backend::File(FileRepository::new(file_dir.path().join(".pinto")))
+                .undo()
+                .await,
+            Err(Error::UndoUnsupported { backend }) if backend == "file"
+        ));
+
+        #[cfg(feature = "sqlite")]
+        {
+            let sqlite_dir = TempDir::new().expect("sqlite temp dir");
+            assert!(matches!(
+                Backend::Sqlite(SqliteRepository::new(sqlite_dir.path().join(".pinto")))
+                    .undo()
+                    .await,
+                Err(Error::UndoUnsupported { backend }) if backend == "sqlite"
+            ));
+        }
+    }
 }

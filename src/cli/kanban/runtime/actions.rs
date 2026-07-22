@@ -420,3 +420,192 @@ pub(super) fn abort_search(handle: &Handle, dir: &Path, view: &mut BoardView) ->
 pub(super) fn clear_filter(handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()> {
     reload_with_filter(handle, dir, view, None)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::kanban::{BoardView, InputMode};
+    use chrono::Utc;
+    use pinto::backlog::{AcceptanceCriteriaProgress, BacklogItem, Status};
+    use pinto::rank::Rank;
+    use pinto::service::{
+        Board, BoardColumn, BoardQuery, NewItem, add_item_with_outcome, init_board,
+    };
+    use tempfile::TempDir;
+
+    fn move_outcome(body: &str, entered_done_column: bool) -> MoveOutcome {
+        MoveOutcome {
+            item: BacklogItem::new(
+                "T-1".parse().expect("item id"),
+                "Task",
+                Status::new("todo"),
+                Rank::after(None),
+                Utc::now(),
+            )
+            .expect("item"),
+            acceptance_criteria: AcceptanceCriteriaProgress::from_markdown(body),
+            entered_done_column,
+        }
+    }
+
+    fn view_with_item() -> BoardView {
+        let item = BacklogItem::new(
+            "T-1".parse().expect("item id"),
+            "Task",
+            Status::new("todo"),
+            Rank::after(None),
+            Utc::now(),
+        )
+        .expect("item");
+        BoardView::new(Board {
+            columns: vec![BoardColumn {
+                status: Status::new("todo"),
+                items: vec![item],
+            }],
+            orphaned: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn acceptance_warning_requires_done_column_and_incomplete_criteria() {
+        assert!(acceptance_criteria_warning(&move_outcome("- [ ] pending", false)).is_none());
+        assert!(acceptance_criteria_warning(&move_outcome("- [x] done", true)).is_none());
+
+        let warning = acceptance_criteria_warning(&move_outcome("- [x] done\n- [ ] pending", true))
+            .expect("incomplete criteria should warn");
+        assert!(warning.contains("T-1"));
+        assert!(warning.contains("1/2"));
+    }
+
+    #[tokio::test]
+    async fn submit_input_keeps_forms_open_for_invalid_user_values() {
+        let dir = TempDir::new().expect("temp dir");
+        let action_dir = dir.path().to_path_buf();
+        let handle = Handle::current();
+        tokio::task::spawn_blocking(move || {
+            let mut empty_title = view_with_item();
+            empty_title.begin_add();
+            submit_input(&handle, &action_dir, &mut empty_title)?;
+            assert!(empty_title.input_error().is_some());
+            empty_title.push_input_char('T');
+            submit_input(&handle, &action_dir, &mut empty_title)?;
+            assert_eq!(empty_title.input_mode(), Some(InputMode::AddBody));
+
+            let mut empty_dependency = view_with_item();
+            empty_dependency.begin_dependency_add();
+            submit_input(&handle, &action_dir, &mut empty_dependency)?;
+            assert!(empty_dependency.input_error().is_some());
+
+            let mut invalid_dependency = view_with_item();
+            invalid_dependency.begin_dependency_add();
+            invalid_dependency.push_input_char('x');
+            submit_input(&handle, &action_dir, &mut invalid_dependency)?;
+            assert!(invalid_dependency.input_error().is_some());
+
+            let mut invalid_parent = view_with_item();
+            invalid_parent.begin_parent();
+            invalid_parent.push_input_char('x');
+            submit_input(&handle, &action_dir, &mut invalid_parent)?;
+            assert!(invalid_parent.input_error().is_some());
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .expect("action task")
+        .expect("invalid values are handled in the form");
+    }
+
+    #[tokio::test]
+    async fn search_actions_cover_noop_invalid_commit_live_filter_cancel_and_clear() {
+        let dir = TempDir::new().expect("temp dir");
+        init_board(dir.path()).await.expect("init");
+        for title in ["Alpha", "Beta"] {
+            add_item_with_outcome(dir.path(), title, NewItem::default())
+                .await
+                .expect("add item");
+        }
+
+        let display_columns = vec!["todo".to_string()];
+        let loaded = load_display_board(dir.path(), &BoardQuery::default(), &display_columns)
+            .await
+            .expect("load board");
+        let mut view = BoardView::new_with_scope_and_query(
+            loaded.display,
+            loaded.full,
+            display_columns,
+            BoardQuery::default(),
+        );
+        let handle = Handle::current();
+        let action_dir = dir.path().to_path_buf();
+
+        let view = tokio::task::spawn_blocking(move || {
+            // No open prompt is a harmless no-op for both commit and incremental search.
+            commit_search(&handle, &action_dir, &mut view)?;
+            apply_incremental_filter(&handle, &action_dir, &mut view)?;
+
+            // Invalid regexes keep the prompt open and expose an inline error.
+            view.begin_search(SearchMode::Regex);
+            view.push_search_char('[');
+            commit_search(&handle, &action_dir, &mut view)?;
+            assert!(view.is_searching());
+            assert!(view.search_input_error().is_some());
+            view.end_search();
+
+            // A valid regex commits and closes the prompt while preserving the filter.
+            view.begin_search(SearchMode::Regex);
+            for character in "^Alpha$".chars() {
+                view.push_search_char(character);
+            }
+            commit_search(&handle, &action_dir, &mut view)?;
+            assert!(!view.is_searching());
+            assert_eq!(
+                view.search_filter().map(SearchFilter::pattern),
+                Some("^Alpha$")
+            );
+            assert_eq!(view.columns()[0].items.len(), 1);
+
+            // Incremental substring search applies as the user types, but regex mode is deferred.
+            view.begin_search(SearchMode::Regex);
+            apply_incremental_filter(&handle, &action_dir, &mut view)?;
+            view.end_search();
+            view.begin_search(SearchMode::Contains);
+            for character in "Beta".chars() {
+                view.push_search_char(character);
+            }
+            apply_incremental_filter(&handle, &action_dir, &mut view)?;
+            assert_eq!(
+                view.search_filter().map(SearchFilter::pattern),
+                Some("Beta")
+            );
+            assert_eq!(view.columns()[0].items[0].title, "Beta");
+
+            // Cancel restores the filter captured before the prompt opened.
+            abort_search(&handle, &action_dir, &mut view)?;
+            assert_eq!(
+                view.search_filter().map(SearchFilter::pattern),
+                Some("^Alpha$")
+            );
+            assert_eq!(view.columns()[0].items[0].title, "Alpha");
+
+            // An empty contains query and the explicit clear action show every item.
+            view.begin_search(SearchMode::Contains);
+            apply_incremental_filter(&handle, &action_dir, &mut view)?;
+            view.end_search();
+            assert!(view.search_filter().is_none());
+            clear_filter(&handle, &action_dir, &mut view)?;
+            assert_eq!(view.columns()[0].items.len(), 2);
+
+            // The general reload paths retain a valid selection.
+            let selected = view.selected_item().expect("selected item").id.clone();
+            reload(&handle, &action_dir, &mut view)?;
+            rebuild(&handle, &action_dir, &mut view, &selected)?;
+            assert_eq!(view.selected_item().map(|item| &item.id), Some(&selected));
+            Ok::<_, anyhow::Error>(view)
+        })
+        .await
+        .expect("action task")
+        .expect("actions succeed");
+
+        assert!(!view.is_searching());
+        assert_eq!(view.columns()[0].items.len(), 2);
+    }
+}

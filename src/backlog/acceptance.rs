@@ -162,4 +162,14 @@ mod tests {
         assert_eq!(progress.to_string(), "-");
         assert!(!progress.is_incomplete());
     }
+
+    #[test]
+    fn ignores_malformed_checkboxes_and_fence_marker_mismatches() {
+        let progress = AcceptanceCriteriaProgress::from_markdown(
+            "1x [ ] not a task\n- [q] invalid\n- [x]no separator\n\n```\n- [ ] code\n~~~\n- [ ] still code\n```\n\n- [ ] actual\n- [x] complete",
+        );
+
+        assert_eq!(progress.completed(), 1);
+        assert_eq!(progress.total(), 2);
+    }
 }

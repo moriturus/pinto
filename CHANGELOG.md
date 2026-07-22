@@ -7,6 +7,37 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-22
+
+This patch release adds Git-backed undo and board import/recovery workflows
+without changing existing board file formats or the default file backend.
+
+### Added
+
+- Added `pinto undo` to undo the most recent completed mutation on the Git
+  backend.
+- Added `pinto import <SOURCE>` to restore a board from an `export --json`
+  snapshot, including standard input and an explicit `--force` option
+  for replacing a populated board.
+- Added a runbook for resolving Git merge conflicts in shared pinto boards.
+
+### Changed
+
+- `pinto doctor --fix` can repair unambiguous duplicate PBI IDs while
+  preserving the issued-ID history.
+- Localized all pinto-authored CLI argument help text in English and Japanese.
+- Improved large-board inspection, import, and write scaling with bounded
+  asynchronous reads and batched file-backend writes.
+
+### Fixed
+
+- Prevented scope-internal rank collisions when moving PBIs.
+
+### Documentation
+
+- Added reproducible large-board benchmarks and recorded the decision to keep
+  complete-board validation for single-item reads.
+
 ## [0.3.1] - 2026-07-20
 
 This patch release reorganizes internal implementation and test modules
