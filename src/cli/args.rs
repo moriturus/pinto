@@ -3,6 +3,7 @@
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use pinto::i18n::Localizer;
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 /// Parse the date and time accepted by `--start` and `--end` as UTC.
@@ -70,7 +71,13 @@ fn parse_stale_duration(s: &str) -> Result<chrono::Duration, String> {
 
 /// A lightweight scrum backlog/kanban board.
 #[derive(Debug, Parser)]
-#[command(name = "pinto", version, about, long_about = None)]
+#[command(
+    name = "pinto",
+    version,
+    about,
+    long_about = None,
+    allow_external_subcommands = true
+)]
 pub(super) struct Cli {
     /// Board project directory override. `PINTO_DIR` is used when this is omitted.
     #[arg(long, short = 'C', global = true, value_name = "PATH")]
@@ -96,9 +103,13 @@ pub(super) fn localized_command(localizer: &Localizer) -> clap::Command {
     localize_command(Cli::command(), localizer, "pinto")
 }
 
-/// Parse process arguments using localized command help.
-pub(super) fn try_parse_localized(localizer: &Localizer) -> Result<Cli, clap::Error> {
-    let matches = localized_command(localizer).try_get_matches()?;
+/// Parse explicit arguments using localized command help.
+pub(super) fn try_parse_localized<I, T>(args: I, localizer: &Localizer) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let matches = localized_command(localizer).try_get_matches_from(args)?;
     Cli::from_arg_matches(&matches)
 }
 
@@ -260,6 +271,9 @@ pub(super) enum Command {
     Kanban(KanbanArgs),
     /// Generates a completion script for the specified shell to standard output.
     Completion(CompletionArgs),
+    /// Delegate to a separately installed `pinto-*` executable.
+    #[command(external_subcommand)]
+    External(Vec<OsString>),
 }
 
 /// Startup options for the `kanban` subcommand.

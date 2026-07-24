@@ -41,6 +41,22 @@ Domain logic must not depend on CLI or TUI types. Public, non-obvious APIs use
 Rust documentation comments. Errors are `thiserror` values in library layers
 and are contextualized with `anyhow` in the binary.
 
+### External commands
+
+Built-in commands are resolved in-process by the single `pinto` binary. An
+unknown top-level command is delegated Git-style to the longest matching
+executable named `pinto-<command>` beside the running binary or on `PATH`, so
+`pinto team report` can use `pinto-team-report` and forward the remaining
+arguments. The adjacent directory is searched first, empty `PATH` entries are
+ignored, and the current directory is never inserted implicitly, so a built-in
+command name is never shadowed by a same-name `PATH` executable. Explicit
+`--dir` values reach delegated processes through `PINTO_DIR`, and the host and
+contract versions are passed through the plugin environment. The root
+`pinto help` screen discovers external executables and includes their concise
+`--help` summaries without requiring an initialized board. See
+[`docs/plugin-contract.md`](plugin-contract.md) for the complete external
+command contract.
+
 ## Data model
 
 Each PBI has an ID, title, status, fractional rank, optional points, labels,

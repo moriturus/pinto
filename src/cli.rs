@@ -7,6 +7,7 @@ mod args;
 mod commands;
 mod dependency_display;
 mod editor;
+mod external;
 mod format;
 mod json;
 mod kanban;

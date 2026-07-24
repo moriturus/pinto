@@ -1,0 +1,41 @@
+#!/bin/sh
+# pinto-standup — an example external subcommand for pinto.
+#
+# When you run `pinto standup`, pinto discovers this Git-style plugin
+# (an executable named `pinto-<name>`) beside the binary or on PATH and runs it,
+# forwarding your arguments and the plugin-contract environment.
+# See ../../../docs/plugin-contract.md for the full contract.
+set -eu
+
+if [ "${1:-}" = "--help" ]; then
+    # The first non-usage line becomes the summary shown under `pinto help`.
+    echo "Standup - summarize the board's open work for a daily standup."
+    exit 0
+fi
+
+# An explicit `--dir PATH` reaches the plugin as PINTO_DIR; otherwise the plugin
+# inherits the current working directory. PINTO_DIR may point at the project or
+# at its `.pinto` directory, so accept both.
+board="${PINTO_DIR:-$PWD}"
+case "$board" in
+    */.pinto) tasks="$board/tasks" ;;
+    *)        tasks="$board/.pinto/tasks" ;;
+esac
+
+printf 'pinto-standup  (host pinto %s, contract v%s)\n' \
+    "${PINTO_HOST_VERSION:-unknown}" "${PINTO_PLUGIN_CONTRACT_VERSION:-unknown}"
+[ "$#" -gt 0 ] && printf 'forwarded args: %s\n' "$*"
+
+if [ ! -d "$tasks" ]; then
+    echo "no board found at $board" >&2
+    exit 1
+fi
+
+# Read the plain-text board directly. The documented file format is the
+# extension compatibility boundary, so a plugin never needs private pinto
+# internals to inspect a board.
+echo 'open work by status:'
+for status in todo in-progress review done; do
+    count=$(grep -rl "status = \"$status\"" "$tasks" 2>/dev/null | wc -l | tr -d ' ')
+    printf '  %-12s %s\n' "$status" "$count"
+done

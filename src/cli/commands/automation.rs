@@ -360,7 +360,8 @@ fn item_id_arguments(cli: &Cli) -> Vec<&String> {
         | Command::Automate(_)
         | Command::Shell
         | Command::Kanban(_)
-        | Command::Completion(_) => Vec::new(),
+        | Command::Completion(_)
+        | Command::External(_) => Vec::new(),
     }
 }
 

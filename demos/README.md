@@ -14,6 +14,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
 - [`single/`](single) — **single-feature** datasets for one command or feature at a time.
   - [`doctor`](single/doctor) — board integrity diagnostics and conservative safe repairs
   - [`automation-plan`](single/automation-plan) — safe structured plans, schema inspection, file input, dry-run, and JSON results
+  - [`external-commands`](single/external-commands) — Git-style external subcommand binaries: discovery, argument forwarding, contract environment, and help summaries
   - [`export`](single/export) — complete active-board JSON snapshots with configuration and shared DoD
   - [`backlog-crud`](single/backlog-crud) — add / list / show / edit / remove (archive)
   - [`split`](single/split) — split a PBI into new PBIs with relationship and body options

@@ -24,6 +24,18 @@ If no board is found, pinto reports the search and these override options. The
 `init` command still initializes the current directory unless an explicit
 `--dir` or `PINTO_DIR` target is supplied.
 
+## External commands
+
+Pinto's built-in commands are provided by the single `pinto` binary. An unknown
+command is delegated Git-style to an executable named `pinto-<segment>` using
+the external command contract described in
+[`docs/plugin-contract.md`](../../plugin-contract.md): the directory beside the
+running binary wins over `PATH`, empty `PATH` entries never mean the current
+directory, arguments are forwarded as argv, and `PINTO_DIR` plus the host and
+contract versions are provided to the child process. A built-in command name is
+always resolved by pinto itself and is never shadowed by a same-name executable
+on `PATH`.
+
 ## Board and PBI commands
 
 Use `pinto doctor` to check board integrity after hand edits, interrupted migrations, or copied

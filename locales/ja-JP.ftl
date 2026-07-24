@@ -1,4 +1,5 @@
 error-prefix = エラー:
+external-commands-heading = 外部コマンド:
 initialized-board-at = pinto ボードを初期化しました: { $path }
 already-initialized = すでに初期化されています: { $path } は存在します
 created = 作成しました: { $id } { $title }

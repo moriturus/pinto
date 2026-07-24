@@ -1,4 +1,5 @@
 error-prefix = error:
+external-commands-heading = External commands:
 initialized-board-at = Initialized pinto board at { $path }
 already-initialized = Already initialized: { $path } already exists
 created = Created { $id } { $title }

@@ -1,6 +1,7 @@
 //! Execute CLI commands.
 
 use super::args::*;
+use super::external;
 use super::format::DEFAULT_TERM_WIDTH;
 use clap::Parser;
 use pinto::error::Error;
@@ -8,6 +9,7 @@ use pinto::i18n::{Localizer, Message, current};
 use pinto::service::SearchFilter;
 use pinto::service::{LabelMatch, WipViolation, lock_board};
 
+use std::ffi::OsString;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -25,12 +27,23 @@ pub(crate) async fn entrypoint() -> ExitCode {
     // clap defaults to exit code 2 for argument errors, but pinto reserves 2 for internal failures.
     // Help/version are successful (0); other argument errors are user-fixable (1).
     let localizer = current();
-    let cli = match try_parse_localized(localizer) {
+    let args = std::env::args_os().collect::<Vec<OsString>>();
+    let cli = match try_parse_localized(args.clone(), localizer) {
         Ok(cli) => cli,
         Err(e) => {
             // Utilize clap's formatting (color/stream distribution) as is. `--help` / `--version`
-            // is output to stdout, and interpretation errors are output to stderr.
-            let _ = e.print();
+            // is output to stdout, and interpretation errors are output to stderr. When the root
+            // help screen is requested, append the summaries of installed `pinto-*` plugins.
+            if !e.use_stderr() && external::is_root_help_request(&args) {
+                let section = external::help_section(localizer).await;
+                if section.is_empty() {
+                    let _ = e.print();
+                } else {
+                    print!("{e}{section}");
+                }
+            } else {
+                let _ = e.print();
+            }
             return if e.use_stderr() {
                 ExitCode::from(1)
             } else {
@@ -47,11 +60,15 @@ pub(crate) async fn entrypoint() -> ExitCode {
                 localizer.text(Message::ErrorPrefix),
                 format_anyhow_error(&e, localizer)
             );
-            // User-induced errors (including malformed board files) are code 1; unexpected
-            // internal errors are code 2. Classification is centralized in `Error::is_user_error()`.
-            match e.downcast_ref::<Error>() {
-                Some(err) if err.is_user_error() => ExitCode::from(1),
-                _ => ExitCode::from(2),
+            // User-induced errors (including malformed board files) and a missing external command
+            // are code 1; unexpected internal errors are code 2. Classification is centralized in
+            // `Error::is_user_error()`.
+            if e.downcast_ref::<Error>().is_some_and(Error::is_user_error)
+                || e.downcast_ref::<external::NotFound>().is_some()
+            {
+                ExitCode::from(1)
+            } else {
+                ExitCode::from(2)
             }
         }
     }
@@ -82,8 +99,19 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
     let init = matches!(&cli.command, Command::Init);
     let completion = matches!(&cli.command, Command::Completion(_));
     let automation = matches!(&cli.command, Command::Automate(_));
-    super::location::prepare_working_directory(cli.dir.as_deref(), init, completion, automation)
+    // An external subcommand manages its own working directory through the `PINTO_DIR` contract
+    // environment variable, so the host must not require or move into a board directory first.
+    let external = matches!(&cli.command, Command::External(_));
+    if !external {
+        super::location::prepare_working_directory(
+            cli.dir.as_deref(),
+            init,
+            completion,
+            automation,
+        )
         .await?;
+    }
+    let external_project_dir = cli.dir.clone();
 
     let result = match cli.command {
         Command::Init => maintenance::cmd_init().await,
@@ -113,6 +141,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
         Command::Shell => session::cmd_shell().await,
         Command::Kanban(args) => session::cmd_kanban(args, in_shell).await,
         Command::Completion(args) => session::cmd_completion(args),
+        Command::External(args) => external::run(args, external_project_dir.as_deref()).await,
     };
 
     // Nested shell dispatches may select another board for one command. Restore the shell's
