@@ -20,7 +20,9 @@ mod view;
 pub(crate) use layout::{DisplayRow, PopupContent};
 pub(crate) use runtime::ExitMode;
 pub(crate) use text::{display_width, wrap};
-pub(crate) use view::{BoardView, InputMode, InputSubmission, InputValidation, MIN_COLUMN_WIDTH};
+pub(crate) use view::{
+    BoardView, InputMode, InputSubmission, InputValidation, MIN_COLUMN_WIDTH, SplitBodyChoice,
+};
 
 // Names used only by the `tests` module, reached via `use super::super::*`.
 #[cfg(test)]

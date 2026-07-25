@@ -43,6 +43,7 @@ cursor, uppercase (Shift) keys move the selected item. Defaults are:
 | Edit the selected PBI | `e` |
 | Add / remove a dependency | `d` / `D` |
 | Set or clear the parent | `p` |
+| Split the selected PBI | `s` |
 | Open the details popup | `v` |
 | Substring / regex search | `/` / `Ctrl+?` |
 | Clear an active filter | `Esc` |
@@ -54,6 +55,12 @@ cursor, uppercase (Shift) keys move the selected item. Defaults are:
 
 Press `?` inside the board to open the built-in help window, which always lists
 the bindings that are actually in effect.
+
+Pressing `s` starts a split of the selected PBI: enter a title, choose the
+relationship to the source (`Enter` for none, `c` for a child, `d` for a
+dependency), then choose the body (`Enter` copies the source, `e` empties it,
+`t` types explicit text, `m` names an item template). The same operation is
+available from the command line as [`pinto split`](cli.md#split-a-pbi).
 
 Cards follow the same hierarchical [display order](cli.md#display-order) as
 `pinto list` and `pinto board`: top-level cards by rank, each parent followed by
@@ -96,7 +103,7 @@ help = ["?", "F1"]
 Only the actions you list are overridden; every other action keeps its default
 keys. The action names are the snake_case forms shown by the built-in help
 window (`quit`, `shell`,
-`select_left`, `move_left`, `reorder_up`, `add`, `edit`, `dependency_add`,
+`select_left`, `move_left`, `reorder_up`, `add`, `split`, `edit`, `dependency_add`,
 `parent`, `maximize`, `search`, `regex_search`, `details`, `help`, and so on).
 
 A key expression is a key name, optionally prefixed with `+`-separated

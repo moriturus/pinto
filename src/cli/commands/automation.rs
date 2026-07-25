@@ -280,6 +280,7 @@ fn validate_automation_commands(plan: &AutomationPlan) -> Vec<ValidatedAutomatio
 fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
     let ids: Vec<&String> = match &cli.command {
         Command::Add(args) => args.parent.iter().chain(args.depends_on.iter()).collect(),
+        Command::Split(args) => vec![&args.source],
         Command::Show(args) => args.ids.iter().collect(),
         Command::Move(args) => args
             .destination_and_ids()

@@ -379,6 +379,11 @@ fn event_loop(
                     view.set_status_message(current().text(Message::KanbanNoSelection));
                 }
                 Ok(())
+            } else if keymap.matches(KeyAction::Split, key) {
+                if !view.begin_split() {
+                    view.set_status_message(current().text(Message::KanbanNoSelection));
+                }
+                Ok(())
             } else if keymap.matches(KeyAction::Edit, key) {
                 edit_selected(&mut terminal, &handle, &dir, &mut view)
             } else if keymap.matches(KeyAction::Reload, key) {

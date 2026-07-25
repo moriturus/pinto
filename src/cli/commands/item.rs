@@ -10,9 +10,10 @@ use pinto::error::Error;
 use pinto::i18n::{Message, current};
 use pinto::service::{
     EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, NextFilter, RemoveOutcome,
-    ReorderTarget, add_item_with_outcome, apply_item_edit, archived_item_detail, check_wip,
-    common_dod, display_settings, edit_item, item_detail, item_edit_template, list_items,
-    move_item_with_outcome, next_items, remove_item, reorder_item, restore_item, template_body,
+    ReorderTarget, SplitBody, SplitRelationship, SplitSpec, add_item_with_outcome, apply_item_edit,
+    archived_item_detail, check_wip, common_dod, display_settings, edit_item, item_detail,
+    item_edit_template, list_items, move_item_with_outcome, next_items, remove_item, reorder_item,
+    restore_item, split_item, template_body,
 };
 use std::io::IsTerminal;
 
@@ -78,6 +79,58 @@ pub(super) async fn cmd_add(args: AddArgs) -> anyhow::Result<ExitCode> {
             [("id", id.as_str()), ("title", item.title.as_str())]
         )
     );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `pinto split` — Split a source PBI into one or more new PBIs.
+///
+/// The relationship flags (`--child` / `--dependency`) and body flags (`--body` / `--template` /
+/// `--empty`) are mutually exclusive at the clap layer; the default body copies the source.
+pub(super) async fn cmd_split(args: SplitArgs) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    let source: ItemId = args.source.parse()?;
+
+    let relationship = if args.child {
+        SplitRelationship::Child
+    } else if args.dependency {
+        SplitRelationship::Dependency
+    } else {
+        SplitRelationship::None
+    };
+
+    let body = if args.empty {
+        SplitBody::Empty
+    } else if let Some(text) = args.body {
+        SplitBody::Explicit(text)
+    } else if let Some(template) = args.template {
+        let template: TemplateName = template.parse()?;
+        SplitBody::Explicit(template_body(&dir, TemplateKind::Item, &template).await?)
+    } else {
+        SplitBody::Copy
+    };
+
+    let spec = SplitSpec {
+        titles: args.titles,
+        relationship,
+        body,
+    };
+    let outcome = split_item(&dir, &source, spec).await?;
+
+    let localizer = current();
+    let source_id = source.to_string();
+    for item in &outcome.created {
+        println!(
+            "{}",
+            localizer.format(
+                Message::SplitCreated,
+                [
+                    ("source", source_id.as_str()),
+                    ("id", item.id.to_string().as_str()),
+                    ("title", item.title.as_str()),
+                ],
+            )
+        );
+    }
     Ok(ExitCode::SUCCESS)
 }
 

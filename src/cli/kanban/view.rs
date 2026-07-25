@@ -5,7 +5,9 @@ use super::layout::{DisplayRow, PopupContent, board_items, column_display_rows};
 use crate::cli::dependency_display::DependencyIndex;
 use pinto::backlog::{BacklogItem, ItemId};
 use pinto::error::Error;
-use pinto::service::{Board, BoardColumn, BoardQuery, ReorderTarget, SearchFilter, SearchMode};
+use pinto::service::{
+    Board, BoardColumn, BoardQuery, ReorderTarget, SearchFilter, SearchMode, SplitRelationship,
+};
 use pinto::timezone::DisplayTimezone;
 use std::collections::HashSet;
 
@@ -43,6 +45,16 @@ pub(crate) enum InputMode {
     DependencyRemove,
     /// Parent ID entry; submitting an empty value clears the parent.
     Parent,
+    /// First step of the split form: the new PBI title.
+    SplitTitle,
+    /// Second step: the relationship between the source and the new PBI.
+    SplitRelationship,
+    /// Third step: the body option for the new PBI.
+    SplitBody,
+    /// Explicit body text entry for a split (chosen from [`InputMode::SplitBody`]).
+    SplitBodyText,
+    /// Template name entry for a split (chosen from [`InputMode::SplitBody`]).
+    SplitTemplate,
 }
 
 /// A completed step from the Kanban input form.
@@ -71,6 +83,29 @@ pub(crate) enum InputSubmission {
         source: ItemId,
         parent: Option<String>,
     },
+    /// A split is ready to be persisted; the runtime resolves the body and calls `split_item`.
+    Split {
+        source: ItemId,
+        title: String,
+        relationship: SplitRelationship,
+        body: SplitBodyChoice,
+    },
+}
+
+/// Body option chosen in the Kanban split form.
+///
+/// Mirrors [`pinto::service::SplitBody`] but keeps `Template` unresolved: the runtime loads the
+/// template text (an async, board-scoped operation) before calling `split_item`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SplitBodyChoice {
+    /// Copy the source body.
+    Copy,
+    /// Start with an empty body.
+    Empty,
+    /// Use the supplied text verbatim.
+    Explicit(String),
+    /// Resolve the named item template to the body text.
+    Template(String),
 }
 
 /// Validation error raised before a form can advance.
@@ -82,6 +117,10 @@ pub(crate) enum InputValidation {
     EmptyDependency,
     /// A typed relationship ID uses the same parser as CLI commands.
     InvalidItemId(Error),
+    /// The split relationship step accepts only child, dependency, or a blank (none) choice.
+    InvalidSplitRelationship,
+    /// The split body step accepts only copy, empty, text, template, or a blank (copy) choice.
+    InvalidSplitBody,
 }
 
 struct FormInput {
@@ -93,6 +132,8 @@ struct FormInput {
     depends_on: Vec<ItemId>,
     source: Option<ItemId>,
     selection_anchor: Option<ItemId>,
+    /// Relationship captured by the split form's second step.
+    split_relationship: Option<SplitRelationship>,
     error: Option<String>,
 }
 
@@ -483,8 +524,32 @@ impl BoardView {
             depends_on: Vec::new(),
             source: None,
             selection_anchor: self.selected_item().map(|item| item.id.clone()),
+            split_relationship: None,
             error: None,
         });
+    }
+
+    /// Open the split form for the selected item. Returns `false` when no item is selected.
+    ///
+    /// The form collects the new PBI title, the relationship to the source (none/child/dependency),
+    /// and the body option (copy/empty/text/template) before persisting a single new PBI.
+    pub(crate) fn begin_split(&mut self) -> bool {
+        let Some(source) = self.selected_item().map(|item| item.id.clone()) else {
+            return false;
+        };
+        self.form_input = Some(FormInput {
+            mode: InputMode::SplitTitle,
+            buffer: String::new(),
+            title: None,
+            body: None,
+            parent: None,
+            depends_on: Vec::new(),
+            source: Some(source),
+            selection_anchor: None,
+            split_relationship: None,
+            error: None,
+        });
+        true
     }
 
     /// Open the dependency-add form for the selected item. Returns `false` when no item is selected.
@@ -515,6 +580,7 @@ impl BoardView {
             depends_on: Vec::new(),
             source: Some(source),
             selection_anchor: None,
+            split_relationship: None,
             error: None,
         });
         true
@@ -679,6 +745,83 @@ impl BoardView {
                     Some(input.buffer.trim().to_string())
                 };
                 Ok(InputSubmission::Parent { source, parent })
+            }
+            InputMode::SplitTitle => {
+                if input.buffer.trim().is_empty() {
+                    return Err(InputValidation::EmptyTitle);
+                }
+                input.title = Some(input.buffer.clone());
+                input.buffer.clear();
+                input.mode = InputMode::SplitRelationship;
+                Ok(InputSubmission::AddStep)
+            }
+            InputMode::SplitRelationship => {
+                let relationship = match input.buffer.trim().to_ascii_lowercase().as_str() {
+                    "" | "n" | "none" => SplitRelationship::None,
+                    "c" | "child" => SplitRelationship::Child,
+                    "d" | "dep" | "dependency" => SplitRelationship::Dependency,
+                    _ => return Err(InputValidation::InvalidSplitRelationship),
+                };
+                input.split_relationship = Some(relationship);
+                input.buffer.clear();
+                input.mode = InputMode::SplitBody;
+                Ok(InputSubmission::AddStep)
+            }
+            InputMode::SplitBody => {
+                let Some(source) = input.source.clone() else {
+                    return Err(InputValidation::EmptyDependency);
+                };
+                let title = input.title.clone().unwrap_or_default();
+                let relationship = input.split_relationship.unwrap_or_default();
+                match input.buffer.trim().to_ascii_lowercase().as_str() {
+                    "" | "c" | "copy" => Ok(InputSubmission::Split {
+                        source,
+                        title,
+                        relationship,
+                        body: SplitBodyChoice::Copy,
+                    }),
+                    "e" | "empty" => Ok(InputSubmission::Split {
+                        source,
+                        title,
+                        relationship,
+                        body: SplitBodyChoice::Empty,
+                    }),
+                    "t" | "text" => {
+                        input.buffer.clear();
+                        input.mode = InputMode::SplitBodyText;
+                        Ok(InputSubmission::AddStep)
+                    }
+                    "m" | "template" => {
+                        input.buffer.clear();
+                        input.mode = InputMode::SplitTemplate;
+                        Ok(InputSubmission::AddStep)
+                    }
+                    _ => Err(InputValidation::InvalidSplitBody),
+                }
+            }
+            InputMode::SplitBodyText => {
+                let Some(source) = input.source.clone() else {
+                    return Err(InputValidation::EmptyDependency);
+                };
+                Ok(InputSubmission::Split {
+                    source,
+                    title: input.title.clone().unwrap_or_default(),
+                    relationship: input.split_relationship.unwrap_or_default(),
+                    body: SplitBodyChoice::Explicit(input.buffer.clone()),
+                })
+            }
+            InputMode::SplitTemplate => {
+                // An empty or malformed name is reported by the runtime through `TemplateName`
+                // parsing, which gives an accurate "invalid template name" message.
+                let Some(source) = input.source.clone() else {
+                    return Err(InputValidation::EmptyDependency);
+                };
+                Ok(InputSubmission::Split {
+                    source,
+                    title: input.title.clone().unwrap_or_default(),
+                    relationship: input.split_relationship.unwrap_or_default(),
+                    body: SplitBodyChoice::Template(input.buffer.trim().to_string()),
+                })
             }
         }
     }

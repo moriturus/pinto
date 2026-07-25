@@ -43,6 +43,8 @@ mod move_reorder;
 mod next;
 #[path = "cli/rebalance.rs"]
 mod rebalance;
+#[path = "cli/split.rs"]
+mod split;
 #[path = "cli/sprint.rs"]
 mod sprint;
 #[path = "cli/usage.rs"]

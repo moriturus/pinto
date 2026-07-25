@@ -36,6 +36,7 @@ board once up front; `--fix` re-inspects only after it applied a repair.
 | --- | --- |
 | `pinto init` | Initialize a board in the current directory. |
 | `pinto add <title>` | Add a PBI; use `--label <label>...` to set one or more labels, or optionally set points, Sprint, body, or a template. |
+| `pinto split <id> <title>...` | Split a PBI into new PBIs; optionally make the source their parent or dependency and choose the body. |
 | `pinto list` | List active PBIs, with status, assignee, label, Sprint, search, stale-duration, root-only, long, and JSON filters. Use `--archived` to select archived PBIs. |
 | `pinto next` | Show ranked unstarted PBIs whose dependencies are complete. |
 | `pinto show <id>...` | Display one or more active PBI details. Use `--archived` to display archived details. |
@@ -71,7 +72,30 @@ pinto reorder T-1 --top
 pinto edit T-1 --title "Implement the Markdown parser" --label backend cli
 pinto show T-1 --archived
 pinto restore T-1
+pinto split T-1 "Cart page" "Payment step" --child
+pinto split T-1 "Payment spike" --dependency --body "Evaluate providers."
 ```
+
+### Split a PBI
+
+`pinto split <source> <title>...` derives one new PBI per title from an existing
+PBI. The source item is kept; each new PBI is appended to the backlog in the
+first workflow column.
+
+Choose at most one relationship between the source and the new PBIs:
+
+- `--child` makes the source the parent of each new PBI.
+- `--dependency` makes the source depend on each new PBI (the new work must be
+  completed first).
+
+Choose at most one body; the default copies the source body:
+
+- `--body <text>` uses the supplied text.
+- `--template <name>` uses `.pinto/templates/item/<name>.md`.
+- `--empty` starts each new PBI with an empty body.
+
+The same operation is available inside the [Kanban board](kanban.md) with the
+`s` key.
 
 ### Consistent board reads
 

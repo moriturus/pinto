@@ -190,6 +190,9 @@ pub(super) enum Command {
     /// Add PBI to backlog.
     #[command(visible_alias = "a")]
     Add(AddArgs),
+    /// Split an existing PBI into one or more new PBIs.
+    #[command(visible_alias = "spl")]
+    Split(SplitArgs),
     /// List PBIs in the backlog.
     #[command(visible_alias = "ls")]
     List(ListArgs),
@@ -854,6 +857,31 @@ pub(super) struct AddArgs {
     /// Template name (`.pinto/templates/item/<name>.md`) to apply to the body.
     #[arg(long, short = 't')]
     pub(super) template: Option<String>,
+}
+
+/// Arguments for the `split` subcommand.
+#[derive(Debug, Args)]
+pub(super) struct SplitArgs {
+    /// ID of the source PBI to split (e.g. `T-1`).
+    pub(super) source: String,
+    /// Titles of the new PBIs to create (one or more).
+    #[arg(required = true, num_args = 1.., value_name = "TITLE")]
+    pub(super) titles: Vec<String>,
+    /// Make the source the parent of each new PBI.
+    #[arg(long, short = 'c', conflicts_with = "dependency")]
+    pub(super) child: bool,
+    /// Make the source depend on each new PBI.
+    #[arg(long, short = 'd')]
+    pub(super) dependency: bool,
+    /// Body text for the new PBIs (overrides the default source-body copy).
+    #[arg(long, short = 'b', conflicts_with_all = ["template", "empty"])]
+    pub(super) body: Option<String>,
+    /// Template name (`.pinto/templates/item/<name>.md`) to use as the new PBI body.
+    #[arg(long, short = 't', conflicts_with = "empty")]
+    pub(super) template: Option<String>,
+    /// Start each new PBI with an empty body instead of copying the source.
+    #[arg(long, short = 'e')]
+    pub(super) empty: bool,
 }
 
 #[cfg(test)]

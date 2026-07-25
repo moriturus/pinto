@@ -152,6 +152,7 @@ pub(super) fn should_close_help_after_key(
         KeyAction::DependencyAdd,
         KeyAction::DependencyRemove,
         KeyAction::Parent,
+        KeyAction::Split,
         KeyAction::Edit,
         KeyAction::Reload,
         KeyAction::Maximize,

@@ -37,6 +37,8 @@ pub enum KeyAction {
     DependencyRemove,
     /// Open the form for setting or clearing the selected PBI's parent.
     Parent,
+    /// Open the form for splitting the selected PBI into new PBIs.
+    Split,
     /// Edit the selected item.
     Edit,
     /// Reload the board.
@@ -91,6 +93,7 @@ impl KeyAction {
         Self::DependencyAdd,
         Self::DependencyRemove,
         Self::Parent,
+        Self::Split,
         Self::Edit,
         Self::Reload,
         Self::Maximize,
@@ -129,6 +132,7 @@ impl KeyAction {
             Self::DependencyAdd => "dependency_add",
             Self::DependencyRemove => "dependency_remove",
             Self::Parent => "parent",
+            Self::Split => "split",
             Self::Edit => "edit",
             Self::Reload => "reload",
             Self::Maximize => "maximize",
@@ -558,6 +562,7 @@ fn default_keys(action: KeyAction) -> &'static [&'static str] {
         KeyAction::DependencyAdd => &["d"],
         KeyAction::DependencyRemove => &["D"],
         KeyAction::Parent => &["p"],
+        KeyAction::Split => &["s"],
         KeyAction::Edit => &["e"],
         KeyAction::Reload => &["r"],
         KeyAction::Maximize => &["m"],

@@ -89,6 +89,7 @@ async fn dispatch(mut cli: Cli, in_shell: bool) -> anyhow::Result<ExitCode> {
     let result = match cli.command {
         Command::Init => maintenance::cmd_init().await,
         Command::Add(args) => item::cmd_add(args).await,
+        Command::Split(args) => item::cmd_split(args).await,
         Command::List(args) => item::cmd_list(args).await,
         Command::Next(args) => item::cmd_next(args).await,
         Command::Show(args) => item::cmd_show(args).await,

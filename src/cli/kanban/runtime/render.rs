@@ -475,6 +475,11 @@ fn input_prompt(mode: InputMode, localizer: &Localizer) -> String {
         InputMode::DependencyAdd => localizer.text(Message::KanbanDependencyAddPrompt),
         InputMode::DependencyRemove => localizer.text(Message::KanbanDependencyRemovePrompt),
         InputMode::Parent => localizer.text(Message::KanbanParentPrompt),
+        InputMode::SplitTitle => localizer.text(Message::KanbanSplitTitlePrompt),
+        InputMode::SplitRelationship => localizer.text(Message::KanbanSplitRelationshipPrompt),
+        InputMode::SplitBody => localizer.text(Message::KanbanSplitBodyPrompt),
+        InputMode::SplitBodyText => localizer.text(Message::KanbanSplitBodyTextPrompt),
+        InputMode::SplitTemplate => localizer.text(Message::KanbanSplitTemplatePrompt),
     }
 }
 

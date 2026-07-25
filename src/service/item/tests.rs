@@ -3,3 +3,4 @@
 mod crud;
 mod edit;
 mod reorder;
+mod split;

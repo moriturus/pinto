@@ -45,9 +45,10 @@ pub use export::{BoardSnapshot, export_snapshot};
 pub use import::{ImportOutcome, import_board};
 pub use item::{
     AddItemOutcome, EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, RebalanceOutcome,
-    RemoveOutcome, ReorderTarget, add_item, add_item_with_outcome, apply_item_edit, edit_item,
-    item_edit_template, list_items, move_item, move_item_with_outcome, rebalance, remove_item,
-    reorder_item, restore_item, show_archived_item, show_item,
+    RemoveOutcome, ReorderTarget, SplitBody, SplitOutcome, SplitRelationship, SplitSpec, add_item,
+    add_item_with_outcome, apply_item_edit, edit_item, item_edit_template, list_items, move_item,
+    move_item_with_outcome, rebalance, remove_item, reorder_item, restore_item, show_archived_item,
+    show_item, split_item,
 };
 pub use lifecycle::{InitOutcome, init_board};
 pub use migrate::{MigrateOutcome, migrate_storage};

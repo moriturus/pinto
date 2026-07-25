@@ -11,6 +11,8 @@ const SAFE_COMMAND_NAMES: &[&str] = &[
     "init",
     "add",
     "a",
+    "split",
+    "spl",
     "list",
     "ls",
     "next",

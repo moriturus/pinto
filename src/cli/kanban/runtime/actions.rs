@@ -1,15 +1,17 @@
 //! Board mutations triggered from the Kanban event loop.
 
 use super::load_display_board;
-use crate::cli::kanban::{BoardView, InputSubmission, InputValidation};
+use crate::cli::kanban::{BoardView, InputSubmission, InputValidation, SplitBodyChoice};
 use anyhow::Result;
 use pinto::backlog::ItemId;
 use pinto::i18n::{Message, current};
 use pinto::service::{
-    EditOutcome, ItemEdit, MoveOutcome, NewItem, SearchFilter, SearchMode, add_dependency,
-    add_item_with_outcome, apply_item_edit, check_wip, edit_item, item_edit_template,
-    move_item_with_outcome, remove_dependency, reorder_item,
+    EditOutcome, ItemEdit, MoveOutcome, NewItem, SearchFilter, SearchMode, SplitBody, SplitSpec,
+    add_dependency, add_item_with_outcome, apply_item_edit, check_wip, edit_item,
+    item_edit_template, move_item_with_outcome, remove_dependency, reorder_item, split_item,
+    template_body,
 };
+use pinto::template::{TemplateKind, TemplateName};
 use std::path::Path;
 use tokio::runtime::Handle;
 
@@ -27,6 +29,14 @@ pub(super) fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) ->
         }
         Err(InputValidation::InvalidItemId(error)) => {
             view.set_input_error(error.localized(current()));
+            return Ok(());
+        }
+        Err(InputValidation::InvalidSplitRelationship) => {
+            view.set_input_error(current().text(Message::KanbanSplitInvalidRelationship));
+            return Ok(());
+        }
+        Err(InputValidation::InvalidSplitBody) => {
+            view.set_input_error(current().text(Message::KanbanSplitInvalidBody));
             return Ok(());
         }
     };
@@ -165,6 +175,68 @@ pub(super) fn submit_input(handle: &Handle, dir: &Path, view: &mut BoardView) ->
                         ),
                     };
                     view.set_status_message(message);
+                    Ok(())
+                }
+                Err(error) if error.is_user_error() => {
+                    view.set_input_error(error.localized(current()));
+                    Ok(())
+                }
+                Err(error) => Err(error.into()),
+            }
+        }
+        InputSubmission::Split {
+            source,
+            title,
+            relationship,
+            body,
+        } => {
+            // Resolve the chosen body, loading a template only when one was requested. A missing
+            // template keeps the form open with an inline error instead of aborting the split.
+            let body = match body {
+                SplitBodyChoice::Copy => SplitBody::Copy,
+                SplitBodyChoice::Empty => SplitBody::Empty,
+                SplitBodyChoice::Explicit(text) => SplitBody::Explicit(text),
+                SplitBodyChoice::Template(name) => {
+                    let template = match name.parse::<TemplateName>() {
+                        Ok(template) => template,
+                        Err(error) => {
+                            view.set_input_error(error.localized(current()));
+                            return Ok(());
+                        }
+                    };
+                    match handle.block_on(template_body(dir, TemplateKind::Item, &template)) {
+                        Ok(text) => SplitBody::Explicit(text),
+                        Err(error) if error.is_user_error() => {
+                            view.set_input_error(error.localized(current()));
+                            return Ok(());
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+            };
+            let spec = SplitSpec {
+                titles: vec![title],
+                relationship,
+                body,
+            };
+            match handle.block_on(split_item(dir, &source, spec)) {
+                Ok(outcome) => {
+                    view.end_input();
+                    // Kanban splits create exactly one PBI; follow it after the rebuild.
+                    match outcome.created.into_iter().next() {
+                        Some(created) => {
+                            rebuild(handle, dir, view, &created.id)?;
+                            view.set_status_message(current().format(
+                                Message::KanbanSplitDone,
+                                [
+                                    ("source", source.to_string().as_str()),
+                                    ("id", created.id.to_string().as_str()),
+                                    ("title", created.title.as_str()),
+                                ],
+                            ));
+                        }
+                        None => reload(handle, dir, view)?,
+                    }
                     Ok(())
                 }
                 Err(error) if error.is_user_error() => {
@@ -464,6 +536,180 @@ mod tests {
             }],
             orphaned: Vec::new(),
         })
+    }
+
+    /// Load a board's single display column into a `BoardView`, selecting the seeded source.
+    async fn view_for_split(dir: &Path) -> BoardView {
+        let display_columns = vec!["todo".to_string()];
+        let loaded = load_display_board(dir, &BoardQuery::default(), &display_columns)
+            .await
+            .expect("load board");
+        BoardView::new_with_scope_and_query(
+            loaded.display,
+            loaded.full,
+            display_columns,
+            BoardQuery::default(),
+        )
+    }
+
+    #[tokio::test]
+    async fn split_form_advances_steps_and_persists_a_child_copy() {
+        let dir = TempDir::new().expect("temp dir");
+        init_board(dir.path()).await.expect("init");
+        let source = add_item_with_outcome(
+            dir.path(),
+            "Source epic",
+            NewItem {
+                body: "shared body".to_string(),
+                ..NewItem::default()
+            },
+        )
+        .await
+        .expect("add source")
+        .item;
+
+        let mut view = view_for_split(dir.path()).await;
+        let handle = Handle::current();
+        let action_dir = dir.path().to_path_buf();
+
+        tokio::task::spawn_blocking(move || {
+            assert!(view.begin_split());
+            assert_eq!(view.input_mode(), Some(InputMode::SplitTitle));
+
+            // A blank title keeps the first step open with an inline error.
+            submit_input(&handle, &action_dir, &mut view)?;
+            assert!(view.input_error().is_some());
+            assert_eq!(view.input_mode(), Some(InputMode::SplitTitle));
+
+            for character in "Child slice".chars() {
+                view.push_input_char(character);
+            }
+            submit_input(&handle, &action_dir, &mut view)?;
+            assert_eq!(view.input_mode(), Some(InputMode::SplitRelationship));
+
+            // An unrecognized relationship token keeps the step open.
+            view.push_input_char('x');
+            submit_input(&handle, &action_dir, &mut view)?;
+            assert!(view.input_error().is_some());
+            assert_eq!(view.input_mode(), Some(InputMode::SplitRelationship));
+            view.pop_input_char();
+            view.push_input_char('c');
+            submit_input(&handle, &action_dir, &mut view)?;
+            assert_eq!(view.input_mode(), Some(InputMode::SplitBody));
+
+            // A blank body choice copies the source and persists the split.
+            submit_input(&handle, &action_dir, &mut view)?;
+            assert!(!view.is_input_active());
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .expect("split task")
+        .expect("split form advances and persists");
+
+        let child = pinto::service::show_item(dir.path(), &"T-2".parse::<ItemId>().unwrap())
+            .await
+            .expect("child persisted");
+        assert_eq!(child.title, "Child slice");
+        assert_eq!(child.body, "shared body");
+        assert_eq!(child.parent, Some(source.id));
+    }
+
+    #[tokio::test]
+    async fn split_form_supports_dependency_with_explicit_text_body() {
+        let dir = TempDir::new().expect("temp dir");
+        init_board(dir.path()).await.expect("init");
+        add_item_with_outcome(dir.path(), "Source epic", NewItem::default())
+            .await
+            .expect("add source");
+
+        let mut view = view_for_split(dir.path()).await;
+        let handle = Handle::current();
+        let action_dir = dir.path().to_path_buf();
+
+        tokio::task::spawn_blocking(move || {
+            assert!(view.begin_split());
+            for character in "Blocking spike".chars() {
+                view.push_input_char(character);
+            }
+            submit_input(&handle, &action_dir, &mut view)?; // title -> relationship
+            view.push_input_char('d');
+            submit_input(&handle, &action_dir, &mut view)?; // relationship -> body
+            view.push_input_char('t');
+            submit_input(&handle, &action_dir, &mut view)?; // body choice -> text entry
+            assert_eq!(view.input_mode(), Some(InputMode::SplitBodyText));
+            for character in "typed body".chars() {
+                view.push_input_char(character);
+            }
+            submit_input(&handle, &action_dir, &mut view)?; // persist
+            assert!(!view.is_input_active());
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .expect("split task")
+        .expect("dependency split persists");
+
+        let spike = pinto::service::show_item(dir.path(), &"T-2".parse::<ItemId>().unwrap())
+            .await
+            .expect("spike persisted");
+        assert_eq!(spike.body, "typed body");
+        let source = pinto::service::show_item(dir.path(), &"T-1".parse::<ItemId>().unwrap())
+            .await
+            .expect("source reloaded");
+        assert_eq!(source.depends_on, vec!["T-2".parse::<ItemId>().unwrap()]);
+    }
+
+    #[tokio::test]
+    async fn split_form_resolves_a_named_template_for_the_body() {
+        let dir = TempDir::new().expect("temp dir");
+        init_board(dir.path()).await.expect("init");
+        add_item_with_outcome(dir.path(), "Source epic", NewItem::default())
+            .await
+            .expect("add source");
+        let template_dir = dir.path().join(".pinto/templates/item");
+        tokio::fs::create_dir_all(&template_dir)
+            .await
+            .expect("template dir");
+        tokio::fs::write(template_dir.join("spike.md"), "- [ ] investigate\n")
+            .await
+            .expect("write template");
+
+        let mut view = view_for_split(dir.path()).await;
+        let handle = Handle::current();
+        let action_dir = dir.path().to_path_buf();
+
+        tokio::task::spawn_blocking(move || {
+            assert!(view.begin_split());
+            for character in "Templated slice".chars() {
+                view.push_input_char(character);
+            }
+            submit_input(&handle, &action_dir, &mut view)?; // title -> relationship
+            submit_input(&handle, &action_dir, &mut view)?; // blank relationship (none) -> body
+            view.push_input_char('m');
+            submit_input(&handle, &action_dir, &mut view)?; // body choice -> template name
+            assert_eq!(view.input_mode(), Some(InputMode::SplitTemplate));
+
+            // An unknown template keeps the form open with an inline error.
+            view.push_input_char('x');
+            submit_input(&handle, &action_dir, &mut view)?;
+            assert!(view.input_error().is_some());
+            assert!(view.is_input_active());
+            view.pop_input_char();
+
+            for character in "spike".chars() {
+                view.push_input_char(character);
+            }
+            submit_input(&handle, &action_dir, &mut view)?; // resolve template + persist
+            assert!(!view.is_input_active());
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .expect("split task")
+        .expect("template split persists");
+
+        let slice = pinto::service::show_item(dir.path(), &"T-2".parse::<ItemId>().unwrap())
+            .await
+            .expect("slice persisted");
+        assert_eq!(slice.body, "- [ ] investigate\n");
     }
 
     #[test]

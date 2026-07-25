@@ -3,6 +3,7 @@
 mod crud;
 mod edit;
 mod reorder;
+mod split;
 
 pub use crud::{
     AddItemOutcome, ListFilter, MoveOutcome, NewItem, RemoveOutcome, add_item,
@@ -11,6 +12,7 @@ pub use crud::{
 };
 pub use edit::{EditOutcome, ItemEdit, apply_item_edit, edit_item, item_edit_template};
 pub use reorder::{RebalanceOutcome, ReorderTarget, rebalance, reorder_item};
+pub use split::{SplitBody, SplitOutcome, SplitRelationship, SplitSpec, split_item};
 
 // Domain types referenced by the test module below via `use super::*`.
 #[cfg(test)]
