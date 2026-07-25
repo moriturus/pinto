@@ -7,6 +7,23 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-25
+
+This minor release adds PBI splitting, letting you derive new PBIs from an
+existing item without changing the board data format or breaking the
+existing CLI contract.
+
+### Added
+
+- Added the `pinto split <source> <title>...` subcommand (alias `spl`) to
+  derive one or more new PBIs from an existing item while keeping the
+  source. A relationship flag optionally makes the source a parent
+  (`--child`) of, or a dependency (`--dependency`) on, each new PBI. A body
+  flag controls the new PBI's body: copy the source (default), `--empty`,
+  `--template <name>`, or `--body <text>`.
+- Added the same split operation to the Kanban board under the `s` key,
+  driven by a stepped form (title, relationship, body).
+
 ## [0.3.3] - 2026-07-22
 
 This patch release improves Kanban modified-key handling across terminal event
