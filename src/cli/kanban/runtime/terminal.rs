@@ -2,10 +2,13 @@
 
 use anyhow::Result;
 use pinto::i18n::{Message, current};
+use ratatui::backend::{Backend, CrosstermBackend};
 use std::io::IsTerminal;
+use std::io::{self, Stdout};
 use std::ops::{Deref, DerefMut};
 
 pub(super) type PanicHook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync + 'static>;
+pub(super) type DefaultBackend = CrosstermBackend<Stdout>;
 
 /// Restore the process-global panic hook when a terminal lifecycle ends.
 pub(super) struct PanicHookGuard {
@@ -40,43 +43,65 @@ impl Drop for PanicHookGuard {
 }
 
 /// Own the initialized terminal and restore it on every return path.
-pub(super) struct TerminalGuard {
-    terminal: ratatui::DefaultTerminal,
+pub(super) struct TerminalGuard<B: Backend = DefaultBackend> {
+    terminal: ratatui::Terminal<B>,
     restored: bool,
+    restore_action: Box<dyn FnMut() -> io::Result<()>>,
 }
 
-impl TerminalGuard {
-    fn new(terminal: ratatui::DefaultTerminal) -> Self {
+impl<B: Backend> TerminalGuard<B> {
+    fn with_restore_action(
+        terminal: ratatui::Terminal<B>,
+        restore_action: impl FnMut() -> io::Result<()> + 'static,
+    ) -> Self {
         Self {
             terminal,
             restored: false,
+            restore_action: Box::new(restore_action),
         }
     }
 
-    pub(super) fn restore(&mut self) -> std::io::Result<()> {
+    #[cfg(test)]
+    pub(super) fn with_restore(
+        terminal: ratatui::Terminal<B>,
+        restore_action: impl FnMut() -> io::Result<()> + 'static,
+    ) -> Self {
+        Self::with_restore_action(terminal, restore_action)
+    }
+
+    pub(super) fn restore(&mut self) -> io::Result<()> {
         if self.restored {
             return Ok(());
         }
-        self.restored = true;
-        ratatui::try_restore()
+        let result = (self.restore_action)();
+        if result.is_ok() {
+            self.restored = true;
+        }
+        result
     }
 }
 
-impl Deref for TerminalGuard {
-    type Target = ratatui::DefaultTerminal;
+impl TerminalGuard<DefaultBackend> {
+    fn new(terminal: ratatui::DefaultTerminal) -> Self {
+        Self::with_restore_action(terminal, ratatui::try_restore)
+    }
+}
+
+impl<B: Backend> Deref for TerminalGuard<B> {
+    type Target = ratatui::Terminal<B>;
 
     fn deref(&self) -> &Self::Target {
         &self.terminal
     }
 }
 
-impl DerefMut for TerminalGuard {
+impl<B: Backend> DerefMut for TerminalGuard<B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.terminal
     }
 }
 
-impl Drop for TerminalGuard {
+impl<B: Backend> Drop for TerminalGuard<B> {
     fn drop(&mut self) {
         if !self.restored {
             let _ = self.restore();

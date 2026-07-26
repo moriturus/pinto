@@ -3,11 +3,14 @@
 use super::keymap::KeyMap;
 use super::{BoardView, MIN_COLUMN_WIDTH};
 use anyhow::Result;
-use pinto::i18n::{Message, current};
-use pinto::kanban_keys::{KeyAction, KeyBindings};
-use pinto::service::{Board, BoardQuery, SearchMode, board};
+use pinto::kanban_keys::KeyBindings;
+use pinto::service::{Board, BoardQuery, board};
 use pinto::timezone::DisplayTimezone;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{self, Event, KeyEvent, KeyEventKind};
+#[cfg(test)]
+use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+use ratatui::layout::Size;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::runtime::Handle;
@@ -16,14 +19,13 @@ mod input;
 mod terminal;
 
 mod actions;
+mod dispatch;
 mod render;
 #[cfg(test)]
 mod tests;
 
-use actions::{
-    abort_search, apply_incremental_filter, clear_filter, commit_search, edit_selected, reload,
-    reorder, submit_input, transition,
-};
+use dispatch::DispatchContext;
+use dispatch::dispatch_key;
 #[cfg(test)]
 pub(super) use render::header;
 #[cfg(test)]
@@ -31,12 +33,15 @@ pub(super) use render::render_with_localizer;
 pub(super) use render::{help_max_scroll, popup_max_scroll, render};
 
 #[cfg(test)]
-use input::text_entry_key_is_accepted;
 use input::{
     HelpKeyAction, PopupAction, QuitIntent, help_key_action, popup_action, quit_intent,
-    should_close_help_after_key,
+    should_close_help_after_key, text_entry_key_is_accepted,
 };
-use terminal::initialize_terminal;
+#[cfg(test)]
+use pinto::i18n::{Message, current};
+#[cfg(test)]
+use pinto::service::SearchMode;
+use terminal::{DefaultBackend, TerminalGuard, initialize_terminal};
 
 /// Polling interval while waiting for input.
 const POLL: Duration = Duration::from_millis(250);
@@ -53,6 +58,104 @@ pub(super) fn capacity_for(width: u16) -> usize {
 /// In normal mode, the result of [`capacity_for`] is used as is.
 pub(super) fn effective_capacity(width: u16, maximized: bool) -> usize {
     if maximized { 1 } else { capacity_for(width) }
+}
+
+/// Terminal operations needed by the event loop.
+///
+/// Keeping frame drawing and sizing behind this boundary lets the event loop exercise its failure
+/// paths with deterministic test doubles instead of requiring a real TTY.
+trait FrameDriver {
+    fn size(&mut self) -> io::Result<Size>;
+
+    fn draw(&mut self, view: &BoardView, confirming: bool, keymap: &KeyMap) -> io::Result<()>;
+
+    fn edit_selected(&mut self, handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()>;
+}
+
+impl FrameDriver for TerminalGuard<DefaultBackend> {
+    fn size(&mut self) -> io::Result<Size> {
+        (**self).size()
+    }
+
+    fn draw(&mut self, view: &BoardView, confirming: bool, keymap: &KeyMap) -> io::Result<()> {
+        (**self)
+            .draw(|frame| render(frame, view, confirming, keymap))
+            .map(|_| ())
+    }
+
+    fn edit_selected(&mut self, handle: &Handle, dir: &Path, view: &mut BoardView) -> Result<()> {
+        actions::edit_selected(self, handle, dir, view)
+    }
+}
+
+/// Source of terminal events consumed by the blocking Kanban loop.
+trait EventSource {
+    fn poll(&mut self, timeout: Duration) -> io::Result<bool>;
+    fn read(&mut self) -> io::Result<Event>;
+}
+
+struct CrosstermEventSource;
+
+impl EventSource for CrosstermEventSource {
+    fn poll(&mut self, timeout: Duration) -> io::Result<bool> {
+        event::poll(timeout)
+    }
+
+    fn read(&mut self) -> io::Result<Event> {
+        event::read()
+    }
+}
+
+/// Result of handling a key after the frame and event I/O has completed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoopControl {
+    Continue,
+    Exit(ExitMode),
+}
+
+/// Run the terminal-independent part of the Kanban event loop.
+///
+/// The handler owns event interpretation and view-state changes. It receives the frame driver only
+/// as an opaque value, so tests can verify state transitions without depending on drawing or a real
+/// terminal. Resize and non-key events simply cause the next frame to be measured and drawn again.
+fn run_event_loop<T, E, H>(
+    terminal: &mut T,
+    events: &mut E,
+    mut view: BoardView,
+    keymap: &KeyMap,
+    mut handle_key: H,
+) -> anyhow::Result<ExitMode>
+where
+    T: FrameDriver,
+    E: EventSource,
+    H: FnMut(
+        &mut T,
+        &mut BoardView,
+        &mut Option<ExitMode>,
+        KeyEvent,
+    ) -> anyhow::Result<LoopControl>,
+{
+    let mut confirming = None;
+    loop {
+        let size = terminal.size()?;
+        view.scroll_to_visible(effective_capacity(size.width, view.is_maximized()));
+        terminal.draw(&view, confirming.is_some(), keymap)?;
+
+        if !events.poll(POLL)? {
+            continue;
+        }
+        let event = events.read()?;
+        let Event::Key(key) = event else {
+            continue;
+        };
+        if key.kind != KeyEventKind::Press {
+            continue;
+        }
+        match handle_key(terminal, &mut view, &mut confirming, key)? {
+            LoopControl::Continue => {}
+            LoopControl::Exit(mode) => return Ok(mode),
+        }
+    }
 }
 
 /// How the Kanban view was left, as reported back to the caller.
@@ -150,266 +253,33 @@ fn filter_display_columns(mut board: Board, display_columns: &[String]) -> Board
 fn event_loop(
     handle: Handle,
     dir: PathBuf,
-    mut view: BoardView,
+    view: BoardView,
     keymap: KeyMap,
     confirm_quit: bool,
 ) -> Result<ExitMode> {
     // Initialize raw mode and the alternate screen. Return non-TTY failures here instead of
     // panicking; `try_init` is used because this is an internal call.
     let (mut terminal, _panic_hook) = initialize_terminal()?;
-    // Pending exit mode while the confirmation popup is displayed; `None` when it is hidden.
-    let mut confirming: Option<ExitMode> = None;
+    let mut events = CrosstermEventSource;
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        loop {
-            // Derive the horizontal viewport from the terminal width and keep the selected column visible.
-            // Maximized mode always shows one column: the selected column.
-            match terminal.size() {
-                Ok(size) => {
-                    view.scroll_to_visible(effective_capacity(size.width, view.is_maximized()));
-                }
-                Err(e) => break Err(e.into()),
-            }
-            if let Err(e) =
-                terminal.draw(|frame| render(frame, &view, confirming.is_some(), &keymap))
-            {
-                break Err(e.into());
-            }
-            match event::poll(POLL) {
-                Ok(false) => continue,
-                Err(e) => break Err(e.into()),
-                Ok(true) => {}
-            }
-            let key = match event::read() {
-                Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => key,
-                Ok(_) => continue,
-                Err(e) => break Err(e.into()),
-            };
-
-            // While the confirmation popup is displayed, interpret only the confirmation keys.
-            // Esc has the same effect as yes; preserve the mode that opened the popup.
-            if let Some(mode) = confirming {
-                if keymap.matches(KeyAction::ConfirmQuit, key) {
-                    break Ok(mode);
-                }
-                if keymap.matches(KeyAction::CancelQuit, key) {
-                    confirming = None;
-                }
-                continue;
-            }
-
-            // The help window is a non-modal overlay. Its toggle key is handled here, while all
-            // other commands continue to the underlying board/detail/form mode. Scroll keys also
-            // fall through, so the default `j`/`k` keys move the cursor while help remains visible.
-            if view.is_help_open() {
-                let max_scroll = help_max_scroll(&view, terminal.size().ok(), &keymap);
-                match help_key_action(&keymap, key) {
-                    HelpKeyAction::Close => {
-                        view.close_help();
-                        continue;
-                    }
-                    HelpKeyAction::ScrollUp => view.scroll_help(-1, max_scroll),
-                    HelpKeyAction::ScrollDown => view.scroll_help(1, max_scroll),
-                    HelpKeyAction::PassThrough => {}
-                }
-                if should_close_help_after_key(&view, &keymap, key) {
-                    view.close_help();
-                }
-            }
-
-            // While the details popup is open, arrows and `j`/`k` scroll the body; `H`/`J`/`K`/`L`
-            // move the selection so the popup follows it; `e` edits the shown item in `$EDITOR`;
-            // and `Esc`/`q`/`v` close it. Moving and sorting cards stay disabled.
-            if view.is_popup_open() {
-                let max_scroll = popup_max_scroll(&view, terminal.size().ok(), &keymap);
-                if keymap.matches(KeyAction::Help, key) {
-                    view.open_help();
-                    continue;
-                }
-                // Clear any transient status (e.g. a prior edit result) as each popup key is accepted,
-                // mirroring the board-mode loop; the edit action below sets its own status when relevant.
-                view.clear_status_message();
-                match popup_action(&keymap, key) {
-                    PopupAction::Close => view.close_popup(),
-                    PopupAction::ScrollUp => view.scroll_popup(-1, max_scroll),
-                    PopupAction::ScrollDown => view.scroll_popup(1, max_scroll),
-                    PopupAction::SelectUp => view.select_up(),
-                    PopupAction::SelectDown => view.select_down(),
-                    PopupAction::SelectLeft => view.select_left(),
-                    PopupAction::SelectRight => view.select_right(),
-                    // Edit the shown item; the popup stays open and follows the (possibly updated) item,
-                    // restarting its body at the top since the content may have changed under the offset.
-                    PopupAction::Edit => {
-                        if let Err(e) = edit_selected(&mut terminal, &handle, &dir, &mut view) {
-                            break Err(e);
-                        }
-                        view.reset_popup_scroll();
-                    }
-                    PopupAction::None => {}
-                }
-                continue;
-            }
-
-            // Add/dependency/parent forms own the keyboard until they are submitted or cancelled.
-            // Relation forms additionally allow cursor navigation while their ID buffer is empty.
-            if view.is_input_active() {
-                let selecting_target = view.is_relation_input()
-                    && view.input_buffer().is_empty()
-                    && if keymap.matches(KeyAction::SelectLeft, key) {
-                        view.select_left();
-                        true
-                    } else if keymap.matches(KeyAction::SelectRight, key) {
-                        view.select_right();
-                        true
-                    } else if keymap.matches(KeyAction::SelectUp, key) {
-                        view.select_up();
-                        true
-                    } else if keymap.matches(KeyAction::SelectDown, key) {
-                        view.select_down();
-                        true
-                    } else {
-                        false
-                    };
-                let step = if selecting_target {
-                    Ok(())
-                } else {
-                    match key.code {
-                        KeyCode::Esc => {
-                            view.end_input();
-                            Ok(())
-                        }
-                        KeyCode::Enter => submit_input(&handle, &dir, &mut view),
-                        KeyCode::Backspace => {
-                            view.pop_input_char();
-                            Ok(())
-                        }
-                        KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            view.push_input_char(c);
-                            Ok(())
-                        }
-                        _ => Ok(()),
-                    }
+        run_event_loop(
+            &mut terminal,
+            &mut events,
+            view,
+            &keymap,
+            |terminal, view, confirming, key| {
+                let mut context = DispatchContext {
+                    terminal,
+                    handle: &handle,
+                    dir: &dir,
+                    view,
+                    keymap: &keymap,
+                    confirming,
+                    confirm_quit,
                 };
-                if let Err(e) = step {
-                    break Err(e);
-                }
-                continue;
-            }
-
-            // While the vim-style search prompt is open, keystrokes edit the query in place instead of
-            // driving the board: printable characters are typed literally, Backspace erases, Enter
-            // applies (empty clears), and Esc cancels (rolling back to the pre-search filter). Substring
-            // search filters incrementally as you type; the kanban display stays on screen throughout.
-            if view.is_searching() {
-                let outcome = match key.code {
-                    KeyCode::Esc => abort_search(&handle, &dir, &mut view),
-                    KeyCode::Enter => commit_search(&handle, &dir, &mut view),
-                    KeyCode::Backspace => {
-                        view.pop_search_char();
-                        apply_incremental_filter(&handle, &dir, &mut view)
-                    }
-                    // Type printable characters literally; ignore control chords (Ctrl+C etc.).
-                    KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        view.push_search_char(c);
-                        apply_incremental_filter(&handle, &dir, &mut view)
-                    }
-                    _ => Ok(()),
-                };
-                if let Err(e) = outcome {
-                    break Err(e);
-                }
-                continue;
-            }
-
-            // Clears the previous temporary status (WIP warning, etc.) each time a new operation is accepted.
-            // If there is a violation in the transition, the `transition` below will reset it.
-            view.clear_status_message();
-            let step = if view.search_filter().is_some()
-                && keymap.matches(KeyAction::ClearFilter, key)
-            {
-                // Clear an active search filter before interpreting the same key as a quit key.
-                clear_filter(&handle, &dir, &mut view)
-            } else if keymap.matches(KeyAction::Shell, key) || keymap.matches(KeyAction::Quit, key)
-            {
-                match quit_intent(&keymap, key, confirm_quit) {
-                    QuitIntent::Leave(mode) => break Ok(mode),
-                    QuitIntent::Confirm(mode) => {
-                        confirming = Some(mode);
-                        Ok(())
-                    }
-                    QuitIntent::None => Ok(()),
-                }
-            } else if keymap.matches(KeyAction::SelectLeft, key) {
-                view.select_left();
-                Ok(())
-            } else if keymap.matches(KeyAction::SelectRight, key) {
-                view.select_right();
-                Ok(())
-            } else if keymap.matches(KeyAction::SelectUp, key) {
-                view.select_up();
-                Ok(())
-            } else if keymap.matches(KeyAction::SelectDown, key) {
-                view.select_down();
-                Ok(())
-            } else if keymap.matches(KeyAction::MoveLeft, key) {
-                transition(&handle, &dir, &mut view, -1)
-            } else if keymap.matches(KeyAction::MoveRight, key) {
-                transition(&handle, &dir, &mut view, 1)
-            } else if keymap.matches(KeyAction::ReorderUp, key) {
-                reorder(&handle, &dir, &mut view, -1)
-            } else if keymap.matches(KeyAction::ReorderDown, key) {
-                reorder(&handle, &dir, &mut view, 1)
-            } else if keymap.matches(KeyAction::ToggleExpand, key) {
-                view.toggle_expand();
-                Ok(())
-            } else if keymap.matches(KeyAction::Add, key) {
-                view.begin_add();
-                Ok(())
-            } else if keymap.matches(KeyAction::DependencyAdd, key) {
-                if !view.begin_dependency_add() {
-                    view.set_status_message(current().text(Message::KanbanNoSelection));
-                }
-                Ok(())
-            } else if keymap.matches(KeyAction::DependencyRemove, key) {
-                if !view.begin_dependency_remove() {
-                    view.set_status_message(current().text(Message::KanbanNoSelection));
-                }
-                Ok(())
-            } else if keymap.matches(KeyAction::Parent, key) {
-                if !view.begin_parent() {
-                    view.set_status_message(current().text(Message::KanbanNoSelection));
-                }
-                Ok(())
-            } else if keymap.matches(KeyAction::Split, key) {
-                if !view.begin_split() {
-                    view.set_status_message(current().text(Message::KanbanNoSelection));
-                }
-                Ok(())
-            } else if keymap.matches(KeyAction::Edit, key) {
-                edit_selected(&mut terminal, &handle, &dir, &mut view)
-            } else if keymap.matches(KeyAction::Reload, key) {
-                reload(&handle, &dir, &mut view)
-            } else if keymap.matches(KeyAction::Maximize, key) {
-                view.toggle_maximize();
-                Ok(())
-            } else if keymap.matches(KeyAction::Search, key) {
-                view.begin_search(SearchMode::Contains);
-                apply_incremental_filter(&handle, &dir, &mut view)
-            } else if keymap.matches(KeyAction::RegexSearch, key) {
-                view.begin_search(SearchMode::Regex);
-                Ok(())
-            } else if keymap.matches(KeyAction::Help, key) {
-                view.open_help();
-                Ok(())
-            } else if keymap.matches(KeyAction::Details, key) {
-                view.open_popup();
-                Ok(())
-            } else {
-                Ok(())
-            };
-            if let Err(e) = step {
-                break Err(e);
-            }
-        }
+                dispatch_key(&mut context, key)
+            },
+        )
     }))
     .unwrap_or_else(|payload| {
         // The panic hook has already restored the terminal. Catch the panic while it is no

@@ -711,7 +711,9 @@ mod ordering_tests {
 }
 
 mod lifecycle_tests {
-    use super::super::terminal::PanicHookGuard;
+    use super::super::terminal::{PanicHookGuard, TerminalGuard};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
     use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
@@ -807,5 +809,334 @@ mod lifecycle_tests {
         assert!(panic_result.is_err());
         assert_eq!(previous_calls.load(Ordering::SeqCst), 1);
         drop(current_hook);
+    }
+
+    #[test]
+    fn terminal_guard_retries_a_failed_restore_and_is_idempotent_after_success() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_restore = Arc::clone(&attempts);
+        let terminal = Terminal::new(TestBackend::new(20, 5)).expect("test terminal");
+        let mut guard = TerminalGuard::with_restore(terminal, move || {
+            let attempt = attempts_for_restore.fetch_add(1, Ordering::SeqCst);
+            if attempt == 0 {
+                Err(std::io::Error::other("transient restore failure"))
+            } else {
+                Ok(())
+            }
+        });
+
+        assert!(guard.restore().is_err());
+        assert!(guard.restore().is_ok());
+        assert!(guard.restore().is_ok());
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn terminal_guard_restores_during_panic_unwinding() {
+        let _lock = panic_hook_lock().lock().expect("panic hook lock");
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_restore = Arc::clone(&attempts);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let terminal = Terminal::new(TestBackend::new(20, 5)).expect("test terminal");
+            let _guard = TerminalGuard::with_restore(terminal, move || {
+                attempts_for_restore.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            });
+            panic!("simulated runtime panic");
+        }));
+
+        assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+}
+
+mod event_loop_tests {
+    use super::super::*;
+    use pinto::backlog::{BacklogItem, Status};
+    use pinto::rank::Rank;
+    use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::layout::Size;
+    use std::collections::VecDeque;
+    use std::io;
+
+    struct FakeFrame {
+        sizes: VecDeque<io::Result<Size>>,
+        draw_error: Option<io::Error>,
+        offsets: Vec<usize>,
+    }
+
+    impl FakeFrame {
+        fn new(sizes: impl IntoIterator<Item = io::Result<Size>>) -> Self {
+            Self {
+                sizes: sizes.into_iter().collect(),
+                draw_error: None,
+                offsets: Vec::new(),
+            }
+        }
+    }
+
+    impl FrameDriver for FakeFrame {
+        fn size(&mut self) -> io::Result<Size> {
+            self.sizes
+                .pop_front()
+                .unwrap_or_else(|| Ok(Size::new(80, 24)))
+        }
+
+        fn draw(
+            &mut self,
+            view: &BoardView,
+            _confirming: bool,
+            _keymap: &KeyMap,
+        ) -> io::Result<()> {
+            self.offsets.push(view.col_offset());
+            match self.draw_error.take() {
+                Some(error) => Err(error),
+                None => Ok(()),
+            }
+        }
+
+        fn edit_selected(
+            &mut self,
+            _handle: &tokio::runtime::Handle,
+            _dir: &std::path::Path,
+            _view: &mut BoardView,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct FakeEvents {
+        events: VecDeque<io::Result<Event>>,
+        poll_error: Option<io::Error>,
+        poll_calls: usize,
+        read_calls: usize,
+    }
+
+    impl FakeEvents {
+        fn new(events: impl IntoIterator<Item = io::Result<Event>>) -> Self {
+            Self {
+                events: events.into_iter().collect(),
+                poll_error: None,
+                poll_calls: 0,
+                read_calls: 0,
+            }
+        }
+    }
+
+    impl EventSource for FakeEvents {
+        fn poll(&mut self, _timeout: std::time::Duration) -> io::Result<bool> {
+            self.poll_calls += 1;
+            if let Some(error) = self.poll_error.take() {
+                return Err(error);
+            }
+            Ok(true)
+        }
+
+        fn read(&mut self) -> io::Result<Event> {
+            self.read_calls += 1;
+            self.events
+                .pop_front()
+                .unwrap_or_else(|| Err(io::Error::other("no fake event")))
+        }
+    }
+
+    fn key(code: KeyCode) -> Event {
+        Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    fn view_with_columns(count: usize) -> BoardView {
+        let columns = (0..count)
+            .map(|index| pinto::service::BoardColumn {
+                status: Status::new(format!("column-{index}")),
+                items: Vec::new(),
+            })
+            .collect();
+        BoardView::new(pinto::service::Board {
+            columns,
+            orphaned: Vec::new(),
+        })
+    }
+
+    fn view_with_item() -> BoardView {
+        let item = BacklogItem::new(
+            "T-1".parse().expect("item id"),
+            "task".to_string(),
+            Status::new("todo"),
+            Rank::between(None, None).expect("open bounds produce a rank"),
+            chrono::Utc::now(),
+        )
+        .expect("item");
+        BoardView::new(pinto::service::Board {
+            columns: vec![pinto::service::BoardColumn {
+                status: Status::new("todo"),
+                items: vec![item],
+            }],
+            orphaned: Vec::new(),
+        })
+    }
+
+    fn keymap() -> KeyMap {
+        KeyMap::from_bindings(&KeyBindings::default()).expect("default keymap")
+    }
+
+    #[test]
+    fn drawing_failure_is_returned_without_polling_events() {
+        let mut frame = FakeFrame::new([Ok(Size::new(80, 24))]);
+        frame.draw_error = Some(io::Error::other("draw failed"));
+        let mut events = FakeEvents::new([Ok(key(KeyCode::Char('q')))]);
+        let result = run_event_loop(
+            &mut frame,
+            &mut events,
+            view_with_item(),
+            &keymap(),
+            |_frame, _view, _confirming, _key| Ok(LoopControl::Continue),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(events.poll_calls, 0);
+    }
+
+    #[test]
+    fn sizing_failure_is_returned_before_drawing_or_polling_events() {
+        let mut frame = FakeFrame::new([Err(io::Error::other("size failed"))]);
+        let mut events = FakeEvents::new([Ok(key(KeyCode::Char('q')))]);
+        let result = run_event_loop(
+            &mut frame,
+            &mut events,
+            view_with_item(),
+            &keymap(),
+            |_frame, _view, _confirming, _key| Ok(LoopControl::Continue),
+        );
+
+        assert!(result.is_err());
+        assert!(frame.offsets.is_empty());
+        assert_eq!(events.poll_calls, 0);
+    }
+
+    #[test]
+    fn event_polling_failure_is_returned_before_reading() {
+        let mut frame = FakeFrame::new([Ok(Size::new(80, 24))]);
+        let mut events = FakeEvents::new([Ok(key(KeyCode::Char('q')))]);
+        events.poll_error = Some(io::Error::other("poll failed"));
+        let result = run_event_loop(
+            &mut frame,
+            &mut events,
+            view_with_item(),
+            &keymap(),
+            |_frame, _view, _confirming, _key| Ok(LoopControl::Continue),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(frame.offsets, vec![0]);
+        assert_eq!(events.poll_calls, 1);
+        assert_eq!(events.read_calls, 0);
+    }
+
+    #[test]
+    fn event_reading_failure_is_returned_after_a_successful_frame() {
+        let mut frame = FakeFrame::new([Ok(Size::new(80, 24))]);
+        let mut events = FakeEvents::new([Err(io::Error::other("read failed"))]);
+        let result = run_event_loop(
+            &mut frame,
+            &mut events,
+            view_with_item(),
+            &keymap(),
+            |_frame, _view, _confirming, _key| Ok(LoopControl::Continue),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(frame.offsets, vec![0]);
+        assert_eq!(events.poll_calls, 1);
+        assert_eq!(events.read_calls, 1);
+    }
+
+    #[test]
+    fn narrow_terminal_keeps_the_selected_column_visible() {
+        let mut frame = FakeFrame::new([Ok(Size::new(0, 5))]);
+        let mut events = FakeEvents::new([Ok(key(KeyCode::Char('q')))]);
+        let mut view = view_with_columns(3);
+        view.select_right();
+        view.select_right();
+        let result = run_event_loop(
+            &mut frame,
+            &mut events,
+            view,
+            &keymap(),
+            |_frame, _view, _confirming, _key| Ok(LoopControl::Exit(ExitMode::Quit)),
+        );
+
+        assert_eq!(result.expect("quit"), ExitMode::Quit);
+        assert_eq!(frame.offsets, vec![2]);
+    }
+
+    #[test]
+    fn repeated_resize_events_recompute_the_horizontal_viewport() {
+        let mut frame = FakeFrame::new([
+            Ok(Size::new(24, 5)),
+            Ok(Size::new(0, 5)),
+            Ok(Size::new(48, 5)),
+        ]);
+        let mut events = FakeEvents::new([
+            Ok(Event::Resize(24, 5)),
+            Ok(Event::Resize(0, 5)),
+            Ok(key(KeyCode::Char('q'))),
+        ]);
+        let mut view = view_with_columns(3);
+        view.select_right();
+        view.select_right();
+        let result = run_event_loop(
+            &mut frame,
+            &mut events,
+            view,
+            &keymap(),
+            |_frame, _view, _confirming, _key| Ok(LoopControl::Exit(ExitMode::Quit)),
+        );
+
+        assert_eq!(result.expect("quit"), ExitMode::Quit);
+        assert_eq!(frame.offsets, vec![2, 2, 1]);
+        assert_eq!(events.read_calls, 3);
+    }
+
+    #[test]
+    fn event_handler_can_update_view_state_without_terminal_access() {
+        let mut frame = FakeFrame::new([Ok(Size::new(80, 24)), Ok(Size::new(80, 24))]);
+        let mut events =
+            FakeEvents::new([Ok(key(KeyCode::Char('j'))), Ok(key(KeyCode::Char('q')))]);
+        let mut selections = Vec::new();
+        let result = run_event_loop(
+            &mut frame,
+            &mut events,
+            view_with_item(),
+            &keymap(),
+            |_frame, view, _confirming, key| {
+                if key.code == KeyCode::Char('j') {
+                    view.select_down();
+                    selections.push(view.selected_row());
+                    Ok(LoopControl::Continue)
+                } else {
+                    Ok(LoopControl::Exit(ExitMode::Quit))
+                }
+            },
+        );
+
+        assert_eq!(result.expect("quit"), ExitMode::Quit);
+        assert_eq!(selections, vec![0]);
+    }
+
+    #[test]
+    fn event_handler_panics_are_left_for_the_outer_lifecycle_guard() {
+        let mut frame = FakeFrame::new([Ok(Size::new(80, 24))]);
+        let mut events = FakeEvents::new([Ok(key(KeyCode::Char('q')))]);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_event_loop(
+                &mut frame,
+                &mut events,
+                view_with_item(),
+                &keymap(),
+                |_frame, _view, _confirming, _key| panic!("simulated runtime panic"),
+            )
+        }));
+
+        assert!(result.is_err());
     }
 }

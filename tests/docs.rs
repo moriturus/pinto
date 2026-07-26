@@ -1181,6 +1181,48 @@ fn coverage_gate_checks_the_uploaded_cobertura_metric() {
 }
 
 #[test]
+fn kanban_runtime_coverage_has_a_separate_targeted_guard() {
+    let mise = repository_file("mise.toml");
+    assert!(mise.contains("check-kanban-coverage.sh coverage.xml 0.90"));
+
+    let checker = repository_file("scripts/check-kanban-coverage.sh");
+    for marker in [
+        "src.cli.kanban.runtime",
+        "line-rate",
+        "minimum",
+        "coverage.xml",
+    ] {
+        assert!(
+            checker.contains(marker),
+            "Kanban coverage guard omits {marker}"
+        );
+    }
+
+    let workflow = repository_file(".github/workflows/ci.yml");
+    assert!(workflow.contains("Check Kanban runtime coverage"));
+    assert!(workflow.contains("./scripts/check-kanban-coverage.sh coverage.xml 0.90"));
+}
+
+#[test]
+fn kanban_runtime_failure_matrix_documents_failure_paths_and_commands() {
+    let testing = repository_file("docs/book/src/testing.md");
+    for marker in [
+        "Kanban runtime failure-path matrix",
+        "drawing failure",
+        "event-reading failure",
+        "panic unwinding",
+        "narrow terminals",
+        "repeated resize events",
+        "cargo test --bin pinto --locked cli::kanban::runtime",
+    ] {
+        assert!(
+            testing.contains(marker),
+            "Kanban runtime test matrix omits {marker}"
+        );
+    }
+}
+
+#[test]
 fn undo_decision_record_documents_scope_and_per_backend_behavior() {
     let summary = repository_file("docs/book/src/SUMMARY.md");
     assert!(

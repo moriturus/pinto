@@ -32,10 +32,11 @@ description = "Build the mdBook project documentation"
 run = "mdbook build"
 
 [tasks.coverage]
-description = "Measure Cobertura line coverage and fail below 95%"
+description = "Measure Cobertura line coverage and fail below the project and Kanban runtime thresholds"
 run = [
   "cargo llvm-cov --all-features --workspace --locked --cobertura --output-path coverage.xml",
   "./scripts/check-coverage.sh coverage.xml 0.95",
+  "./scripts/check-kanban-coverage.sh coverage.xml 0.90",
 ]
 
 [tasks.audit]

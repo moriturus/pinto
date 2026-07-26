@@ -15,6 +15,33 @@ the artifact's root Cobertura line-rate with `scripts/check-coverage.sh`. The 0.
 threshold is therefore applied to the same metric that CI uploads, rather than
 to the different denominator used by the LLVM text summary.
 
+## Kanban runtime failure-path matrix
+
+The Kanban runtime has a separate Cobertura guard for
+`src.cli.kanban.runtime`, because the aggregate line-rate can hide an
+under-tested terminal boundary. The focused suite exercises these paths without
+requiring a real TTY:
+
+| Failure or boundary | Focused verification |
+| --- | --- |
+| terminal sizing failure | A fake frame driver returns a size error before drawing or event polling. |
+| drawing failure | A fake frame driver returns the drawing error before event polling. |
+| event polling failure | A successful frame is followed by a polling error before event reading. |
+| event-reading failure | A successful frame is followed by an event-reading error. |
+| panic unwinding | The terminal guard restores its lifecycle state while a panic unwinds. |
+| narrow terminals | A zero-width terminal still keeps the selected column visible. |
+| repeated resize events | Consecutive resize events recompute the horizontal viewport. |
+
+Run the matrix with:
+
+```bash
+cargo test --bin pinto --locked cli::kanban::runtime
+```
+
+The same runtime package must meet the 0.90 line-rate threshold in
+`scripts/check-kanban-coverage.sh`; the repository-wide 0.95 gate remains
+unchanged.
+
 The macOS PTY lifecycle regression can be reproduced with:
 
 ```bash
