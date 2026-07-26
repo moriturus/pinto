@@ -5,7 +5,7 @@ use super::{SqliteRepository, column, corrupt, dt_from_str, dt_to_str, open_conn
 use crate::error::{Error, Result};
 use crate::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
 use crate::storage::repository::SprintRepository;
-use rusqlite::{OptionalExtension, Row, params};
+use rusqlite::{OptionalExtension, Row, Transaction, params};
 use std::path::Path;
 
 /// Copy one line of `sprints` to [`Sprint`]. Column order should match the `SELECT` statement.
@@ -127,41 +127,48 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
 /// A `SELECT` list containing the columns read by [`sprint_from`] in that order.
 const SPRINT_COLUMNS: &str = "id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated";
 
+pub(super) fn upsert_sprint(db: &Path, tx: &Transaction<'_>, sprint: &Sprint) -> Result<()> {
+    tx.execute(
+        "INSERT INTO sprints (id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
+         ON CONFLICT(id) DO UPDATE SET \
+          title = excluded.title, goal = excluded.goal, state = excluded.state, closed_at = excluded.closed_at, \
+          start_at = excluded.start_at, end_at = excluded.end_at, \
+          daily_work_hours = excluded.daily_work_hours, holiday_days = excluded.holiday_days, deduction_factor = excluded.deduction_factor, \
+          spillover_points = excluded.spillover_points, spillover_items = excluded.spillover_items, \
+          unestimated_spillover_items = excluded.unestimated_spillover_items, \
+          created = excluded.created, updated = excluded.updated",
+        params![
+            sprint.id.as_str(),
+            sprint.title,
+            sprint.goal,
+            sprint.state.as_str(),
+            sprint.closed_at.map(dt_to_str),
+            sprint.start.map(dt_to_str),
+            sprint.end.map(dt_to_str),
+            sprint.daily_work_hours,
+            sprint.holiday_days.map(i64::from),
+            sprint.deduction_factor,
+            i64::from(sprint.spillover.points),
+            i64::from(sprint.spillover.items),
+            i64::from(sprint.spillover.unestimated_items),
+            dt_to_str(sprint.created),
+            dt_to_str(sprint.updated),
+        ],
+    )
+    .map_err(|e| sqlite_err(db, &e))?;
+    Ok(())
+}
+
 impl SprintRepository for SqliteRepository {
     async fn save(&self, sprint: &Sprint) -> Result<()> {
         let sprint = sprint.clone();
         let db = self.db_path();
         tokio::task::spawn_blocking(move || {
-            let conn = open_conn(&db)?;
-            conn.execute(
-                "INSERT INTO sprints (id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
-                 ON CONFLICT(id) DO UPDATE SET \
-                  title = excluded.title, goal = excluded.goal, state = excluded.state, closed_at = excluded.closed_at, \
-                  start_at = excluded.start_at, end_at = excluded.end_at, \
-                  daily_work_hours = excluded.daily_work_hours, holiday_days = excluded.holiday_days, deduction_factor = excluded.deduction_factor, \
-                  spillover_points = excluded.spillover_points, spillover_items = excluded.spillover_items, \
-                  unestimated_spillover_items = excluded.unestimated_spillover_items, \
-                  created = excluded.created, updated = excluded.updated",
-                params![
-                    sprint.id.as_str(),
-                    sprint.title,
-                    sprint.goal,
-                    sprint.state.as_str(),
-                    sprint.closed_at.map(dt_to_str),
-                    sprint.start.map(dt_to_str),
-                    sprint.end.map(dt_to_str),
-                    sprint.daily_work_hours,
-                    sprint.holiday_days.map(i64::from),
-                    sprint.deduction_factor,
-                    i64::from(sprint.spillover.points),
-                    i64::from(sprint.spillover.items),
-                    i64::from(sprint.spillover.unestimated_items),
-                    dt_to_str(sprint.created),
-                    dt_to_str(sprint.updated),
-                ],
-            )
-            .map_err(|e| sqlite_err(&db, &e))?;
+            let mut conn = open_conn(&db)?;
+            let tx = conn.transaction().map_err(|e| sqlite_err(&db, &e))?;
+            upsert_sprint(&db, &tx, &sprint)?;
+            tx.commit().map_err(|e| sqlite_err(&db, &e))?;
             Ok(())
         })
         .await

@@ -8,8 +8,8 @@
 use crate::backlog::{BacklogItem, ItemId, Status};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
-use crate::service::open_board_locked;
-use crate::storage::BacklogItemRepository;
+use crate::service::{open_board_locked, restore_board_after_failure};
+use crate::storage::{BacklogItemRepository, BoardRecoveryPoint};
 use chrono::Utc;
 use std::path::Path;
 
@@ -104,13 +104,19 @@ pub async fn split_item(
         SplitBody::Explicit(text) => text.clone(),
     };
 
-    // Ranks are appended after the current backlog maximum, advancing as each new item is minted.
-    // Each new item is saved before the next ID is requested so `next_id` observes it and stays
-    // strictly increasing, mirroring how `add_item` persists a single item.
+    // Reserve the next contiguous ID range before writing. The board lock keeps another writer
+    // from consuming the range while this operation prepares its complete record set.
+    let first_id = repo.next_id(&config.project.key).await?;
     let mut last_rank = existing.last().map(|item| item.rank.clone());
     let mut created = Vec::with_capacity(titles.len());
-    for title in &titles {
-        let id = repo.next_id(&config.project.key).await?;
+    for (index, title) in titles.iter().enumerate() {
+        let offset = u32::try_from(index).map_err(|_| {
+            Error::InvalidItemId(format!("{}-{}", first_id.prefix(), first_id.number()))
+        })?;
+        let number = first_id.number().checked_add(offset).ok_or_else(|| {
+            Error::InvalidItemId(format!("{}-{}", first_id.prefix(), first_id.number()))
+        })?;
+        let id = ItemId::try_new(first_id.prefix(), number)?;
         let rank = Rank::after(last_rank.as_ref());
         last_rank = Some(rank.clone());
         let mut item = BacklogItem::new(id, title, status.clone(), rank, Utc::now())?;
@@ -118,7 +124,6 @@ pub async fn split_item(
         if relationship == SplitRelationship::Child {
             item.parent = Some(source.clone());
         }
-        repo.save(&item).await?;
         created.push(item);
     }
 
@@ -129,7 +134,15 @@ pub async fn split_item(
             }
         }
         source_item.updated = Utc::now();
-        repo.save(&source_item).await?;
+    }
+
+    let mut records = created.clone();
+    if relationship == SplitRelationship::Dependency {
+        records.push(source_item.clone());
+    }
+    let recovery = BoardRecoveryPoint::capture(&board_dir).await?;
+    if let Err(error) = repo.save_item_batch(&records).await {
+        return restore_board_after_failure(recovery, "split", error).await;
     }
 
     let ids = created

@@ -273,7 +273,11 @@ fn relation_values(
 /// Since the target to be saved is an active PBI by definition (saved items do not appear in load/list and do not pass to save),
 /// Upsert always returns `archived` to 0. As a result, the old save flag remains when file→sqlite is remigrated,
 /// Prevent inconsistencies where items that should be mirrored continue to be hidden. Saving is performed only by [`SqliteRepository::archive`].
-fn upsert_item(db: &Path, tx: &rusqlite::Transaction<'_>, item: &BacklogItem) -> Result<()> {
+pub(super) fn upsert_item(
+    db: &Path,
+    tx: &rusqlite::Transaction<'_>,
+    item: &BacklogItem,
+) -> Result<()> {
     let id = item.id.to_string();
     let number = i64::from(item.id.number());
     let points = item.points.map(i64::from);
@@ -351,6 +355,30 @@ fn position_i64(db: &Path, position: usize) -> Result<i64> {
             format!("relation position {position} overflows SQLite INTEGER"),
         )
     })
+}
+
+impl SqliteRepository {
+    /// Save several PBIs inside one SQLite transaction, including their relationship rows.
+    pub(crate) async fn save_item_batch(&self, items: &[BacklogItem]) -> Result<()> {
+        let db = self.db_path();
+        let values = items.to_vec();
+        let failure = self.failure.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = open_conn(&db)?;
+            let tx = conn.transaction().map_err(|e| sqlite_err(&db, &e))?;
+            for item in &values {
+                upsert_item(&db, &tx, item)?;
+                failure.after_record_write(&db)?;
+            }
+            tx.commit().map_err(|e| sqlite_err(&db, &e))?;
+            Ok::<_, Error>(())
+        })
+        .await
+        .map_err(Error::task)??;
+
+        let ids = items.iter().map(|item| item.id.clone()).collect::<Vec<_>>();
+        crate::storage::record_issued_ids(&self.root, &ids).await
+    }
 }
 
 impl BacklogItemRepository for SqliteRepository {

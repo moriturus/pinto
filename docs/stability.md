@@ -67,6 +67,34 @@ manually. A rare failure while refreshing the real index is reported after
 is an intentional recoverable failure contract: a failed commit does not roll
 back or discard board data.
 
+## Multi-record mutations and recovery
+
+`split` and `import --force` are operation-level mutations. They prepare all
+records before applying them and keep a pre-operation board snapshot while the
+write is in progress. A failure while writing records restores that snapshot;
+the command reports that the board was restored, so retrying the same command
+is safe.
+
+The persistence boundary differs slightly by backend:
+
+| Operation | File | Git | SQLite |
+| --- | --- | --- | --- |
+| `split` | Restore the pre-operation `.pinto/` snapshot on a record-write failure. | Same restore for record-write failures; a later Git commit failure leaves the complete change in the worktree for `git status` recovery. | One SQLite transaction covers the new PBIs and the optional source relationship update; the external ID history is restored with the board snapshot if the operation fails. |
+| `import --force` | Restore items, Sprints, configuration, DoD, and issued-ID history on a record or metadata write failure. | Same restore before commit; if the final Git commit fails, inspect `git status`, fix Git, then retry or commit the complete worktree change manually. | One SQLite transaction replaces active PBIs, their relationships, and Sprints; configuration, DoD, and issued-ID history remain inside the operation recovery protocol. |
+
+For File and SQLite, retry after the error says the board was restored. For
+Git, a failure before the commit has the same retry path; a failure reported
+by Git itself is intentionally recoverable rather than silently discarded.
+Stop other writers, inspect `git status`, fix the reported Git or hook problem,
+then retry the command or commit the durable board files manually. Keep the
+original Git commit as the recovery point and use `pinto undo` only after a
+successful Git mutation when reversing the complete operation is desired.
+
+If automatic restoration itself fails, the CLI retains the pre-operation
+snapshot in a temporary directory and prints its path. Stop other writers,
+preserve the live `.lock`, restore that snapshot into `.pinto/`, and retry the
+command after checking the board.
+
 ## Configuration and data compatibility
 
 `.pinto/config.toml` is shared board configuration. It uses a strict schema, so

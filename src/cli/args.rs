@@ -190,7 +190,7 @@ pub(super) enum Command {
     /// Add PBI to backlog.
     #[command(visible_alias = "a")]
     Add(AddArgs),
-    /// Split an existing PBI into one or more new PBIs.
+    /// Split an existing PBI into one or more new PBIs as one recoverable operation.
     #[command(visible_alias = "spl")]
     Split(SplitArgs),
     /// List PBIs in the backlog.
@@ -228,7 +228,7 @@ pub(super) enum Command {
     Dod(DodArgs),
     /// Export the complete board as machine-readable JSON.
     Export(ExportArgs),
-    /// Restore a board from an `export --json` snapshot.
+    /// Restore a board from an `export --json` snapshot with scoped recovery.
     Import(ImportArgs),
     /// Manage sprints (create, start, close, assign, list).
     #[command(visible_alias = "sp")]
@@ -671,7 +671,7 @@ pub(super) struct ImportArgs {
     /// Path to an `export --json` document, or `-` to read the JSON from standard input.
     #[arg(value_name = "SOURCE")]
     pub(super) source: String,
-    /// Replace an existing non-empty board instead of failing fast.
+    /// Replace an existing non-empty board in one recoverable operation instead of failing fast.
     #[arg(long, short = 'f')]
     pub(super) force: bool,
 }
@@ -864,7 +864,7 @@ pub(super) struct AddArgs {
 pub(super) struct SplitArgs {
     /// ID of the source PBI to split (e.g. `T-1`).
     pub(super) source: String,
-    /// Titles of the new PBIs to create (one or more).
+    /// Titles of the new PBIs to create (one or more; all records are applied together).
     #[arg(required = true, num_args = 1.., value_name = "TITLE")]
     pub(super) titles: Vec<String>,
     /// Make the source the parent of each new PBI.

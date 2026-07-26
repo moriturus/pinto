@@ -45,7 +45,10 @@
 //! - **Archive**: `archive` sets `items.archived` to `1`. It returns the logical display path
 //!   `"<db>#archived/<id>"` because there is no separate archive file.
 
+use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
+use crate::sprint::Sprint;
+use crate::storage::{WriteFailureInjector, record_issued_ids};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::path::{Path, PathBuf};
@@ -61,6 +64,8 @@ mod tests;
 pub struct SqliteRepository {
     /// Board root (`.pinto/`); the database file is stored directly below it.
     root: PathBuf,
+    /// Optional deterministic failure counter used by recovery tests.
+    failure: WriteFailureInjector,
 }
 
 /// Current SQLite schema understood by this build.
@@ -140,12 +145,71 @@ CREATE TABLE IF NOT EXISTS metadata (
 impl SqliteRepository {
     /// Build a repository for `.pinto/` without I/O; connections open during operations.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            failure: WriteFailureInjector::from_environment(),
+        }
     }
 
     /// DB file path (`<root>/board.sqlite3`).
     pub(crate) fn db_path(&self) -> PathBuf {
         self.root.join("board.sqlite3")
+    }
+
+    /// Replace all active rows and sprint rows in one SQLite transaction.
+    pub(crate) async fn replace_board(
+        &self,
+        items: &[BacklogItem],
+        sprints: &[Sprint],
+    ) -> Result<()> {
+        let db = self.db_path();
+        let items = items.to_vec();
+        let sprints = sprints.to_vec();
+        let issued_items = items.clone();
+        let failure = self.failure.clone();
+        let old_ids = tokio::task::spawn_blocking(move || {
+            let mut conn = open_conn(&db)?;
+            let tx = conn.transaction().map_err(|e| sqlite_err(&db, &e))?;
+            let old_ids = {
+                let mut statement = tx
+                    .prepare("SELECT id FROM items WHERE archived = 0")
+                    .map_err(|e| sqlite_err(&db, &e))?;
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(|e| sqlite_err(&db, &e))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .map_err(|e| sqlite_err(&db, &e))?
+            };
+            tx.execute("DELETE FROM items WHERE archived = 0", [])
+                .map_err(|e| sqlite_err(&db, &e))?;
+            tx.execute("DELETE FROM sprints", [])
+                .map_err(|e| sqlite_err(&db, &e))?;
+            for item in &items {
+                super::sqlite_repository::items::upsert_item(&db, &tx, item)?;
+                failure.after_record_write(&db)?;
+            }
+            for sprint in &sprints {
+                super::sqlite_repository::sprints::upsert_sprint(&db, &tx, sprint)?;
+            }
+            tx.commit().map_err(|e| sqlite_err(&db, &e))?;
+            Ok::<_, Error>(old_ids)
+        })
+        .await
+        .map_err(Error::task)??;
+
+        let mut issued = old_ids
+            .into_iter()
+            .map(|id| {
+                id.parse::<ItemId>().map_err(|error| {
+                    Error::parse(
+                        &self.db_path(),
+                        format!("corrupt SQLite item ID during board replacement: {error}"),
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        issued.extend(issued_items.iter().map(|item| item.id.clone()));
+        record_issued_ids(&self.root, &issued).await
     }
 }
 

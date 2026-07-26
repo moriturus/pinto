@@ -9,17 +9,23 @@
 
 mod atomic;
 mod backend;
+mod failure;
 mod file_repository;
 mod git_repository;
 mod issued_ids;
 mod lock;
 mod markdown;
+mod recovery;
 mod repository;
 #[cfg(feature = "sqlite")]
 mod sqlite_repository;
 
 pub(crate) use atomic::atomic_write;
+pub(crate) use failure::WriteFailureInjector;
+#[cfg(feature = "sqlite")]
+pub(crate) use issued_ids::record_many as record_issued_ids;
 pub(crate) use issued_ids::{path as item_issued_ids_path, record as record_issued_id};
+pub(crate) use recovery::BoardRecoveryPoint;
 // The Markdown representation (`+++` frontmatter plus body) is the backend-independent editing
 // format used by `$EDITOR`. The facade re-exports it because the service layer uses it to build
 // edit templates and parse edited content; concrete paths remain backend-internal.

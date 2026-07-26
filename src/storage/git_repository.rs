@@ -442,6 +442,12 @@ impl GitRepository {
             ])
         }
     }
+
+    /// Save several item records through the file layer without creating an intermediate Git
+    /// commit. The service owns the operation-level commit boundary.
+    pub(crate) async fn save_item_batch(&self, items: &[BacklogItem]) -> Result<()> {
+        self.file.save_batch(items).await
+    }
 }
 
 /// One staged entry captured from `git ls-files --stage`.

@@ -30,7 +30,7 @@ mod wip;
 
 use crate::config::Config;
 use crate::error::{Error, Result};
-use crate::storage::{Backend, BoardLock};
+use crate::storage::{Backend, BoardLock, BoardRecoveryPoint};
 pub use board::{Board, BoardColumn, BoardQuery, SortKey, board};
 pub use burndown::{Burndown, BurndownDay, BurndownMetric, burndown};
 pub use commits::{LinkOutcome, SyncOutcome, link_commits, sync_commits, unlink_commits};
@@ -169,6 +169,27 @@ where
     let config = Config::load(&config_path).await?;
     let repo = Backend::open_for_write(&board_dir, config.storage.backend).await?;
     Ok((board_dir, repo, config, lock))
+}
+
+/// Restore a multi-record operation after a persistence failure and return an actionable error.
+pub(crate) async fn restore_board_after_failure<T>(
+    recovery: BoardRecoveryPoint,
+    operation: &str,
+    operation_error: Error,
+) -> Result<T> {
+    let board_dir = recovery.board_dir().display().to_string();
+    match recovery.restore().await {
+        Ok(()) => Err(Error::Task(format!(
+            "{operation} failed: {operation_error}; the board was restored to its pre-operation state; retry the command"
+        ))),
+        Err(recovery_error) => {
+            let snapshot = recovery.preserve_snapshot();
+            Err(Error::Task(format!(
+                "{operation} failed: {operation_error}; automatic recovery also failed: {recovery_error}; stop other writers, inspect {board_dir}, and restore the retained recovery snapshot at {} before retrying",
+                snapshot.display()
+            )))
+        }
+    }
 }
 
 #[cfg(test)]

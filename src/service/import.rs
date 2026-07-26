@@ -14,10 +14,12 @@
 //! configuration is switched only after the item and sprint writes succeed.
 
 use super::export::BoardSnapshot;
-use super::open_board_locked;
+use super::{open_board_locked, restore_board_after_failure};
 use crate::config::Config;
 use crate::error::{Error, Result};
-use crate::storage::{Backend, BacklogItemRepository, SprintRepository, atomic_write};
+use crate::storage::{
+    Backend, BacklogItemRepository, BoardRecoveryPoint, SprintRepository, atomic_write,
+};
 use std::path::Path;
 use tokio::fs;
 
@@ -80,39 +82,45 @@ pub async fn import_board(
     // the restored data (like `migrate`).
     let target = Backend::open_for_write(&board_dir, config.storage.backend).await?;
 
-    // Mirror the snapshot: drop the target's existing active PBIs and Sprints first so items absent
-    // from the snapshot do not survive the restore.
-    for item in BacklogItemRepository::list(&target).await? {
-        BacklogItemRepository::delete(&target, &item.id).await?;
-    }
-    for sprint in SprintRepository::list(&target).await? {
-        SprintRepository::delete(&target, &sprint.id).await?;
-    }
-
-    // Saving an item records its issued ID, so a later `add` never reuses a restored ID.
-    target.save_item_batch(&snapshot.items).await?;
-    for sprint in &snapshot.sprints {
-        SprintRepository::save(&target, sprint).await?;
+    let recovery = BoardRecoveryPoint::capture(&board_dir).await?;
+    if let Err(error) = target
+        .replace_board(&snapshot.items, &snapshot.sprints)
+        .await
+    {
+        return restore_board_after_failure(recovery, "forced board import", error).await;
     }
 
     // Switch the save destination only after the writes succeed, keeping the pre-import backend
     // usable if a write failed.
-    config.save(&config_path).await?;
+    if let Err(error) = config.save(&config_path).await {
+        return restore_board_after_failure(recovery, "forced board import", error).await;
+    }
 
     let dod_path = board_dir.join(DOD_FILE);
-    match &snapshot.dod {
+    let dod_result = match &snapshot.dod {
         Some(dod) => {
             let trimmed = dod.trim();
             if trimmed.is_empty() {
-                remove_if_present(&dod_path).await?;
+                remove_if_present(&dod_path).await
             } else {
-                atomic_write(&dod_path, &format!("{trimmed}\n")).await?;
+                atomic_write(&dod_path, &format!("{trimmed}\n")).await
             }
         }
-        None => remove_if_present(&dod_path).await?,
+        None => remove_if_present(&dod_path).await,
+    };
+    if let Err(error) = dod_result {
+        return restore_board_after_failure(recovery, "forced board import", error).await;
     }
 
-    target
+    // When the current backend is Git, it owns the shared board tree even if the snapshot switches
+    // the selected backend to file or SQLite. Commit through that prepared source repository in
+    // that case; otherwise the target owns the final commit boundary.
+    let commit_backend = if matches!(&repo, Backend::Git(_)) {
+        &repo
+    } else {
+        &target
+    };
+    commit_backend
         .commit(&format!(
             "pinto: import board ({} items, {} sprints)",
             snapshot.items.len(),

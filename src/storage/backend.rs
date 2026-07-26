@@ -36,19 +36,47 @@ impl Backend {
     pub(crate) async fn save_item_batch(&self, items: &[BacklogItem]) -> Result<()> {
         match self {
             Backend::File(repository) => repository.save_batch(items).await,
+            Backend::Git(repository) => repository.save_item_batch(items).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(repository) => repository.save_item_batch(items).await,
+        }
+    }
+
+    /// Replace all active PBIs and Sprints in one operation-specific persistence boundary.
+    pub(crate) async fn replace_board(
+        &self,
+        items: &[BacklogItem],
+        sprints: &[Sprint],
+    ) -> Result<()> {
+        match self {
+            Backend::File(repository) => {
+                for item in BacklogItemRepository::list(repository).await? {
+                    BacklogItemRepository::delete(repository, &item.id).await?;
+                }
+                for sprint in SprintRepository::list(repository).await? {
+                    SprintRepository::delete(repository, &sprint.id).await?;
+                }
+                repository.save_batch(items).await?;
+                for sprint in sprints {
+                    SprintRepository::save(repository, sprint).await?;
+                }
+                Ok(())
+            }
             Backend::Git(repository) => {
-                for item in items {
-                    BacklogItemRepository::save(repository, item).await?;
+                for item in BacklogItemRepository::list(repository).await? {
+                    BacklogItemRepository::delete(repository, &item.id).await?;
+                }
+                for sprint in SprintRepository::list(repository).await? {
+                    SprintRepository::delete(repository, &sprint.id).await?;
+                }
+                repository.save_item_batch(items).await?;
+                for sprint in sprints {
+                    SprintRepository::save(repository, sprint).await?;
                 }
                 Ok(())
             }
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => {
-                for item in items {
-                    BacklogItemRepository::save(repository, item).await?;
-                }
-                Ok(())
-            }
+            Backend::Sqlite(repository) => repository.replace_board(items, sprints).await,
         }
     }
 

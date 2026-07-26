@@ -221,6 +221,7 @@ impl FileRepository {
             let path = self.path_for(&item.id)?;
             let text = to_markdown(item)?;
             atomic_write(&path, &text).await?;
+            self.failure.after_record_write(&path)?;
         }
         Ok(())
     }

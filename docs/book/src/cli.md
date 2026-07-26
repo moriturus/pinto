@@ -97,6 +97,39 @@ Choose at most one body; the default copies the source body:
 The same operation is available inside the [Kanban board](kanban.md) with the
 `s` key.
 
+### Multi-record recovery
+
+`split` and `import --force` are single operation-level mutations. Pinto
+prepares the complete record set before writing it and keeps a pre-operation
+recovery point. If a record or metadata write fails, File, Git, and SQLite
+restore the board to the state that existed before the command and report that
+the operation can be retried.
+
+SQLite applies the PBI, relationship, and Sprint portion of each operation in
+one database transaction. The shared configuration, DoD, and issued-ID
+history are covered by the surrounding recovery protocol because they are
+stored outside the database.
+
+The Git backend has one additional boundary: if the final Git commit fails
+after the board files were written, Pinto leaves the complete change in the
+worktree so it is recoverable. Run `git status`, fix the reported hook or Git
+problem, then retry the command or commit the durable `.pinto` changes
+manually. Do not discard the worktree before inspecting it.
+
+If automatic restoration itself fails, the error retains the pre-operation
+snapshot in a temporary directory and prints its path. Stop other writers,
+preserve `.pinto/.lock`, restore the retained snapshot into `.pinto/`, inspect
+the board, and retry only after the board is coherent again.
+
+```bash
+# A record-write failure reports that the board was restored; retry the command.
+cargo run --manifest-path ../../../Cargo.toml -- split T-1 "Retry the slice"
+
+# After a Git commit failure, inspect and repair the durable board change.
+git status --short
+cargo run --manifest-path ../../../Cargo.toml -- import --force snapshot.json
+```
+
 ### Consistent board reads
 
 `list`, `show`, `board`, `next`, and the other ordinary read commands do not

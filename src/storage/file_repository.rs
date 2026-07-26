@@ -5,6 +5,7 @@ use crate::backlog::{BacklogItem, ItemId};
 use crate::error::Error;
 use crate::error::Result;
 use crate::sprint::{Sprint, SprintId};
+use crate::storage::WriteFailureInjector;
 use std::io;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -19,6 +20,7 @@ mod sprints;
 #[derive(Debug, Clone)]
 pub struct FileRepository {
     root: PathBuf,
+    failure: WriteFailureInjector,
 }
 
 type ItemRecord = (PathBuf, BacklogItem);
@@ -27,7 +29,10 @@ type SprintRecord = (PathBuf, Sprint);
 impl FileRepository {
     /// Build by specifying the board root (`.pinto/`). No file I/O is performed.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            failure: WriteFailureInjector::from_environment(),
+        }
     }
 
     /// Directory to place task files (`<root>/tasks`).

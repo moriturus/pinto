@@ -1299,3 +1299,51 @@ fn merge_runbook_documents_conflict_recovery() {
         "merge runbook does not reference the merge-conflict demo"
     );
 }
+
+#[test]
+fn multi_record_recovery_guidance_has_cli_and_demo_contracts() {
+    let readme = repository_file("demos/single/multi-record-recovery/README.md");
+    for marker in [
+        "split",
+        "import --force",
+        "pre-operation state",
+        "git status --short",
+        "status 2",
+    ] {
+        assert!(readme.contains(marker), "recovery demo omits {marker}");
+    }
+
+    let stability = repository_file("docs/stability.md");
+    for marker in [
+        "## Multi-record mutations and recovery",
+        "One SQLite transaction",
+        "pre-operation `.pinto/` snapshot",
+        "retry the command",
+        "retains the pre-operation",
+    ] {
+        assert!(
+            stability.contains(marker),
+            "stability guidance omits {marker}"
+        );
+    }
+
+    let cli = repository_file("docs/book/src/cli.md");
+    assert!(
+        cli.contains("### Multi-record recovery"),
+        "CLI book omits multi-record recovery guidance"
+    );
+    assert!(
+        cli.contains("git status"),
+        "CLI book omits Git recovery command"
+    );
+    assert!(
+        cli.contains("automatic restoration itself fails"),
+        "CLI book omits manual recovery guidance"
+    );
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let board = root.join("demos/single/multi-record-recovery/.pinto");
+    assert!(board.join("config.toml").is_file());
+    assert!(board.join("tasks/T-1.md").is_file());
+    assert!(board.join("tasks/T-2.md").is_file());
+}

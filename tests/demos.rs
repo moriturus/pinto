@@ -22,6 +22,7 @@ const INTENTIONAL_ERROR_DEMOS: &[&str] = &[
     "single/sprint-assignment-validation",
     "single/sprint-bulk-assignment",
     "single/sprint-closed-assignment",
+    "single/multi-record-recovery",
 ];
 
 const DOCUMENTATION_DEMO_FLOW: &[&[&str]] = &[
