@@ -68,6 +68,14 @@ pub struct DoctorReport {
 }
 
 /// Inspect a board and optionally apply safe, mechanical repairs.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::NotInitialized`], persistence, parsing, or backend errors while
+/// inspecting the board. With `fix = false` no durable changes are made and retrying after a
+/// transient read failure is safe. With `fix = true`, earlier conservative repairs may remain
+/// durable if a later repair or commit fails; inspect the report and rerun after correcting the
+/// cause rather than assuming a complete repair.
 pub async fn doctor(project_dir: &Path, fix: bool) -> Result<DoctorReport> {
     if fix {
         let (board_dir, backend, config, _lock) = super::open_board_locked(project_dir).await?;

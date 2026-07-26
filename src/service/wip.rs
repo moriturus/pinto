@@ -52,6 +52,12 @@ pub fn wip_violations(config: &WipConfig, items: &[BacklogItem]) -> Vec<WipViola
 ///
 /// Read `[wip]` configuration and all PBIs, then delegate to [`wip_violations`]. Return
 /// [`crate::error::Error::NotInitialized`] for an uninitialized board.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::NotInitialized`] or persistence and configuration parsing errors
+/// while reading the board. The check is read-only, leaves no durable partial changes, and is safe
+/// to retry after a transient read failure.
 pub async fn check_wip(project_dir: &Path) -> Result<Vec<WipViolation>> {
     let (_board_dir, repo, config) = open_board(project_dir).await?;
     let items = crate::storage::BacklogItemRepository::list(&repo).await?;

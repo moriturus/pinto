@@ -7,6 +7,8 @@
 //! Frontmatter is TOML between `+++` delimiters and uses the same serialization format as
 //! `config.toml`, keeping the data human-editable.
 
+#![warn(clippy::missing_errors_doc)]
+
 mod atomic;
 mod backend;
 mod failure;

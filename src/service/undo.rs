@@ -20,6 +20,14 @@ pub struct UndoOutcome {
 /// The operation runs under the board write lock, serializing it against other writers just like an
 /// ordinary mutation. On the Git backend it creates a revert commit and returns the reverted
 /// subject; on backends without history it returns [`crate::error::Error::UndoUnsupported`].
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::NotInitialized`], lock, Git, or persistence errors, and
+/// [`crate::error::Error::UndoUnsupported`] / [`crate::error::Error::UndoUnavailable`] when the
+/// selected backend has no usable pinto history. A Git revert commit is durable once created; a
+/// failure before that leaves the board unchanged, while a failure during the revert requires
+/// inspecting Git history before retrying.
 pub async fn undo_last_mutation(project_dir: &Path) -> Result<UndoOutcome> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let reverted = repo.undo().await?;

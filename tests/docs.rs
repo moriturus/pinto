@@ -1389,3 +1389,111 @@ fn multi_record_recovery_guidance_has_cli_and_demo_contracts() {
     assert!(board.join("tasks/T-1.md").is_file());
     assert!(board.join("tasks/T-2.md").is_file());
 }
+
+fn docs_before_declaration(source: &str, declaration: &str) -> String {
+    let declaration_start = source
+        .find(declaration)
+        .unwrap_or_else(|| panic!("source does not contain {declaration}"));
+    let lines: Vec<&str> = source[..declaration_start].lines().collect();
+    let mut start = lines.len();
+    while start > 0 {
+        let line = lines[start - 1].trim_start();
+        if line.starts_with("///") || line.is_empty() {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+    lines[start..].join("\n")
+}
+
+#[test]
+fn selected_public_result_apis_have_error_contract_guards() {
+    for path in ["src/service.rs", "src/storage.rs"] {
+        let source = repository_file(path);
+        assert!(
+            source.contains("#![warn(clippy::missing_errors_doc)]"),
+            "{path} must stage the missing_errors_doc guard"
+        );
+    }
+
+    for (path, declaration) in [
+        ("src/service/item/crud.rs", "pub async fn add_item("),
+        ("src/service/item/crud.rs", "pub async fn list_items("),
+        ("src/service/item/crud.rs", "pub async fn remove_item("),
+        ("src/service/import.rs", "pub async fn import_board("),
+        (
+            "src/service/sprint/lifecycle.rs",
+            "pub async fn close_sprint(",
+        ),
+        (
+            "src/service/sprint/lifecycle.rs",
+            "pub async fn assign_sprint_by_status(",
+        ),
+        ("src/storage/backend.rs", "pub async fn open("),
+        (
+            "src/storage/repository.rs",
+            "fn save(&self, item: &BacklogItem)",
+        ),
+        ("src/storage/repository.rs", "fn load(&self, id: &ItemId)"),
+        (
+            "src/storage/repository.rs",
+            "fn list(&self) -> impl Future<Output = Result<Vec<BacklogItem>>>",
+        ),
+        ("src/storage/repository.rs", "fn list_archived(&self)"),
+        (
+            "src/storage/repository.rs",
+            "fn load_archived(&self, id: &ItemId)",
+        ),
+        ("src/storage/repository.rs", "fn delete(&self, id: &ItemId)"),
+        (
+            "src/storage/repository.rs",
+            "fn archive(&self, id: &ItemId)",
+        ),
+        (
+            "src/storage/repository.rs",
+            "fn restore(&self, id: &ItemId)",
+        ),
+        (
+            "src/storage/repository.rs",
+            "fn next_id(&self, prefix: &str)",
+        ),
+        (
+            "src/storage/repository.rs",
+            "fn save(&self, sprint: &Sprint)",
+        ),
+        ("src/storage/repository.rs", "fn load(&self, id: &SprintId)"),
+        (
+            "src/storage/repository.rs",
+            "fn list(&self) -> impl Future<Output = Result<Vec<Sprint>>>",
+        ),
+        (
+            "src/storage/repository.rs",
+            "fn delete(&self, id: &SprintId)",
+        ),
+    ] {
+        let docs = docs_before_declaration(&repository_file(path), declaration);
+        assert!(
+            docs.contains("# Errors"),
+            "{path}::{declaration} must document its error contract"
+        );
+    }
+
+    for (path, declaration) in [
+        ("src/service/import.rs", "pub async fn import_board("),
+        (
+            "src/service/sprint/lifecycle.rs",
+            "pub async fn close_sprint(",
+        ),
+        (
+            "src/service/sprint/lifecycle.rs",
+            "pub async fn assign_sprint_by_status(",
+        ),
+    ] {
+        let docs = docs_before_declaration(&repository_file(path), declaration).to_lowercase();
+        assert!(
+            docs.contains("partial") && docs.contains("retry"),
+            "{path}::{declaration} must state partial-change and retry behavior"
+        );
+    }
+}

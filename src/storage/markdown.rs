@@ -162,6 +162,13 @@ pub(crate) fn from_markdown(text: &str, path: &Path) -> Result<BacklogItem> {
 /// assert_eq!(item.id.to_string(), "T-1");
 /// assert_eq!(item.body, "body");
 /// ```
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::Parse`] for invalid TOML frontmatter, invalid domain values, or
+/// malformed body data, and [`crate::error::Error::MissingFrontmatter`] when the `+++` delimiters
+/// are absent. Parsing performs no I/O or durable mutation, so retrying after correcting `text` is
+/// safe.
 pub fn parse_item_markdown(text: &str, path: &Path) -> Result<BacklogItem> {
     from_markdown(text, path)
 }

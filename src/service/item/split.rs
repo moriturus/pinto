@@ -67,6 +67,16 @@ pub struct SplitOutcome {
 ///
 /// Return [`Error::NotInitialized`] for an uninitialized board, [`Error::NotFound`] when `source`
 /// is absent, or [`Error::EmptyTitle`] when `spec.titles` is empty or contains a blank title.
+///
+/// # Errors
+///
+/// Returns [`Error::EmptyTitle`], [`Error::NotInitialized`], [`Error::NotFound`], ID/rank or
+/// configuration validation errors, persistence errors, and Git commit errors. Title and source
+/// validation occurs before the first write. A failed batch write invokes board recovery; if
+/// recovery itself fails, durable partial records may remain. After inspecting the board, retrying
+/// is safe only when board recovery has completed; if recovery or the final commit fails, the
+/// operation is not idempotent and a blind retry could create another set of PBIs. Inspect the
+/// board and either resume from the persisted state or repair it before retrying.
 pub async fn split_item(
     project_dir: &Path,
     source: &ItemId,

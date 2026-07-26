@@ -81,6 +81,13 @@ pub struct Board {
 ///   names return [`Error::UnknownStatus`]. Orphaned PBIs are omitted when a subset is requested.
 ///
 /// [`Error::NotInitialized`] if the board is uninitialized.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`] when the board is missing, [`Error::UnknownStatus`] when a
+/// requested column is not configured, and persistence or configuration parsing errors when the
+/// board cannot be read. This is read-only, so it leaves no durable partial changes; retrying after
+/// a transient I/O or lock-free read failure is safe.
 pub async fn board(project_dir: &Path, query: &BoardQuery) -> Result<Board> {
     let (_board_dir, repo, config) = open_board(project_dir).await?;
     let mut items = repo.list().await?; // Already in canonical rank order.

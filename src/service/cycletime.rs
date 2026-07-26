@@ -64,6 +64,12 @@ pub struct CycleTimeReport {
 ///
 /// Return [`crate::error::Error::NotInitialized`] for an uninitialized board. Reading and pure
 /// aggregation are kept separate in `compute_report`.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::NotInitialized`] or the persistence and parsing errors produced
+/// while loading the board and its items. This operation is read-only, so it leaves no durable
+/// partial changes and retrying after a transient read failure is safe.
 pub async fn cycle_time(project_dir: &Path, filter: &CycleTimeFilter) -> Result<CycleTimeReport> {
     let (_board_dir, repo, _config) = open_board(project_dir).await?;
     let items = BacklogItemRepository::list(&repo).await?;

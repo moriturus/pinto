@@ -18,6 +18,13 @@ use std::path::Path;
 /// [`Error::InvalidSprintPeriod`] when the start is after the end, [`Error::SprintExists`] when
 /// the ID is already used, [`Error::NotInitialized`] for an uninitialized board, or
 /// [`Error::EmptySprintTitle`] for an empty title.
+///
+/// # Errors
+///
+/// Returns the validation errors listed above, plus sprint persistence and Git commit errors. All
+/// validation and the existing-ID check happen before saving. If saving succeeds but committing
+/// fails, the new sprint may remain durable; inspect the board before retrying because the next
+/// attempt will report [`Error::SprintExists`].
 pub async fn create_sprint(
     project_dir: &Path,
     id: &SprintId,
@@ -62,6 +69,12 @@ pub async fn create_sprint(
 /// Fields set to `None` remain unchanged. Return [`Error::NothingToUpdate`] when no field is
 /// supplied, [`Error::EmptySprintTitle`] for a blank title, [`Error::InvalidSprintPeriod`] for an
 /// inverted period, or [`Error::SprintNotFound`] when the sprint does not exist.
+///
+/// # Errors
+///
+/// Returns the validation errors listed above, plus persistence and Git commit errors. Validation
+/// happens before saving. A save followed by a commit failure may leave the updated sprint
+/// durable; inspect it before retrying because the timestamp may already have changed.
 pub async fn edit_sprint(
     project_dir: &Path,
     id: &SprintId,
@@ -81,6 +94,13 @@ pub async fn edit_sprint(
 ///
 /// The PBIs remain in the backlog. All reads and writes happen while the board lock is held, and
 /// Git-backed boards commit the sprint deletion and assignment changes as one service operation.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`], persistence errors, or a Git
+/// commit error. Assignment clears and sprint deletion are performed as several durable writes;
+/// a failure can leave a partially cleared board. Retrying is not blindly safe after the sprint
+/// itself has been deleted, so inspect the sprint and assigned PBIs first.
 pub async fn delete_sprint(project_dir: &Path, id: &SprintId) -> Result<()> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     SprintRepository::load(&repo, id).await?;
@@ -107,6 +127,13 @@ pub async fn delete_sprint(project_dir: &Path, id: &SprintId) -> Result<()> {
 /// Return [`Error::NotInitialized`] when the board is uninitialized or
 /// [`Error::SprintNotFound`] when no sprint with `id` exists. Starting from anything other than
 /// `planned` returns [`Error::InvalidSprintTransition`].
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`],
+/// [`Error::InvalidSprintTransition`], persistence errors, or a Git commit error. Domain
+/// validation happens before saving. A save followed by a commit failure may leave the state
+/// transition durable; inspect the sprint before retrying.
 pub async fn start_sprint(project_dir: &Path, id: &SprintId) -> Result<Sprint> {
     transition_sprint(project_dir, id, Sprint::start).await
 }
@@ -117,6 +144,14 @@ pub async fn start_sprint(project_dir: &Path, id: &SprintId) -> Result<Sprint> {
 /// released; completed PBIs remain byte-for-byte equivalent at the domain level. The sprint stores
 /// the actual close time and a snapshot of unfinished estimated points and item counts for
 /// retrospective display, separate from velocity.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`], invalid transition or rollover
+/// validation errors, persistence errors, or a Git commit error. Item writes are rolled back when
+/// possible if a later write fails, but a rollback failure or a later commit failure can leave
+/// durable partial changes. Inspect the sprint and affected PBIs before retrying; a closed sprint
+/// cannot be closed again.
 pub async fn close_sprint(
     project_dir: &Path,
     id: &SprintId,
@@ -250,6 +285,13 @@ pub(crate) async fn validate_sprint_assignment(repo: &Backend, raw: &str) -> Res
 /// Return [`Error::NotInitialized`] when the board is uninitialized, [`Error::SprintNotFound`]
 /// when the sprint does not exist, [`Error::SprintClosed`] when it is closed, or
 /// [`Error::NotFound`] when the PBI does not exist.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`], [`Error::SprintClosed`],
+/// [`Error::NotFound`], persistence errors, or a Git commit error. The typed sprint ID and item are
+/// validated before saving. A later commit failure may leave the assignment durable; retrying the
+/// same assignment is safe after inspection because it sets the same sprint.
 pub async fn assign_sprint(
     project_dir: &Path,
     sprint_id: &SprintId,
@@ -259,6 +301,13 @@ pub async fn assign_sprint(
 }
 
 /// Assign a PBI from a raw CLI sprint ID, validating its grammar and existence before saving.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::InvalidSprintId`], [`Error::SprintNotFound`],
+/// [`Error::SprintClosed`], [`Error::NotFound`], persistence errors, or a Git commit error. Raw ID
+/// and record validation happen before saving. If a commit fails after saving, the assignment may
+/// remain durable; inspect the item before retrying.
 pub async fn assign_sprint_raw(
     project_dir: &Path,
     raw_sprint_id: &str,
@@ -281,6 +330,14 @@ pub async fn assign_sprint_raw(
 /// to the target sprint are skipped without consuming the limit. An item assigned to another
 /// sprint causes the operation to fail before any item is saved, so validation errors do not leave
 /// a partially assigned set.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::UnknownStatus`], invalid-limit or sprint validation
+/// errors, persistence errors, or a Git commit error. Selection and assignment conflicts are
+/// checked before the first save. A failed write or commit is rolled back when possible; if
+/// rollback fails, partial assignments may remain. After inspecting the board, retrying is safe
+/// because the operation skips already-assigned target members and revalidates conflicts.
 pub async fn assign_sprint_by_status(
     project_dir: &Path,
     sprint_id: &SprintId,
@@ -370,6 +427,13 @@ async fn rollback_bulk_assignment(
 /// Return [`Error::NotInSprint`] when the item is assigned to another sprint or none. Return
 /// [`Error::NotInitialized`] for an uninitialized board or [`Error::NotFound`] when the item does
 /// not exist.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], [`Error::NotInSprint`], persistence
+/// errors, or a Git commit error. The assignment is checked before saving. A commit failure may
+/// leave the unassignment durable; inspect the item before retrying because a second attempt then
+/// returns [`Error::NotInSprint`].
 pub async fn unassign_sprint(
     project_dir: &Path,
     sprint_id: &SprintId,

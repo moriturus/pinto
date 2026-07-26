@@ -52,6 +52,14 @@ pub enum ImportOutcome {
 /// active PBIs or Sprints and `force` is false, return [`ImportOutcome::Refused`] without changing
 /// anything. Otherwise mirror the snapshot: remove existing active PBIs and Sprints, write the
 /// snapshot's items and Sprints, overwrite `config.toml`, and set or clear the common DoD.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], snapshot configuration validation or parsing errors, and
+/// backend, file, or Git commit errors. Validation and the refusal path make no durable changes.
+/// A forced replacement restores the pre-operation board when a write fails; if restoration or a
+/// later commit fails, durable partial changes may remain. After inspecting the board and fixing
+/// the cause, retrying is safe because the replacement operation mirrors the snapshot.
 pub async fn import_board(
     project_dir: &Path,
     snapshot: BoardSnapshot,

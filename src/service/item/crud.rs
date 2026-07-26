@@ -44,11 +44,26 @@ pub struct AddItemOutcome {
 /// Prefix the ID with `config.project.key` and use the first workflow column as its status
 /// (normally `todo`). Assign the rank after the current backlog. Return [`Error::NotInitialized`]
 /// for an uninitialized board or [`Error::EmptyTitle`] when `title` is blank.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::EmptyTitle`], invalid parent/dependency or sprint
+/// validation errors, and persistence or Git commit errors. Validation occurs before the new item
+/// is saved. If saving succeeds but committing fails, the item can remain durable; retrying this
+/// convenience operation is not automatically safe because it may allocate another ID, so inspect
+/// the board before retrying.
 pub async fn add_item(project_dir: &Path, title: &str, new: NewItem) -> Result<BacklogItem> {
     Ok(add_item_with_outcome(project_dir, title, new).await?.item)
 }
 
 /// Add a PBI and report warning-only dependency cycles.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::EmptyTitle`], [`Error::UnknownStatus`], missing or
+/// invalid sprint/parent/dependency errors, and persistence or Git commit errors. All validation
+/// precedes the save. A save followed by a commit failure may leave the newly allocated item
+/// durable; inspect it before retrying because a retry is not guaranteed to reuse its ID.
 pub async fn add_item_with_outcome(
     project_dir: &Path,
     title: &str,
@@ -193,6 +208,13 @@ impl ListFilter {
 /// Apply only the conditions specified by `filter`. Return [`Error::NotInitialized`] for an
 /// uninitialized board. When `filter.roots_only` is set, items with a persisted parent link remain
 /// excluded even if that parent is outside the filtered result.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::UnknownStatus`], and persistence, parsing, or
+/// configuration errors while loading the selected active or archived records. This operation is
+/// read-only, leaves no durable partial changes, and is safe to retry after a transient read
+/// failure.
 pub async fn list_items(project_dir: &Path, filter: &ListFilter) -> Result<Vec<BacklogItem>> {
     let (_board_dir, repo, config) = open_board(project_dir).await?;
     for status in &filter.status {
@@ -228,11 +250,23 @@ pub async fn list_items(project_dir: &Path, filter: &ListFilter) -> Result<Vec<B
 ///
 /// Return [`Error::NotInitialized`] for an uninitialized board or [`Error::NotFound`] when the ID
 /// does not exist.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], and persistence, parsing, or
+/// configuration errors while reading the item. This operation is read-only and leaves no durable
+/// partial changes, so retrying after a transient read failure is safe.
 pub async fn show_item(project_dir: &Path, id: &ItemId) -> Result<BacklogItem> {
     show_item_from_store(project_dir, id, false).await
 }
 
 /// Load archived PBI `id` from the board in `project_dir`.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], and persistence or parsing errors while
+/// reading the archive. This operation is read-only and leaves no durable partial changes, so
+/// retrying after a transient read failure is safe.
 pub async fn show_archived_item(project_dir: &Path, id: &ItemId) -> Result<BacklogItem> {
     show_item_from_store(project_dir, id, true).await
 }
@@ -264,6 +298,13 @@ async fn show_item_from_store(
 /// Only statuses configured in `config.toml` are valid. Reject an unknown status with
 /// [`Error::UnknownStatus`] without changing the item. Return [`Error::NotInitialized`] for an
 /// uninitialized board or [`Error::NotFound`] when the ID does not exist.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], [`Error::UnknownStatus`], transition
+/// validation errors, and persistence or Git commit errors. Validation happens before saving. A
+/// save followed by a commit failure may leave the transition durable; inspect the item before
+/// retrying because the same transition is not guaranteed to be a no-op.
 pub async fn move_item(project_dir: &Path, id: &ItemId, to: &str) -> Result<BacklogItem> {
     Ok(move_item_with_outcome(project_dir, id, to).await?.item)
 }
@@ -283,6 +324,13 @@ pub struct MoveOutcome {
 ///
 /// The transition is persisted before the outcome is returned. Acceptance Criteria are computed
 /// from the existing body and are never written back to the item.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], [`Error::UnknownStatus`], transition or
+/// rank-validation errors, and persistence or Git commit errors. Validation occurs before the
+/// save. If the save succeeds but the commit fails, the new status or rank may remain durable; do
+/// not blindly retry without inspecting the item.
 pub async fn move_item_with_outcome(
     project_dir: &Path,
     id: &ItemId,
@@ -365,6 +413,14 @@ fn referencing_items(items: &[BacklogItem], target: &ItemId) -> String {
 /// A non-destructive operation that moves the archive to `.pinto/archive/<id>.md` (it can be tracked with Git and can be restored from the backup location).
 /// `permanent` is a hard delete that cannot be undone and requires an explicit flag (`--force`) in the CLI.
 /// [`Error::NotInitialized`] if the board is uninitialized, [`Error::NotFound`] if the corresponding ID does not exist.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], [`Error::ReferencedItem`] for a
+/// permanent delete with active references, and persistence or Git commit errors. Validation of
+/// references happens before deletion. Archive/delete can succeed before a later commit failure,
+/// leaving the durable change in place; a retry is therefore not automatically safe, especially for
+/// permanent deletion, so inspect or restore the board before retrying.
 pub async fn remove_item(
     project_dir: &Path,
     id: &ItemId,
@@ -393,6 +449,12 @@ pub async fn remove_item(
 }
 
 /// Restore archived PBI `id` to the active backlog and return the unchanged item.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], archive/active collision validation
+/// errors, and persistence or Git commit errors. The archive move can remain durable if a later
+/// commit fails, so retrying is not blindly safe; inspect the active and archive stores first.
 pub async fn restore_item(project_dir: &Path, id: &ItemId) -> Result<BacklogItem> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     repo.restore(id).await?;

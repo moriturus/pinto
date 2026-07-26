@@ -46,6 +46,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`undo`](single/undo) — revert the most recent completed board mutation on the Git backend
   - [`migration-race`](single/migration-race) — backend migration lock ordering and writer visibility
   - [`quality-validation`](single/quality-validation) — Markdown parser, public API, and Kanban smoke-test data
+  - [`rust-api-errors`](single/rust-api-errors) — Rustdoc error contracts, recovery semantics, and the staged missing-errors guard
   - [`toolchain-reproducibility`](single/toolchain-reproducibility) — pinned toolchain, locked installs, and release package checks
   - [`package-allowlist`](single/package-allowlist) — allowlisted crate contents and packaged-crate verification
   - [`lightweight-defaults`](single/lightweight-defaults) — plain-text defaults and opt-in SQLite migration

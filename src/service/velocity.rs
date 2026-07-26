@@ -46,6 +46,12 @@ pub struct VelocityReport {
 /// velocity. Return unestimated, incomplete, and close-time spillover counts separately. Compare
 /// the latest sprint with the average of the preceding selected sprints; return no percentage when
 /// the baseline is zero or unavailable.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::NotInitialized`] or persistence and parsing errors while loading
+/// sprints and PBIs. This operation only reads and aggregates data, so no durable partial changes
+/// remain and retrying after a transient read failure is safe.
 pub async fn velocity(project_dir: &Path, recent: usize) -> Result<VelocityReport> {
     let (_board_dir, repo, _config) = open_board(project_dir).await?;
     let (sprints, items) = tokio::try_join!(

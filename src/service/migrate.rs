@@ -46,6 +46,15 @@ pub enum MigrateOutcome {
 ///
 /// Return [`Error::NotInitialized`] when `.pinto/config.toml` does not exist. If `target` is
 /// already active, return [`MigrateOutcome::AlreadyUsing`] without changing anything.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], configuration parsing/validation errors, or source,
+/// destination, and Git persistence errors. A failed migration can leave a partially mirrored
+/// destination, but it does not switch the configuration until destination writes succeed; after
+/// correcting the cause, retrying is safe because migration replaces the destination with a fresh
+/// mirror. A failure after the configuration switch may leave durable data for inspection, so check
+/// the selected backend before retrying.
 pub async fn migrate_storage(project_dir: &Path, target: StorageBackend) -> Result<MigrateOutcome> {
     let board_dir = project_dir.join(".pinto");
     let config_path = board_dir.join("config.toml");

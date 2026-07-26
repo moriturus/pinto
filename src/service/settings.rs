@@ -28,6 +28,12 @@ pub struct TuiSettings {
 
 /// Read TUI settings from the board. Return [`crate::error::Error::NotInitialized`] when it is
 /// uninitialized.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::NotInitialized`] or configuration and user-configuration I/O or
+/// parse errors. Reading settings does not change durable state, so retrying after a transient
+/// failure is safe.
 pub async fn tui_settings(project_dir: &Path) -> Result<TuiSettings> {
     let (_board_dir, _repo, config) = open_board(project_dir).await?;
     Ok(TuiSettings {
@@ -51,6 +57,11 @@ pub struct DisplaySettings {
 
 /// Read display settings from the board. Return [`crate::error::Error::NotInitialized`] when it is
 /// uninitialized.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::NotInitialized`] or configuration I/O and parse errors. This is
+/// read-only, leaves no durable partial changes, and is safe to retry after a transient failure.
 pub async fn display_settings(project_dir: &Path) -> Result<DisplaySettings> {
     let (_board_dir, _repo, config) = open_board(project_dir).await?;
     Ok(DisplaySettings {

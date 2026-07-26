@@ -18,6 +18,13 @@ pub enum InitOutcome {
 ///
 /// If `config.toml` already exists, leave the board unchanged and return
 /// [`InitOutcome::AlreadyInitialized`].
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] when the board directory or configuration cannot be created or written.
+/// A failure after directory creation may leave an empty `.pinto/`/`tasks/` directory, but no
+/// usable configuration; retrying is safe because an absent configuration continues initialization
+/// and an existing configuration is preserved.
 pub async fn init_board(project_dir: &Path) -> Result<InitOutcome> {
     let board_dir = project_dir.join(".pinto");
     let config_path = board_dir.join("config.toml");

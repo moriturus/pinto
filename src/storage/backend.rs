@@ -84,6 +84,12 @@ impl Backend {
     ///
     /// No I/O is performed during construction; Git repository preparation is delayed until the
     /// first commit.
+    ///
+    /// # Errors
+    ///
+    /// This constructor currently performs no I/O and returns an error only if a future backend
+    /// implementation adds fallible construction. It makes no durable changes, so retrying is
+    /// safe.
     pub async fn open(root: impl Into<PathBuf>, backend: StorageBackend) -> Result<Self> {
         let root = root.into();
         match backend {

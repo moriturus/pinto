@@ -16,6 +16,12 @@ pub struct NextFilter {
 }
 
 /// Return the highest-ranked PBIs that are ready to start without modifying the board.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`] when the board is missing, [`Error::Parse`] when its workflow
+/// has no columns, or persistence and configuration errors while reading the snapshot. No durable
+/// changes are made, so retrying after a transient read failure is safe.
 pub async fn next_items(project_dir: &Path, filter: &NextFilter) -> Result<Vec<BacklogItem>> {
     let (board_dir, repo, config) = super::open_board(project_dir).await?;
     let config_path = board_dir.join("config.toml");

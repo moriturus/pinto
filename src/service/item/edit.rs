@@ -52,6 +52,13 @@ impl ItemEdit {
 /// [`Error::EmptyTitle`] for a blank title, [`Error::ParentCycle`] for a cyclic parent, and
 /// [`Error::NotFound`] when the item or proposed parent does not exist. Return
 /// [`Error::NotInitialized`] for an uninitialized board.
+///
+/// # Errors
+///
+/// Returns the validation errors listed above, plus sprint validation, persistence, and Git commit
+/// errors. All field and graph validation runs before saving, so validation failures leave the item
+/// unchanged. A save followed by a commit failure may leave the edit durable; inspect the item
+/// before retrying because retrying can refresh its timestamp.
 pub async fn edit_item(project_dir: &Path, id: &ItemId, edit: ItemEdit) -> Result<BacklogItem> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
 
@@ -110,6 +117,12 @@ pub async fn edit_item(project_dir: &Path, id: &ItemId, edit: ItemEdit) -> Resul
 /// Use the normal `+++` frontmatter format and insert TOML-comment guidance for editable fields.
 /// This read-only operation does not acquire the board lock. Return [`Error::NotInitialized`] for
 /// an uninitialized board or [`Error::NotFound`] when `id` does not exist.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], and persistence, parsing, or formatting
+/// errors while loading and serializing the item. This operation is read-only and leaves no
+/// durable partial changes, so retrying after a transient read failure is safe.
 pub async fn item_edit_template(project_dir: &Path, id: &ItemId) -> Result<String> {
     let (_board_dir, repo, _config) = open_board(project_dir).await?;
     let item = repo.load(id).await?;
@@ -153,6 +166,13 @@ pub enum EditOutcome {
 /// and empty titles return [`Error::EditorInvalid`]; a missing parent returns [`Error::NotFound`];
 /// a cyclic parent returns [`Error::ParentCycle`]. If no editable field changes, return
 /// [`EditOutcome::Unchanged`] without updating the timestamp.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], [`Error::EditorInvalid`], sprint or
+/// parent validation errors, persistence errors, and Git commit errors. Parsing and validation are
+/// completed before saving, so invalid input leaves the item unchanged. A save followed by a
+/// commit failure may leave the edited item durable; inspect it before retrying.
 pub async fn apply_item_edit(project_dir: &Path, id: &ItemId, edited: &str) -> Result<EditOutcome> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let stored = repo.load(id).await?;

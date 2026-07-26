@@ -119,6 +119,12 @@ pub struct SearchFilter {
 
 impl SearchFilter {
     /// Create a search filter. `regex = false` performs literal substring matching.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidSearchPattern`] when `regex` is true and `pattern` is not a valid
+    /// regular expression. Construction performs no I/O or durable mutation, so retrying after
+    /// correcting the pattern is safe.
     pub fn new(pattern: impl Into<String>, regex: bool) -> Result<Self> {
         let pattern = pattern.into();
         let mode = if regex {

@@ -12,6 +12,12 @@ use std::path::Path;
 const VELOCITY_WARNING_RECENT: usize = 5;
 
 /// Calculate the current load warnings for a Sprint without changing board data.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`], and persistence or parsing errors
+/// while loading the sprint and assigned PBIs. This operation is read-only, leaves no durable
+/// partial changes, and is safe to retry after a transient read failure.
 pub async fn sprint_load_warnings(
     project_dir: &Path,
     id: &SprintId,
@@ -88,12 +94,24 @@ fn historical_velocity_threshold(
 /// Return sprints from `project_dir` in ascending creation-time order.
 ///
 /// [`Error::NotInitialized`] if the board is uninitialized.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`] and persistence or parsing errors while loading sprint
+/// records. This operation is read-only and safe to retry after a transient read failure.
 pub async fn list_sprints(project_dir: &Path) -> Result<Vec<Sprint>> {
     let (_board_dir, repo, _config) = open_board(project_dir).await?;
     SprintRepository::list(&repo).await
 }
 
 /// Update sprint capacity settings and return the calculated capacity.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`], invalid capacity or period
+/// validation errors, persistence errors, or a Git commit error. Validation occurs before saving.
+/// If the save succeeds but the commit fails, the settings may remain durable; inspect the sprint
+/// before retrying, although applying the same capacity values is otherwise safe.
 pub async fn set_sprint_capacity(
     project_dir: &Path,
     id: &SprintId,
@@ -114,6 +132,12 @@ pub async fn set_sprint_capacity(
 }
 
 /// Return the configured capacity for a sprint.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`], [`Error::SprintCapacityUnset`],
+/// and persistence or parsing errors. This operation is read-only, leaves no durable partial
+/// changes, and is safe to retry after a transient read failure.
 pub async fn sprint_capacity(project_dir: &Path, id: &SprintId) -> Result<SprintCapacity> {
     let (_board_dir, repo, _config) = open_board(project_dir).await?;
     let sprint = SprintRepository::load(&repo, id).await?;

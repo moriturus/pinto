@@ -2,6 +2,8 @@
 //!
 //! High-level operations called from CLI/TUI. Combine the domain layer and persistence layer.
 
+#![warn(clippy::missing_errors_doc)]
+
 mod board;
 mod burndown;
 mod commits;
@@ -101,6 +103,13 @@ impl LabelMatch {
 /// The returned guard releases `.pinto/.lock` when dropped. Read-only commands normally do not
 /// need this helper; snapshot-style workflows use it to keep their copy operation coherent with
 /// ordinary writers.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`] when the board is missing, [`Error::Io`] when the lock path
+/// cannot be inspected or opened, or [`Error::Locked`] when another writer holds the lock beyond
+/// the configured wait. Acquiring a lock performs no durable mutation; retrying after the owner
+/// releases it is safe.
 pub async fn lock_board(project_dir: &Path) -> Result<BoardLock> {
     let (board_dir, _) = initialized_board_paths(project_dir).await?;
     BoardLock::acquire(&board_dir).await

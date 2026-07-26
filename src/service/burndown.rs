@@ -71,6 +71,13 @@ pub struct Burndown {
 ///
 /// Return [`Error::NotInitialized`] for an uninitialized board or [`Error::SprintNotFound`] when
 /// the sprint does not exist.
+///
+/// # Errors
+///
+/// Returns the missing-period, invalid-period, and empty-sprint guidance errors described above,
+/// together with [`Error::NotInitialized`], [`Error::SprintNotFound`], or persistence errors while
+/// reading the sprint and PBIs. The aggregation is read-only and leaves no durable partial change;
+/// retrying after a transient read failure is safe.
 pub async fn burndown(project_dir: &Path, sprint_id: &SprintId) -> Result<Burndown> {
     let (_board_dir, repo, _config) = open_board(project_dir).await?;
     let sprint = SprintRepository::load(&repo, sprint_id).await?;

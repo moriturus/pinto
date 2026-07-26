@@ -31,6 +31,13 @@ pub struct BoardSnapshot {
 /// selection. The board write lock is acquired before configuration and storage are opened and is
 /// held until the complete snapshot has been assembled. This gives automation one consistent board
 /// view while ordinary read commands remain non-blocking.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], lock and persistence errors while reading PBIs, Sprints, or
+/// the common DoD, or [`Error::Parse`] if the effective configuration cannot be serialized. The
+/// snapshot is read-only and the lock guard prevents a concurrent writer from changing it; no
+/// durable partial changes remain and retrying after a transient read failure is safe.
 pub async fn export_snapshot(project_dir: &Path) -> Result<BoardSnapshot> {
     let _lock = lock_board(project_dir).await?;
     let (board_dir, repo, config) = open_board(project_dir).await?;

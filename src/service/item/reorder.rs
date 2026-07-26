@@ -45,6 +45,13 @@ pub enum ReorderTarget {
 ///   even if other same-status items exist in other groups.
 ///
 /// [`Error::NotInitialized`] if the board is uninitialized, [`Error::NotFound`] if `id` is absent.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], [`Error::SelfReference`],
+/// [`Error::NotSibling`], rank-validation errors, and persistence or Git commit errors. Reference
+/// validation occurs before saving. If the save succeeds but the commit fails, the new rank may
+/// remain durable; inspect the item before retrying because a second reorder can move it again.
 pub async fn reorder_item(
     project_dir: &Path,
     id: &ItemId,
@@ -327,6 +334,14 @@ pub struct RebalanceOutcome {
 ///
 /// Only PBIs whose rank changes receive a new `updated` timestamp and are
 /// saved. [`Error::NotInitialized`] if the board is uninitialized.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], persistence, parsing, or Git commit errors. A failed
+/// multi-record write can leave some ranks updated before the failure, and a later commit failure
+/// can leave all file changes durable. Once the board is inspected and the cause is fixed,
+/// retrying is safe because rebalancing is derived from the current ranks and converges to the
+/// canonical per-scope values; use `dry_run` to preview the repair first.
 pub async fn rebalance(project_dir: &Path, dry_run: bool) -> Result<RebalanceOutcome> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let mut items = repo.list().await?; // Ascending rank order.

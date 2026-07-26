@@ -35,6 +35,13 @@ pub struct LinkOutcome {
 /// Ignore blank or already-recorded SHAs, making the operation idempotent. Update and save the PBI
 /// only when at least one SHA is new. Return [`Error::NotInitialized`] for an uninitialized board
 /// or [`Error::NotFound`] when `id` does not exist. Git is not required because SHAs are plain text.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], persistence errors, or a Git commit
+/// error. Validation happens before the item is saved. If saving succeeds but the Git commit
+/// fails, the item change may remain durable; retrying the same call is idempotent for the SHAs,
+/// but inspect or recover the uncommitted change before retrying a failed commit.
 pub async fn link_commits(project_dir: &Path, id: &ItemId, shas: &[String]) -> Result<LinkOutcome> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let mut item = repo.load(id).await?;
@@ -56,6 +63,13 @@ pub async fn link_commits(project_dir: &Path, id: &ItemId, shas: &[String]) -> R
 ///
 /// Match each argument by prefix, so the shortened SHA shown by `show` can be used. Save only when
 /// something was removed. Return [`Error::NotInitialized`] or [`Error::NotFound`] as appropriate.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], persistence errors, or a Git commit
+/// error. A failed validation leaves the item unchanged. A save followed by a failed commit may
+/// leave the removal durable; retrying the same prefixes is safe because already-removed entries
+/// are ignored, but inspect the board before retrying a failed commit.
 pub async fn unlink_commits(
     project_dir: &Path,
     id: &ItemId,
@@ -104,6 +118,14 @@ pub struct SyncOutcome {
 /// `pinto:` and do not duplicate existing links.
 ///
 /// Return [`Error::Git`] when Git is unavailable or the project is not a repository.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], persistence errors while loading or saving items, or
+/// [`Error::Git`] when the history cannot be read or the final commit cannot be created. The
+/// operation saves changed items before its single commit, so a later failure can leave a partial
+/// set of links durable; retrying is safe for already-linked SHAs, but inspect the resulting board
+/// before retrying after a write or commit error.
 pub async fn sync_commits(project_dir: &Path, since: Option<&str>) -> Result<SyncOutcome> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let mut items = repo.list().await?;

@@ -16,6 +16,12 @@ const DOD_FILE: &str = "dod.md";
 ///
 /// Return the content trimmed of leading and trailing whitespace. Return [`Error::NotInitialized`]
 /// when the board is uninitialized.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`] or [`Error::Io`] when the board or DoD file cannot be read.
+/// This operation is read-only, leaves no durable partial changes, and is safe to retry after a
+/// transient read failure.
 pub async fn common_dod(project_dir: &Path) -> Result<Option<String>> {
     let (board_dir, _repo, _config) = open_board(project_dir).await?;
     read_common_dod(&board_dir).await
@@ -38,6 +44,12 @@ pub(crate) async fn read_common_dod(board_dir: &Path) -> Result<Option<String>> 
 ///
 /// Return [`Error::EmptyDod`] when `text` is blank or [`Error::NotInitialized`] when the board is
 /// uninitialized.
+///
+/// # Errors
+///
+/// Returns [`Error::EmptyDod`], [`Error::NotInitialized`], persistence errors, or a Git commit
+/// error. The atomic write may succeed before a later commit failure, so the new DoD can remain
+/// durable; retrying with the same text is safe after inspecting the board.
 pub async fn set_common_dod(project_dir: &Path, text: &str) -> Result<PathBuf> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -55,6 +67,12 @@ pub async fn set_common_dod(project_dir: &Path, text: &str) -> Result<PathBuf> {
 /// Delete a board's common DoD. `true` if it exists, `false` (idempotent) if it does not exist.
 ///
 /// [`Error::NotInitialized`] if the board is uninitialized.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::Io`], or a Git commit error. A successful file
+/// deletion followed by a commit failure may leave the deletion durable; retrying is safe because
+/// an already-absent DoD is treated as an idempotent no-op.
 pub async fn clear_common_dod(project_dir: &Path) -> Result<bool> {
     let (board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let path = board_dir.join(DOD_FILE);

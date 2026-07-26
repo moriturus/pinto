@@ -23,6 +23,13 @@ pub struct DependencyOutcome {
 /// The operation is idempotent: an existing dependency is not duplicated. Record cycles,
 /// including self-dependencies, and set `cycle_warning` to `true`. Return [`Error::NotInitialized`]
 /// for an uninitialized board or [`Error::NotFound`] when either ID is absent.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], dependency-validation errors, or
+/// persistence and Git commit errors. Validation happens before saving. If the item save succeeds
+/// but the commit fails, the dependency can remain durable; retrying is safe because adding the
+/// same dependency is idempotent, but inspect the board before retrying a failed commit.
 pub async fn add_dependency(
     project_dir: &Path,
     id: &ItemId,
@@ -54,6 +61,12 @@ pub async fn add_dependency(
 ///
 /// Return [`Error::NotFound`] when `dep` is not present or `id` does not exist, and
 /// [`Error::NotInitialized`] for an uninitialized board.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], persistence errors, or a Git commit
+/// error. The item is saved only after the dependency is found. A failed commit may leave the
+/// removal durable; retrying the same removal is safe once the resulting state has been inspected.
 pub async fn remove_dependency(
     project_dir: &Path,
     id: &ItemId,
@@ -114,11 +127,23 @@ fn rank_ordinal(items: &[BacklogItem], target: &BacklogItem) -> usize {
 /// In addition to the forward `parent` and `depends_on` links, scan all items to find children and
 /// dependents. Return [`Error::NotInitialized`] for an uninitialized board or [`Error::NotFound`]
 /// when `id` does not exist.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], or persistence and parsing errors while
+/// loading the active or archived records. This operation is read-only and leaves no durable
+/// partial changes, so retrying after a transient read failure is safe.
 pub async fn item_detail(project_dir: &Path, id: &ItemId) -> Result<ItemDetail> {
     item_detail_from_store(project_dir, id, false).await
 }
 
 /// Load archived PBI `id` with bidirectional links.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::NotFound`], or persistence and parsing errors while
+/// loading the archived records. This operation is read-only and leaves no durable partial
+/// changes, so retrying after a transient read failure is safe.
 pub async fn archived_item_detail(project_dir: &Path, id: &ItemId) -> Result<ItemDetail> {
     item_detail_from_store(project_dir, id, true).await
 }

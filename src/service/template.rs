@@ -10,6 +10,13 @@ use tokio::fs;
 ///
 /// Templates are user-editable plain-text files; creation commands use the body unchanged. If the
 /// file is absent, return [`Error::TemplateNotFound`] with the path where it should be created.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`] when the board is missing, [`Error::TemplateNotFound`] when
+/// the template is absent, or [`Error::Io`] / [`Error::TemplateUnreadable`] when the template
+/// cannot be inspected or read. This operation is read-only, so it leaves no durable partial
+/// changes and retrying after a transient read failure is safe.
 pub async fn template_body(
     project_dir: &Path,
     kind: TemplateKind,
