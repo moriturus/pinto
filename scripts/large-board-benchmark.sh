@@ -4,9 +4,9 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
-# Build before launching the runner. The runner invokes cargo run for each measured command, so
-# it must not itself be running under cargo while those child processes need the build lock.
-cargo build --release --example large_board_bench --locked
+# Build the CLI and runner before launching the benchmark. The runner invokes the release CLI
+# directly for each measured command, so no nested Cargo process affects the timings.
+cargo build --release --bin pinto --example large_board_bench --locked
 
 runner="$root/target/release/examples/large_board_bench"
 if [ -x "$runner" ]; then

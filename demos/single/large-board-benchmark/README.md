@@ -20,7 +20,24 @@ From the repository root, run the reproducible benchmark:
 ./scripts/large-board-benchmark.sh
 ```
 
-The script builds and runs the `large_board_bench` example, which reports the median of three samples for `list`, `show`, `add`, and
-`move` at both required board sizes. See [`docs/benchmarks.md`](../../../docs/benchmarks.md)
-and [`docs/stability.md`](../../../docs/stability.md) for the method and the
-decision to retain complete-board fail-fast validation for single-item reads.
+The script builds and runs the `large_board_bench` example, which reports the
+median of three fresh-board samples for `list`, `show`, `add`, `move`, `doctor`,
+and `import` at both required board sizes. To run the regression gate and save
+the same JSON evidence used in CI:
+
+```bash
+./scripts/large-board-benchmark.sh \
+  --baseline benchmarks/large-board-baseline.json \
+  --tolerance 20 \
+  --output target/large-board-benchmark.json
+```
+
+The report includes every sample, each median, and its execution environment.
+Use the baseline matching the host platform; the CI workflow uses
+`benchmarks/large-board-baseline-linux-x86_64.json`, while the command above
+uses the macOS/aarch64 local baseline.
+See [`docs/benchmarks.md`](../../../docs/benchmarks.md) for the measurement
+method, baseline refresh procedure, 14-day CI artifact retention, and
+interpretation of environment-dependent results. See
+[`docs/stability.md`](../../../docs/stability.md) for the decision to retain
+complete-board fail-fast validation for single-item reads.

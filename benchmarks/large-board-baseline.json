@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "generated_at": "2026-07-26T13:06:49.142632+00:00",
+  "environment": {
+    "os": "macos",
+    "arch": "aarch64",
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07); binary: rustc; commit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3; commit-date: 2026-07-07; host: aarch64-apple-darwin; release: 1.97.0; LLVM version: 22.1.6",
+    "profile": "release",
+    "ci": "local",
+    "runner": "local",
+    "commit": "4ea63791ad9b27878edf2cd145f786bac132bc76"
+  },
+  "samples": 3,
+  "tolerance_percent": 20.0,
+  "measurements": {
+    "1000": {
+      "items": 1000,
+      "commands": {
+        "add": {
+          "samples_ms": [66.44291700000001, 66.21275, 65.32925],
+          "median_ms": 66.21275
+        },
+        "doctor": {
+          "samples_ms": [43.569291, 36.883875, 41.350708],
+          "median_ms": 41.350708
+        },
+        "import": {
+          "samples_ms": [174.76029200000002, 203.37825, 171.665417],
+          "median_ms": 174.76029200000002
+        },
+        "list": {
+          "samples_ms": [35.964125, 30.059791999999998, 34.952584],
+          "median_ms": 34.952584
+        },
+        "move": {
+          "samples_ms": [77.780541, 79.297625, 76.307666],
+          "median_ms": 77.780541
+        },
+        "show": {
+          "samples_ms": [35.760042, 37.659375000000004, 38.203291],
+          "median_ms": 37.659375000000004
+        }
+      }
+    },
+    "10000": {
+      "items": 10000,
+      "commands": {
+        "add": {
+          "samples_ms": [615.411542, 625.343375, 612.877667],
+          "median_ms": 615.411542
+        },
+        "doctor": {
+          "samples_ms": [330.642708, 349.544833, 317.901875],
+          "median_ms": 330.642708
+        },
+        "import": {
+          "samples_ms": [1685.045625, 1689.508125, 1681.164833],
+          "median_ms": 1685.045625
+        },
+        "list": {
+          "samples_ms": [304.695541, 315.428916, 306.25966700000004],
+          "median_ms": 306.25966700000004
+        },
+        "move": {
+          "samples_ms": [777.087584, 778.961625, 903.1550000000001],
+          "median_ms": 778.961625
+        },
+        "show": {
+          "samples_ms": [297.523541, 296.375, 305.696167],
+          "median_ms": 297.523541
+        }
+      }
+    }
+  },
+  "regressions": []
+}

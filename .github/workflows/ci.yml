@@ -224,6 +224,102 @@ jobs:
           MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run deny
 
+  large-board-smoke:
+    name: large-board 1,000-item smoke
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup pinned development toolchain
+        uses: jdx/mise-action@v4.2.0
+        with:
+          version: 2026.7.6
+          install: true
+          install_args: rust
+          cache: true
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+      - name: Build benchmark runner
+        run: cargo build --release --bin pinto --example large_board_bench --locked
+      - name: Run 1,000-item benchmark gate
+        run: >-
+          tolerance=20;
+          if [ "${ACT:-}" = "true" ]; then tolerance=50; fi;
+          ./scripts/large-board-benchmark.sh
+          --sizes 1000
+          --samples 3
+          --baseline benchmarks/large-board-baseline-linux-x86_64.json
+          --tolerance "$tolerance"
+          --output target/large-board-smoke.json
+      - name: Upload benchmark evidence
+        if: ${{ always() && env.ACT != 'true' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: large-board-smoke-${{ github.run_id }}
+          path: target/large-board-smoke.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+  large-board-scheduled:
+    name: large-board 10,000-item scheduled benchmark
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+      - name: Setup pinned development toolchain
+        uses: jdx/mise-action@v4.2.0
+        with:
+          version: 2026.7.6
+          install: true
+          install_args: rust
+          cache: true
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+      - name: Build benchmark runner
+        run: cargo build --release --bin pinto --example large_board_bench --locked
+      - name: Run 10,000-item benchmark gate
+        run: >-
+          tolerance=20;
+          if [ "${ACT:-}" = "true" ]; then tolerance=50; fi;
+          ./scripts/large-board-benchmark.sh
+          --sizes 10000
+          --samples 3
+          --baseline benchmarks/large-board-baseline-linux-x86_64.json
+          --tolerance "$tolerance"
+          --output target/large-board-scheduled.json
+      - name: Upload benchmark evidence
+        if: ${{ always() && env.ACT != 'true' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: large-board-scheduled-${{ github.run_id }}
+          path: target/large-board-scheduled.json
+          retention-days: 14
+          if-no-files-found: ignore
+
   rank-benchmark:
     name: rank benchmark
     runs-on: ubuntu-latest

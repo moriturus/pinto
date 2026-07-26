@@ -4,8 +4,9 @@
 
 The file backend intentionally uses complete task and archive validation for
 every operation, including `show` for one known item. The large-board benchmark
-in [`docs/benchmarks.md`](benchmarks.md) records the resulting linear scaling at
-1,000 and 10,000 items for `list`, `show`, `add`, and `move`.
+in [`docs/benchmarks.md`](benchmarks.md) records the resulting scaling at
+1,000 and 10,000 items for `list`, `show`, `add`, `move`, `doctor`, and
+`import`.
 
 Single-item reads do not bypass full-board parsing. The fail-fast contract means
 that a malformed or inconsistent unrelated record must stop the command rather

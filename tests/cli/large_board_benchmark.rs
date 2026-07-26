@@ -141,6 +141,46 @@ fn generated_thousand_item_board_can_be_imported() {
     assert_eq!(listed.as_array().map(Vec::len), Some(1_000));
 }
 
+#[test]
+fn generated_thousand_item_board_supports_doctor() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    let snapshot_path = dir.path().join("thousand-item-doctor-snapshot.json");
+    fs::write(
+        &snapshot_path,
+        serde_json::to_vec(&generated_snapshot(1_000)).expect("serialize generated snapshot"),
+    )
+    .expect("write generated snapshot");
+
+    pinto(dir.path())
+        .args(["import", snapshot_path.to_str().expect("snapshot path")])
+        .assert()
+        .success();
+
+    pinto(dir.path()).arg("doctor").assert().success();
+}
+
+#[test]
+fn generated_ten_thousand_item_board_supports_doctor() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    let snapshot_path = dir.path().join("ten-thousand-item-doctor-snapshot.json");
+    fs::write(
+        &snapshot_path,
+        serde_json::to_vec(&generated_snapshot(10_000)).expect("serialize generated snapshot"),
+    )
+    .expect("write generated snapshot");
+
+    pinto(dir.path())
+        .args(["import", snapshot_path.to_str().expect("snapshot path")])
+        .assert()
+        .success();
+
+    pinto(dir.path()).arg("doctor").assert().success();
+}
+
 fn generated_snapshot(size: usize) -> Value {
     let mut previous = None;
     let items = (1..=size)

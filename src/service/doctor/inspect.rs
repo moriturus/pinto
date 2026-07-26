@@ -18,6 +18,9 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::task::JoinSet;
 
+/// Keep doctor file reads below common per-process descriptor limits while retaining async I/O.
+const MAX_CONCURRENT_DOCUMENT_READS: usize = 64;
+
 pub(super) async fn inspect_board(
     board_dir: &Path,
     _backend: &Backend,
@@ -111,7 +114,13 @@ async fn read_documents(dir: &Path) -> Result<Vec<(PathBuf, String)>> {
     }
     paths.sort();
     let mut reads = JoinSet::new();
+    let mut documents = Vec::with_capacity(paths.len());
     for path in paths {
+        if reads.len() >= MAX_CONCURRENT_DOCUMENT_READS
+            && let Some(joined) = reads.join_next().await
+        {
+            documents.push(joined.map_err(Error::task)??);
+        }
         reads.spawn(async move {
             fs::read_to_string(&path)
                 .await
@@ -119,7 +128,6 @@ async fn read_documents(dir: &Path) -> Result<Vec<(PathBuf, String)>> {
                 .map_err(|error| Error::io(&path, &error))
         });
     }
-    let mut documents = Vec::new();
     while let Some(result) = reads.join_next().await {
         documents.push(result.map_err(Error::task)??);
     }

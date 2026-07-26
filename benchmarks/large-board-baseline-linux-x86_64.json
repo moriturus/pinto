@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "generated_at": "2026-07-26T13:57:32.182660589+00:00",
+  "environment": {
+    "os": "linux",
+    "arch": "x86_64",
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07); binary: rustc; commit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3; commit-date: 2026-07-07; host: x86_64-unknown-linux-gnu; release: 1.97.0; LLVM version: 22.1.6",
+    "profile": "release",
+    "ci": "true",
+    "runner": "act-linux-amd64",
+    "commit": "3a87e23180021a30239dd5bed3ebf4ee96589024"
+  },
+  "samples": 3,
+  "tolerance_percent": 20.0,
+  "measurements": {
+    "1000": {
+      "items": 1000,
+      "commands": {
+        "add": {
+          "samples_ms": [382.26925, 232.342541, 240.561001],
+          "median_ms": 240.561001
+        },
+        "doctor": {
+          "samples_ms": [297.400875, 208.739125, 287.634625],
+          "median_ms": 287.634625
+        },
+        "import": {
+          "samples_ms": [225.37625, 224.850458, 228.765209],
+          "median_ms": 225.37625
+        },
+        "list": {
+          "samples_ms": [336.426209, 228.58725, 331.67225],
+          "median_ms": 331.67225
+        },
+        "move": {
+          "samples_ms": [292.554667, 299.47675, 286.958292],
+          "median_ms": 292.554667
+        },
+        "show": {
+          "samples_ms": [306.569792, 290.815167, 242.619625],
+          "median_ms": 290.815167
+        }
+      }
+    },
+    "10000": {
+      "items": 10000,
+      "commands": {
+        "add": {
+          "samples_ms": [635.745709, 602.116792, 578.7475],
+          "median_ms": 602.116792
+        },
+        "doctor": {
+          "samples_ms": [396.906792, 457.130167, 477.791125],
+          "median_ms": 457.130167
+        },
+        "import": {
+          "samples_ms": [1410.741001, 1404.339375, 1281.929167],
+          "median_ms": 1404.339375
+        },
+        "list": {
+          "samples_ms": [423.662334, 363.432125, 403.564041],
+          "median_ms": 403.564041
+        },
+        "move": {
+          "samples_ms": [603.040458, 757.498791, 690.029375],
+          "median_ms": 690.029375
+        },
+        "show": {
+          "samples_ms": [326.943667, 441.314792, 360.913834],
+          "median_ms": 360.913834
+        }
+      }
+    }
+  },
+  "regressions": []
+}
