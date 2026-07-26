@@ -208,6 +208,14 @@ pub enum Message {
     AutomationDryRunGitInitFailed,
     AutomationDryRunWorkspaceUnavailable,
     AutomationCommandExited,
+    AutomationPlaceholderInvalid,
+    AutomationPlaceholderOnlyItemId,
+    AutomationPlaceholderUnknownCommand,
+    AutomationPlaceholderFutureCommand,
+    AutomationPlaceholderNonProducer,
+    AutomationPlaceholderNoResult,
+    AutomationPlaceholderOutOfRange,
+    AutomationPlaceholderInvalidProducerId,
 }
 
 impl Message {
@@ -393,6 +401,16 @@ impl Message {
                 "automation-dry-run-workspace-unavailable"
             }
             Self::AutomationCommandExited => "automation-command-exited",
+            Self::AutomationPlaceholderInvalid => "automation-placeholder-invalid",
+            Self::AutomationPlaceholderOnlyItemId => "automation-placeholder-only-item-id",
+            Self::AutomationPlaceholderUnknownCommand => "automation-placeholder-unknown-command",
+            Self::AutomationPlaceholderFutureCommand => "automation-placeholder-future-command",
+            Self::AutomationPlaceholderNonProducer => "automation-placeholder-non-producer",
+            Self::AutomationPlaceholderNoResult => "automation-placeholder-no-result",
+            Self::AutomationPlaceholderOutOfRange => "automation-placeholder-out-of-range",
+            Self::AutomationPlaceholderInvalidProducerId => {
+                "automation-placeholder-invalid-producer-id"
+            }
         }
     }
 }
@@ -779,6 +797,14 @@ mod tests {
             Message::AutomationDryRunGitInitFailed,
             Message::AutomationDryRunWorkspaceUnavailable,
             Message::AutomationCommandExited,
+            Message::AutomationPlaceholderInvalid,
+            Message::AutomationPlaceholderOnlyItemId,
+            Message::AutomationPlaceholderUnknownCommand,
+            Message::AutomationPlaceholderFutureCommand,
+            Message::AutomationPlaceholderNonProducer,
+            Message::AutomationPlaceholderNoResult,
+            Message::AutomationPlaceholderOutOfRange,
+            Message::AutomationPlaceholderInvalidProducerId,
         ];
 
         for message in messages {

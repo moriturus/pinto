@@ -408,6 +408,28 @@ parser. Plans can be supplied inline, from a file, or from standard input.
 `pinto shell` starts an interactive command shell, and `pinto completion <shell>`
 generates completion scripts for supported shells.
 
+An earlier successful `add` or `split` command can expose its created IDs to
+later commands with a complete item-ID placeholder:
+
+```json
+{
+  "commands": [
+    ["add", "Parent"],
+    ["split", "@command[0].created_ids[0]", "Slice A", "Slice B"],
+    ["edit", "@command[1].created_ids[0]", "--title", "Renamed slice"]
+  ]
+}
+```
+
+Both indexes are zero-based. The command index refers to the earlier plan
+command, and the output index refers to its `created_ids` array. Placeholders
+are substituted as argv values, never passed through a shell, and are accepted
+only in item-ID positions: add parent/dependencies, split source, show, move,
+reorder, edit ID/parent, remove, restore, dep, link, and sprint add/unassign.
+Unknown, future, malformed, or out-of-range references fail the dependent
+command and skip the remaining plan. Dry-run resolves references in the
+isolated preview board; IDs in a dry-run report are preview values.
+
 The dry-run snapshot holds the board write lock, so a concurrent writer cannot
 be mixed into the preview. Use `pinto export --json` for the same consistency
 boundary when an automation consumer needs a complete active-board read. It
@@ -416,6 +438,11 @@ worktrees: only `.pinto` is copied, and a temporary owner-private Git
 repository is initialized when the source project has Git metadata. The source
 `.git` object store is never copied, and the temporary workspace is cleaned up
 after success or failure.
+
+`--json` reports producer IDs in `created_ids`, resolved update targets in
+`updated_ids`, and every resolved item-ID argument in `resolved_ids`. Apply
+results contain authoritative IDs from the real board; dry-run results are
+explicitly marked with `dry_run: true` and must not be used as apply IDs.
 
 ## Machine-readable output
 

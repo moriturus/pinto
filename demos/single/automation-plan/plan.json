@@ -6,6 +6,6 @@
       "--body",
       "## Notes\n\n- [ ] run from a file"
     ],
-    ["move", "T-1", "in-progress"]
+    ["move", "@command[0].created_ids[0]", "in-progress"]
   ]
 }

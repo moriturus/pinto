@@ -376,8 +376,12 @@ or a linked worktree, pinto copies only `.pinto` and creates a temporary owner-p
 repository when the source project has Git metadata; it never recursively copies the source `.git`
 object store. The temporary workspace is removed after both successful and failed previews. `--json`
 reports each command as `valid`, `succeeded`, `failed`, or `skipped`,
-including created and updated item IDs and recovery-relevant errors. An `add` command can combine
-`--template default` with `--body` without opening an editor.
+including ordered producer IDs in `created_ids`, update targets in `updated_ids`, every resolved
+item-ID argument in `resolved_ids`, and recovery-relevant errors. A placeholder such as
+`@command[0].created_ids[0]` may replace a complete item-ID argument when it refers to an earlier
+successful `add` or `split`; it is never shell-expanded. Dry-run IDs are preview values, while
+apply reports IDs from the real board. An `add` command can combine `--template default` with
+`--body` without opening an editor.
 
 File and Git backends are the recommended plain-text compatibility boundary. The SQLite backend is
 available only in builds with `--features sqlite`; it is an explicit exception to the Git-diff
@@ -517,10 +521,13 @@ Most read commands accept `--json` for machine-readable output. `pinto
 automate --schema` prints the JSON Schema for the safe plan envelope. The schema
 requires a non-empty `commands` array, rejects unknown top-level fields and
 recursive or interactive commands, and leaves complete command-argument
-validation to the existing CLI parser. `pinto automate --plan` accepts a JSON
-argv plan from inline input, a file, or standard input and runs each command
-through the same validation, service, and storage paths as the normal CLI. It
-neither stores API keys nor requires a particular AI provider. See
+validation to the existing CLI parser. In supported item-ID positions, a
+complete `@command[<zero-based-command>].created_ids[<zero-based-output>]`
+placeholder references structured output from an earlier `add` or `split`.
+`pinto automate --plan` accepts a JSON argv plan from inline input, a file, or
+standard input and runs each command through the same validation, service, and
+storage paths as the normal CLI. It neither stores API keys nor requires a
+particular AI provider. See
 [JSON and automation schemas](docs/json-schema.md) for the contract.
 
 `pinto export --json` returns one read-only object containing the active PBI

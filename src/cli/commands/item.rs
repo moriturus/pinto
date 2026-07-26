@@ -5,6 +5,9 @@ use crate::cli::format::item::{
     DetailOptions, ListLongOptions, format_detail, format_list, format_list_long,
 };
 use crate::cli::json::{detail_json, list_json};
+use pinto::automation::{
+    AUTOMATION_RESULT_ENV, AUTOMATION_RESULT_PREFIX, AutomationProducerResult,
+};
 use pinto::backlog::ItemId;
 use pinto::error::Error;
 use pinto::i18n::{Message, current};
@@ -79,6 +82,10 @@ pub(super) async fn cmd_add(args: AddArgs) -> anyhow::Result<ExitCode> {
             [("id", id.as_str()), ("title", item.title.as_str())]
         )
     );
+    emit_automation_producer_result(AutomationProducerResult {
+        created_ids: vec![id],
+        updated_ids: Vec::new(),
+    })?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -131,7 +138,30 @@ pub(super) async fn cmd_split(args: SplitArgs) -> anyhow::Result<ExitCode> {
             )
         );
     }
+    emit_automation_producer_result(AutomationProducerResult {
+        created_ids: outcome
+            .created
+            .iter()
+            .map(|item| item.id.to_string())
+            .collect(),
+        updated_ids: if relationship == SplitRelationship::Dependency {
+            vec![source.to_string()]
+        } else {
+            Vec::new()
+        },
+    })?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Emit a private, structured producer result for the parent `automate` process.
+fn emit_automation_producer_result(result: AutomationProducerResult) -> anyhow::Result<()> {
+    if std::env::var_os(AUTOMATION_RESULT_ENV).is_some() {
+        eprintln!(
+            "{AUTOMATION_RESULT_PREFIX}{}",
+            serde_json::to_string(&result)?
+        );
+    }
+    Ok(())
 }
 
 pub(super) fn combine_template_body(template: String, body: String) -> String {

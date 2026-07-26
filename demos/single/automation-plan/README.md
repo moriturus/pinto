@@ -14,4 +14,7 @@ cargo run --manifest-path ../../../Cargo.toml -- show T-1 --json
 ```
 
 The dry run executes the plan only in an isolated copy of this demo board; the real run applies
-the file plan and keeps its multiline body without an editor.
+the file plan and keeps its multiline body without an editor. The second command uses
+`@command[0].created_ids[0]`, so it moves the ID actually returned by the preceding `add` rather
+than assuming that the next ID is `T-1`. Dry-run IDs are preview values; inspect the apply report
+or the board before using an ID from the real run.

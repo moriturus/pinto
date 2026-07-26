@@ -194,6 +194,312 @@ fn automate_executes_a_structured_plan_from_the_cli() {
 }
 
 #[test]
+fn automate_resolves_add_outputs_for_edit_and_reorder() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["add", "Existing"])
+        .assert()
+        .success();
+    let plan = serde_json::json!({
+        "commands": [
+            ["add", "First"],
+            ["add", "Second"],
+            ["edit", "@command[0].created_ids[0]", "--title", "Renamed first"],
+            ["reorder", "@command[1].created_ids[0]", "--before", "@command[0].created_ids[0]"]
+        ]
+    })
+    .to_string();
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", &plan, "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+
+    assert_eq!(
+        report["commands"][0]["created_ids"],
+        serde_json::json!(["T-2"])
+    );
+    assert_eq!(
+        report["commands"][1]["created_ids"],
+        serde_json::json!(["T-3"])
+    );
+    assert_eq!(
+        report["commands"][2]["updated_ids"],
+        serde_json::json!(["T-2"])
+    );
+    assert_eq!(
+        report["commands"][3]["updated_ids"],
+        serde_json::json!(["T-3"])
+    );
+    assert_eq!(
+        report["commands"][2]["resolved_ids"],
+        serde_json::json!(["T-2"])
+    );
+    assert_eq!(
+        report["commands"][3]["resolved_ids"],
+        serde_json::json!(["T-3", "T-2"])
+    );
+
+    let items = json_stdout(pinto(dir.path()).args(["list", "--json"]));
+    assert_eq!(items[0]["title"], "Existing");
+    assert_eq!(items[1]["title"], "Second");
+    assert_eq!(items[2]["title"], "Renamed first");
+}
+
+#[test]
+fn automate_resolves_every_item_id_consumer_and_split_outputs_in_order() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let plan = serde_json::json!({
+        "commands": [
+            ["add", "Base"],
+            ["add", "Child", "--parent", "@command[0].created_ids[0]", "--depends-on", "@command[0].created_ids[0]"],
+            ["show", "@command[1].created_ids[0]", "--json"],
+            ["move", "@command[1].created_ids[0]", "in-progress"],
+            ["reorder", "@command[1].created_ids[0]", "--top"],
+            ["edit", "@command[1].created_ids[0]", "--parent", "@command[0].created_ids[0]"],
+            ["dep", "add", "@command[0].created_ids[0]", "@command[1].created_ids[0]"],
+            ["dep", "rm", "@command[0].created_ids[0]", "@command[1].created_ids[0]"],
+            ["link", "add", "@command[1].created_ids[0]", "deadbeef"],
+            ["link", "rm", "@command[1].created_ids[0]", "deadbeef"],
+            ["sprint", "new", "S-1", "Sprint", "--goal", "Deliver"],
+            ["sprint", "add", "S-1", "@command[1].created_ids[0]"],
+            ["sprint", "unassign", "S-1", "@command[1].created_ids[0]"],
+            ["remove", "@command[1].created_ids[0]"],
+            ["restore", "@command[1].created_ids[0]"],
+            ["split", "@command[0].created_ids[0]", "Slice A", "Slice B", "--child"],
+            ["edit", "@command[15].created_ids[0]", "--title", "Slice A renamed"],
+            ["move", "@command[15].created_ids[1]", "in-progress"]
+        ]
+    })
+    .to_string();
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", &plan, "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+
+    assert_eq!(report["status"], "completed");
+    assert_eq!(report["commands"].as_array().expect("commands").len(), 18);
+    assert_eq!(
+        report["commands"][15]["created_ids"],
+        serde_json::json!(["T-3", "T-4"])
+    );
+    assert_eq!(
+        report["commands"][16]["updated_ids"],
+        serde_json::json!(["T-3"])
+    );
+    assert_eq!(
+        report["commands"][17]["updated_ids"],
+        serde_json::json!(["T-4"])
+    );
+
+    let child = show_json(pinto(dir.path()).args(["show", "T-3", "--json"]));
+    assert_eq!(child["title"], "Slice A renamed");
+    assert_eq!(child["parent"], "T-1");
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-4", "--json"]))["status"],
+        "in-progress"
+    );
+}
+
+#[test]
+fn automate_resolves_placeholders_in_an_isolated_dry_run_only() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let plan = r#"{"commands":[["add","Preview"],["edit","@command[0].created_ids[0]","--title","Previewed"]]}"#;
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", plan, "--dry-run", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+
+    assert_eq!(report["status"], "dry_run");
+    assert_eq!(
+        report["commands"][0]["created_ids"],
+        serde_json::json!(["T-1"])
+    );
+    assert_eq!(
+        report["commands"][1]["updated_ids"],
+        serde_json::json!(["T-1"])
+    );
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"])),
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn automate_placeholder_resolution_uses_structured_results_across_locales() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let plan = r#"{"commands":[["add","日本語"],["edit","@command[0].created_ids[0]","--title","更新済み"]]}"#;
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", plan, "--json"])
+        .env("LC_ALL", "ja-JP")
+        .env("LANG", "ja-JP")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+    assert_eq!(
+        report["commands"][0]["created_ids"],
+        serde_json::json!(["T-1"])
+    );
+    assert_eq!(
+        report["commands"][1]["updated_ids"],
+        serde_json::json!(["T-1"])
+    );
+    assert_eq!(
+        show_json(pinto(dir.path()).args(["show", "T-1", "--json"]))["title"],
+        "更新済み"
+    );
+}
+
+#[test]
+fn automate_placeholder_diagnostics_follow_the_selected_locale() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let plan = r#"{"commands":[["add","Applied"],["show","@command[0].created_ids[1]","--json"]]}"#;
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", plan, "--json"])
+        .env("LC_ALL", "ja-JP")
+        .env("LANG", "ja-JP")
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+
+    assert!(
+        report["commands"][1]["error"]
+            .as_str()
+            .expect("error")
+            .contains("出力番号が範囲外")
+    );
+}
+
+#[test]
+fn automate_rejects_malformed_and_embedded_placeholders_before_mutation() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let plan = r#"{"commands":[["add","Must not apply"],["show","@command[0].created_ids"],["edit","@command[0].created_ids[0]suffix","--title","prefix@command[0].created_ids[0]"]] }"#;
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", plan, "--json"])
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+
+    assert_eq!(report["status"], "invalid");
+    assert_eq!(report["commands"][0]["status"], "valid");
+    assert_eq!(report["commands"][1]["status"], "invalid");
+    assert_eq!(report["commands"][2]["status"], "invalid");
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"])),
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn automate_rejects_unsupported_or_future_placeholders_before_mutation() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let plan = r#"{"commands":[["add","Must not apply"],["show","@command[2].created_ids[0]"],["add","Also must not apply"]]}"#;
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", plan, "--json"])
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+
+    assert_eq!(report["status"], "invalid");
+    assert_eq!(report["commands"][0]["status"], "valid");
+    assert_eq!(report["commands"][1]["status"], "invalid");
+    assert!(
+        report["commands"][1]["error"]
+            .as_str()
+            .expect("error")
+            .contains("command")
+    );
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"])),
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn automate_skips_dependents_when_a_placeholder_is_out_of_range_or_producer_fails() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let out_of_range = r#"{"commands":[["add","Applied"],["show","@command[0].created_ids[1]","--json"],["add","Skipped"]]}"#;
+
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", out_of_range, "--json"])
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+    assert_eq!(report["status"], "partial_failure");
+    assert_eq!(report["commands"][0]["status"], "succeeded");
+    assert_eq!(report["commands"][1]["status"], "failed");
+    assert_eq!(report["commands"][2]["status"], "skipped");
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"]))[0]["title"],
+        "Applied"
+    );
+
+    let dir = TempDir::new().expect("second temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let failed_producer = r#"{"commands":[["add",""],["edit","@command[0].created_ids[0]","--title","Never applied"]]}"#;
+    let output = pinto(dir.path())
+        .args(["automate", "--plan", failed_producer, "--json"])
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("automation report");
+    assert_eq!(report["commands"][0]["status"], "failed");
+    assert_eq!(report["commands"][1]["status"], "skipped");
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"])),
+        serde_json::json!([])
+    );
+}
+
+#[test]
 fn automate_schema_prints_without_a_board_or_execution_plan() {
     let dir = TempDir::new().expect("temp dir");
 

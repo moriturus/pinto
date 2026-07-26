@@ -92,11 +92,15 @@ change percentages.
 `automate --json` returns an object with `status`, `dry_run`, and a `commands`
 array. Each command entry includes its one-based `index`, command name, status
 (`valid`, `succeeded`, `failed`, or `skipped`), `created_ids`, `updated_ids`,
-and an optional localized `error` diagnostic. Error text may also contain the
-original stderr from a child command or an external tool, so consumers must use
-`status` and the other structured fields rather than parse the error text. A
-failed execution stops the plan; later commands are reported as `skipped` so the
-applied prefix and the safe recovery point are explicit.
+`resolved_ids`, and an optional localized `error` diagnostic. `created_ids`
+contains producer IDs in creation order; `updated_ids` contains the command's
+resolved update targets; `resolved_ids` contains every resolved item-ID
+argument in argument order. Error text may also contain the original stderr
+from a child command or an external tool, so consumers must use `status` and
+the other structured fields rather than parse the error text. A failed
+execution or placeholder resolution stops the plan; later commands are
+reported as `skipped` so the applied prefix and the safe recovery point are
+explicit.
 
 ## Automation plan schema
 
@@ -105,8 +109,46 @@ envelope. It is available without an initialized board and does not execute a
 plan. The schema requires one or more argv-style command arrays, rejects unknown
 top-level properties, and excludes recursive or interactive command names. The
 normal CLI parser remains authoritative for the arguments after each command
-name, so agents should validate the generated plan with `pinto automate --dry-run`
-before applying it.
+name. A complete item-ID argument may instead use a zero-based output
+placeholder in the form `@command[0].created_ids[0]`. The first index selects
+an earlier command in the plan, and the second selects one ID from that
+producer's structured output. Only successful `add`/`a` or `split`/`spl`
+commands can be referenced; the token is never shell-expanded and is accepted
+only in item-ID positions. An out-of-range output is reported at execution
+time, after which dependent and later commands are skipped.
+
+For example, this plan creates two items, then uses the actual first ID without
+predicting the next `issued_ids` number:
+
+```json
+{
+  "commands": [
+    [
+      "add",
+      "Parent"
+    ],
+    [
+      "add",
+      "Child",
+      "--parent",
+      "@command[0].created_ids[0]"
+    ],
+    [
+      "edit",
+      "@command[1].created_ids[0]",
+      "--title",
+      "Renamed child"
+    ]
+  ]
+}
+```
+
+The placeholder is supported in `add --parent`/`--depends-on`, `split`'s
+source, `show`, `move`, `reorder` IDs and references, `edit` ID and parent,
+`remove`, `restore`, `dep`, `link`, and `sprint add`/`unassign`. A dry-run
+resolves the same references against its isolated temporary board; its IDs are
+preview values because the real board is not changed. Apply mode resolves them
+again against the real board, so a dry-run never supplies authoritative IDs.
 
 ```bash
 pinto automate --schema > automation-plan.schema.json

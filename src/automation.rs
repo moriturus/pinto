@@ -95,8 +95,25 @@ pub struct AutomationCommandResult {
     pub created_ids: Vec<String>,
     /// IDs targeted by an update command, when they can be determined.
     pub updated_ids: Vec<String>,
+    /// All item IDs resolved from item-ID arguments, in command argument order.
+    pub resolved_ids: Vec<String>,
     /// Sanitized error detail for failed or invalid commands.
     pub error: Option<String>,
+}
+
+/// Environment variable used by the automation parent to request a structured producer result.
+pub const AUTOMATION_RESULT_ENV: &str = "PINTO_AUTOMATION_RESULT";
+
+/// Prefix for the private structured-result line emitted by producer commands.
+pub const AUTOMATION_RESULT_PREFIX: &str = "pinto-automation-result:";
+
+/// Structured IDs returned by commands that create or update PBIs for an automation plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutomationProducerResult {
+    /// IDs created in persistence order.
+    pub created_ids: Vec<String>,
+    /// IDs updated as part of the producer operation.
+    pub updated_ids: Vec<String>,
 }
 
 /// Structured automation summary returned by `pinto automate --json`.
@@ -155,7 +172,7 @@ impl AutomationPlan {
         serde_json::json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "pinto automation plan",
-            "description": "A non-empty sequence of safe pinto command argv arrays.",
+            "description": "A non-empty sequence of safe pinto command argv arrays. Item-ID arguments may use zero-based output placeholders such as @command[0].created_ids[0].",
             "type": "object",
             "additionalProperties": false,
             "required": ["commands"],
@@ -170,13 +187,25 @@ impl AutomationPlan {
             "$defs": {
                 "command": {
                     "type": "array",
-                    "description": "An argv-style pinto command; arguments are strings.",
+                    "description": "An argv-style pinto command; arguments are strings. In supported item-ID positions, a complete output placeholder may reference an earlier add or split command.",
                     "minItems": 1,
                     "prefixItems": [{
                         "type": "string",
                         "enum": SAFE_COMMAND_NAMES
                     }],
-                    "items": {"type": "string"}
+                    "items": {
+                        "type": "string",
+                        "description": "Literal command arguments, or an item-ID output placeholder in a supported item-ID position.",
+                        "oneOf": [
+                            {"type": "string", "not": {"pattern": "@command"}},
+                            {"$ref": "#/$defs/output_placeholder"}
+                        ]
+                    }
+                },
+                "output_placeholder": {
+                    "type": "string",
+                    "pattern": "^@command\\[[0-9]+\\]\\.created_ids\\[[0-9]+\\]$",
+                    "description": "A zero-based reference to one ID created by an earlier add or split command. It must be the complete value of a supported item-ID argument."
                 }
             }
         })
@@ -234,5 +263,16 @@ mod tests {
         }
         assert!(command_names.iter().any(|name| name == "add"));
         assert_eq!(command["items"]["type"], "string");
+        assert_eq!(command["items"]["oneOf"].as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            schema["$defs"]["output_placeholder"]["pattern"],
+            r"^@command\[[0-9]+\]\.created_ids\[[0-9]+\]$"
+        );
+        assert!(
+            schema["$defs"]["output_placeholder"]["description"]
+                .as_str()
+                .expect("placeholder description")
+                .contains("zero-based")
+        );
     }
 }

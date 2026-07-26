@@ -3,7 +3,6 @@
 use super::args::*;
 use super::format::DEFAULT_TERM_WIDTH;
 use clap::Parser;
-use pinto::backlog::ItemId;
 use pinto::error::Error;
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::SearchFilter;

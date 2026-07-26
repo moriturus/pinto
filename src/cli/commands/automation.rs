@@ -1,7 +1,12 @@
 //! CLI entrypoint for structured automation plans.
 
 use super::*;
-use pinto::automation::{AutomationCommandResult, AutomationPlan, AutomationReport};
+use pinto::automation::{
+    AUTOMATION_RESULT_ENV, AUTOMATION_RESULT_PREFIX, AutomationCommandResult, AutomationPlan,
+    AutomationProducerResult, AutomationReport,
+};
+use pinto::backlog::ItemId;
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 use std::process::Stdio;
@@ -35,6 +40,7 @@ pub(super) async fn cmd_automate(args: AutomateArgs) -> anyhow::Result<ExitCode>
                 },
                 created_ids: Vec::new(),
                 updated_ids: automation_target_ids(&command.argv),
+                resolved_ids: automation_item_ids(&command.argv),
                 error: command.error.clone(),
             })
             .collect();
@@ -68,33 +74,45 @@ pub(super) async fn cmd_automate(args: AutomateArgs) -> anyhow::Result<ExitCode>
 
     let dir = std::env::current_dir()?;
     let mut results = Vec::with_capacity(validated.len());
+    let mut producer_results = vec![None; validated.len()];
     let mut internal_failure = false;
     let mut failed_at = None;
 
     for (position, command) in validated.iter().enumerate() {
-        let execution = run_automation_command(&dir, &command.argv).await?;
+        let resolved_argv = match resolve_automation_command(&command.argv, &producer_results) {
+            Ok(argv) => argv,
+            Err(error) => {
+                results.push(automation_resolution_failure(command, &error));
+                failed_at = Some(position);
+                for skipped in validated.iter().skip(position + 1) {
+                    results.push(automation_skipped_result(skipped));
+                }
+                break;
+            }
+        };
+        let execution = run_automation_command(&dir, &resolved_argv).await?;
         if execution.success {
             if !args.json {
                 print!("{}", execution.stdout);
             }
+            producer_results[position] = execution.producer_result.clone();
             results.push(automation_execution_result(
                 command,
+                &resolved_argv,
                 &execution,
                 "succeeded",
             ));
         } else {
             internal_failure = execution.exit_code != Some(1);
-            results.push(automation_execution_result(command, &execution, "failed"));
+            results.push(automation_execution_result(
+                command,
+                &resolved_argv,
+                &execution,
+                "failed",
+            ));
             failed_at = Some(position);
             for skipped in validated.iter().skip(position + 1) {
-                results.push(AutomationCommandResult {
-                    index: skipped.index,
-                    command: skipped.name.clone(),
-                    status: "skipped".to_string(),
-                    created_ids: Vec::new(),
-                    updated_ids: automation_target_ids(&skipped.argv),
-                    error: Some(current().text(Message::AutomationNotExecutedAfterFailure)),
-                });
+                results.push(automation_skipped_result(skipped));
             }
             break;
         }
@@ -209,6 +227,7 @@ pub(super) struct AutomationExecution {
     pub(super) exit_code: Option<i32>,
     pub(super) stdout: String,
     pub(super) stderr: String,
+    pub(super) producer_result: Option<AutomationProducerResult>,
 }
 
 pub(super) async fn read_automation_plan(source: &str) -> anyhow::Result<String> {
@@ -265,7 +284,7 @@ fn validate_automation_commands(plan: &AutomationPlan) -> Vec<ValidatedAutomatio
                 Cli::try_parse_from(std::iter::once("pinto".to_string()).chain(argv.clone()));
             let error = match parsed {
                 Err(_) => Some(current().text(Message::AutomationInvalidCommandArguments)),
-                Ok(cli) => validate_automation_item_ids(&cli),
+                Ok(cli) => validate_automation_item_ids(&cli, argv, position, plan),
             };
             ValidatedAutomationCommand {
                 index: position + 1,
@@ -277,8 +296,8 @@ fn validate_automation_commands(plan: &AutomationPlan) -> Vec<ValidatedAutomatio
         .collect()
 }
 
-fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
-    let ids: Vec<&String> = match &cli.command {
+fn item_id_arguments(cli: &Cli) -> Vec<&String> {
+    match &cli.command {
         Command::Add(args) => args.parent.iter().chain(args.depends_on.iter()).collect(),
         Command::Split(args) => vec![&args.source],
         Command::Show(args) => args.ids.iter().collect(),
@@ -342,13 +361,57 @@ fn validate_automation_item_ids(cli: &Cli) -> Option<String> {
         | Command::Shell
         | Command::Kanban(_)
         | Command::Completion(_) => Vec::new(),
-    };
+    }
+}
 
-    ids.into_iter().find_map(|raw| {
-        raw.parse::<ItemId>()
-            .err()
-            .map(|error| error.localized(current()))
-    })
+fn validate_automation_item_ids(
+    cli: &Cli,
+    argv: &[String],
+    position: usize,
+    plan: &AutomationPlan,
+) -> Option<String> {
+    let localizer = current();
+    let ids = item_id_arguments(cli);
+    let mut allowed_placeholders = HashMap::<String, usize>::new();
+
+    for raw in ids {
+        match parse_output_reference(raw) {
+            Ok(Some(reference)) => {
+                if let Some(error) = validate_output_reference(reference, position, plan, localizer)
+                {
+                    return Some(error);
+                }
+                *allowed_placeholders.entry(raw.clone()).or_default() += 1;
+            }
+            Ok(None) => {
+                if let Err(error) = raw.parse::<ItemId>() {
+                    return Some(error.localized(localizer));
+                }
+            }
+            Err(error) => return Some(error.localized(localizer)),
+        }
+    }
+
+    for raw in argv.iter().skip(1) {
+        let Ok(reference) = parse_output_reference(raw) else {
+            return Some(format_invalid_placeholder(raw, localizer));
+        };
+        let Some(reference) = reference else {
+            continue;
+        };
+        let Some(remaining) = allowed_placeholders.get_mut(raw) else {
+            return Some(format_only_item_id_placeholder(raw, localizer));
+        };
+        if *remaining == 0 {
+            return Some(format_only_item_id_placeholder(raw, localizer));
+        }
+        *remaining -= 1;
+        if let Some(error) = validate_output_reference(reference, position, plan, localizer) {
+            return Some(error);
+        }
+    }
+
+    None
 }
 
 async fn run_automation_command(
@@ -359,16 +422,25 @@ async fn run_automation_command(
     let output = ProcessCommand::new(executable)
         .args(argv)
         .current_dir(dir)
+        .env(AUTOMATION_RESULT_ENV, "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
         .await?;
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let producer_result = if output.status.success() && is_producer_command(argv) {
+        Some(parse_producer_result(&stderr)?)
+    } else {
+        None
+    };
     Ok(AutomationExecution {
         success: output.status.success(),
         exit_code: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        stdout,
+        stderr,
+        producer_result,
     })
 }
 
@@ -399,23 +471,39 @@ async fn run_dry_run_commands(
     commands: &[ValidatedAutomationCommand],
 ) -> anyhow::Result<AutomationReport> {
     let mut results = Vec::with_capacity(commands.len());
+    let mut producer_results = vec![None; commands.len()];
     let mut failed = false;
 
     for (position, command) in commands.iter().enumerate() {
-        let execution = run_automation_command(workspace, &command.argv).await?;
+        let resolved_argv = match resolve_automation_command(&command.argv, &producer_results) {
+            Ok(argv) => argv,
+            Err(error) => {
+                results.push(automation_resolution_failure(command, &error));
+                for skipped in commands.iter().skip(position + 1) {
+                    results.push(automation_skipped_result(skipped));
+                }
+                failed = true;
+                break;
+            }
+        };
+        let execution = run_automation_command(workspace, &resolved_argv).await?;
         if execution.success {
-            results.push(automation_execution_result(command, &execution, "valid"));
+            producer_results[position] = execution.producer_result.clone();
+            results.push(automation_execution_result(
+                command,
+                &resolved_argv,
+                &execution,
+                "valid",
+            ));
         } else {
-            results.push(automation_execution_result(command, &execution, "invalid"));
+            results.push(automation_execution_result(
+                command,
+                &resolved_argv,
+                &execution,
+                "invalid",
+            ));
             for skipped in commands.iter().skip(position + 1) {
-                results.push(AutomationCommandResult {
-                    index: skipped.index,
-                    command: skipped.name.clone(),
-                    status: "skipped".to_string(),
-                    created_ids: Vec::new(),
-                    updated_ids: automation_target_ids(&skipped.argv),
-                    error: Some(current().text(Message::AutomationNotValidatedAfterFailure)),
-                });
+                results.push(automation_skipped_result(skipped));
             }
             failed = true;
             break;
@@ -545,48 +633,242 @@ pub(super) fn automation_command_name(argv: &[String]) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OutputReference {
+    command_index: usize,
+    output_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PlaceholderError {
+    raw: String,
+}
+
+impl PlaceholderError {
+    fn localized(&self, localizer: &pinto::i18n::Localizer) -> String {
+        format_invalid_placeholder(&self.raw, localizer)
+    }
+}
+
+fn parse_output_reference(raw: &str) -> Result<Option<OutputReference>, PlaceholderError> {
+    if !raw.contains("@command") {
+        return Ok(None);
+    }
+
+    let Some(rest) = raw.strip_prefix("@command[") else {
+        return Err(PlaceholderError {
+            raw: raw.to_string(),
+        });
+    };
+    let Some((command_index, rest)) = rest.split_once("].created_ids[") else {
+        return Err(PlaceholderError {
+            raw: raw.to_string(),
+        });
+    };
+    let Some((output_index, suffix)) = rest.split_once(']') else {
+        return Err(PlaceholderError {
+            raw: raw.to_string(),
+        });
+    };
+    if suffix.is_empty()
+        && !command_index.is_empty()
+        && command_index.bytes().all(|byte| byte.is_ascii_digit())
+        && !output_index.is_empty()
+        && output_index.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        let command_index = command_index
+            .parse::<usize>()
+            .map_err(|_| PlaceholderError {
+                raw: raw.to_string(),
+            })?;
+        let output_index = output_index
+            .parse::<usize>()
+            .map_err(|_| PlaceholderError {
+                raw: raw.to_string(),
+            })?;
+        return Ok(Some(OutputReference {
+            command_index,
+            output_index,
+        }));
+    }
+
+    Err(PlaceholderError {
+        raw: raw.to_string(),
+    })
+}
+
+fn format_invalid_placeholder(raw: &str, localizer: &pinto::i18n::Localizer) -> String {
+    localizer.format(Message::AutomationPlaceholderInvalid, [("raw", raw)])
+}
+
+fn format_only_item_id_placeholder(raw: &str, localizer: &pinto::i18n::Localizer) -> String {
+    localizer.format(Message::AutomationPlaceholderOnlyItemId, [("raw", raw)])
+}
+
+fn validate_output_reference(
+    reference: OutputReference,
+    position: usize,
+    plan: &AutomationPlan,
+    localizer: &pinto::i18n::Localizer,
+) -> Option<String> {
+    if reference.command_index >= plan.commands().len() {
+        let index = reference.command_index.to_string();
+        return Some(localizer.format(
+            Message::AutomationPlaceholderUnknownCommand,
+            [("index", index.as_str())],
+        ));
+    }
+    if reference.command_index >= position {
+        let index = reference.command_index.to_string();
+        return Some(localizer.format(
+            Message::AutomationPlaceholderFutureCommand,
+            [("index", index.as_str())],
+        ));
+    }
+    let producer = &plan.commands()[reference.command_index];
+    if !is_producer_command(producer) {
+        let index = reference.command_index.to_string();
+        let command = automation_command_name(producer);
+        return Some(localizer.format(
+            Message::AutomationPlaceholderNonProducer,
+            [("index", index.as_str()), ("command", command.as_str())],
+        ));
+    }
+    None
+}
+
+fn is_producer_command(argv: &[String]) -> bool {
+    matches!(
+        argv.first().map(String::as_str),
+        Some("add" | "a" | "split" | "spl")
+    )
+}
+
+fn resolve_automation_command(
+    argv: &[String],
+    producer_results: &[Option<AutomationProducerResult>],
+) -> Result<Vec<String>, String> {
+    let localizer = current();
+    argv.iter()
+        .map(|raw| {
+            let reference =
+                parse_output_reference(raw).map_err(|error| error.localized(localizer))?;
+            let Some(reference) = reference else {
+                return Ok(raw.clone());
+            };
+            let result = producer_results
+                .get(reference.command_index)
+                .and_then(Option::as_ref)
+                .ok_or_else(|| {
+                    let index = reference.command_index.to_string();
+                    localizer.format(
+                        Message::AutomationPlaceholderNoResult,
+                        [("index", index.as_str())],
+                    )
+                })?;
+            let reference_text = format!(
+                "@command[{}].created_ids[{}]",
+                reference.command_index, reference.output_index
+            );
+            let count = result.created_ids.len().to_string();
+            let id = result
+                .created_ids
+                .get(reference.output_index)
+                .ok_or_else(|| {
+                    localizer.format(
+                        Message::AutomationPlaceholderOutOfRange,
+                        [
+                            ("reference", reference_text.as_str()),
+                            ("count", count.as_str()),
+                        ],
+                    )
+                })?;
+            id.parse::<ItemId>().map_err(|error| {
+                localizer.format(
+                    Message::AutomationPlaceholderInvalidProducerId,
+                    [
+                        ("id", id.as_str()),
+                        ("reference", reference_text.as_str()),
+                        ("message", error.to_string().as_str()),
+                    ],
+                )
+            })?;
+            Ok(id.clone())
+        })
+        .collect()
+}
+
 pub(super) fn parsed_item_id(raw: Option<&String>) -> Option<String> {
     raw.and_then(|value| value.parse::<ItemId>().ok())
         .map(|id| id.to_string())
 }
 
 pub(super) fn automation_target_ids(argv: &[String]) -> Vec<String> {
-    let Some(command) = argv.first().map(String::as_str) else {
+    let Ok(cli) = Cli::try_parse_from(std::iter::once("pinto".to_string()).chain(argv.to_vec()))
+    else {
         return Vec::new();
     };
-    match command {
-        "move" => argv
+    match &cli.command {
+        Command::Split(args) => parsed_item_id(Some(&args.source)).into_iter().collect(),
+        Command::Move(args) => args
+            .destination_and_ids()
+            .map_or_else(Vec::new, |(_, ids)| {
+                ids.iter()
+                    .filter_map(|id| parsed_item_id(Some(id)))
+                    .collect()
+            }),
+        Command::Edit(args) => parsed_item_id(Some(&args.id)).into_iter().collect(),
+        Command::Reorder(args) => parsed_item_id(Some(&args.id)).into_iter().collect(),
+        Command::Remove(args) => args
+            .ids
             .iter()
-            .skip(1)
-            .filter_map(|value| parsed_item_id(Some(value)))
+            .filter_map(|id| parsed_item_id(Some(id)))
             .collect(),
-        "edit" | "reorder" => parsed_item_id(argv.get(1)).into_iter().collect(),
-        "remove" => argv
-            .iter()
-            .skip(1)
-            .filter_map(|value| parsed_item_id(Some(value)))
-            .collect(),
-        "dep" | "link" => parsed_item_id(argv.get(2)).into_iter().collect(),
-        "sprint" => parsed_item_id(argv.get(3)).into_iter().collect(),
+        Command::Restore(args) => parsed_item_id(Some(&args.id)).into_iter().collect(),
+        Command::Dep(args) => match &args.command {
+            DepCommand::Add { id, .. } | DepCommand::Rm { id, .. } => {
+                parsed_item_id(Some(id)).into_iter().collect()
+            }
+        },
+        Command::Link(args) => match &args.command {
+            LinkCommand::Add { id, .. } | LinkCommand::Rm { id, .. } => {
+                parsed_item_id(Some(id)).into_iter().collect()
+            }
+            LinkCommand::Sync { .. } => Vec::new(),
+        },
+        Command::Sprint(args) => match &args.command {
+            SprintCommand::Add { item_id, .. } => item_id
+                .as_ref()
+                .and_then(|id| parsed_item_id(Some(id)))
+                .into_iter()
+                .collect(),
+            SprintCommand::Unassign { item_id, .. } => {
+                parsed_item_id(Some(item_id)).into_iter().collect()
+            }
+            _ => Vec::new(),
+        },
         _ => Vec::new(),
     }
 }
 
-pub(super) fn first_item_id_in_output(output: &str) -> Option<String> {
-    output.split_whitespace().find_map(|token| {
-        let token = token.trim_matches(|character: char| {
-            !character.is_ascii_alphanumeric() && character != '-' && character != '_'
-        });
-        token.parse::<ItemId>().ok().map(|id| id.to_string())
-    })
+pub(super) fn automation_item_ids(argv: &[String]) -> Vec<String> {
+    let Ok(cli) = Cli::try_parse_from(std::iter::once("pinto".to_string()).chain(argv.to_vec()))
+    else {
+        return Vec::new();
+    };
+    item_id_arguments(&cli)
+        .iter()
+        .filter_map(|id| parsed_item_id(Some(id)))
+        .collect()
 }
 
 pub(super) fn automation_execution_result(
     command: &ValidatedAutomationCommand,
+    resolved_argv: &[String],
     execution: &AutomationExecution,
     status: &str,
 ) -> AutomationCommandResult {
-    automation_execution_result_with_localizer(command, execution, status, current())
+    automation_execution_result_with_localizer(command, resolved_argv, execution, status, current())
 }
 
 /// Build a command result with an explicit localizer.
@@ -596,23 +878,24 @@ pub(super) fn automation_execution_result(
 /// depend on the parent process locale.
 pub(super) fn automation_execution_result_with_localizer(
     command: &ValidatedAutomationCommand,
+    resolved_argv: &[String],
     execution: &AutomationExecution,
     status: &str,
     localizer: &pinto::i18n::Localizer,
 ) -> AutomationCommandResult {
-    let created_ids = (command.argv.first().map(String::as_str) == Some("add"))
-        .then(|| first_item_id_in_output(&execution.stdout))
-        .flatten()
-        .into_iter()
-        .collect();
+    let created_ids = execution
+        .producer_result
+        .as_ref()
+        .map_or_else(Vec::new, |result| result.created_ids.clone());
     AutomationCommandResult {
         index: command.index,
         command: command.name.clone(),
         status: status.to_string(),
         created_ids,
-        updated_ids: automation_target_ids(&command.argv),
+        updated_ids: automation_target_ids(resolved_argv),
+        resolved_ids: automation_item_ids(resolved_argv),
         error: (!execution.success).then(|| {
-            let error = execution.stderr.trim();
+            let error = visible_stderr(&execution.stderr);
             if error.is_empty() {
                 let status = execution
                     .exit_code
@@ -625,6 +908,52 @@ pub(super) fn automation_execution_result_with_localizer(
                 error.to_string()
             }
         }),
+    }
+}
+
+fn parse_producer_result(stderr: &str) -> anyhow::Result<AutomationProducerResult> {
+    let line = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix(AUTOMATION_RESULT_PREFIX))
+        .ok_or_else(|| anyhow::anyhow!("producer command did not return a structured result"))?;
+    serde_json::from_str(line)
+        .map_err(|error| anyhow::anyhow!("producer returned invalid structured result: {error}"))
+}
+
+fn visible_stderr(stderr: &str) -> String {
+    stderr
+        .lines()
+        .filter(|line| !line.starts_with(AUTOMATION_RESULT_PREFIX))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn automation_resolution_failure(
+    command: &ValidatedAutomationCommand,
+    error: &str,
+) -> AutomationCommandResult {
+    AutomationCommandResult {
+        index: command.index,
+        command: command.name.clone(),
+        status: "failed".to_string(),
+        created_ids: Vec::new(),
+        updated_ids: Vec::new(),
+        resolved_ids: Vec::new(),
+        error: Some(error.to_string()),
+    }
+}
+
+fn automation_skipped_result(command: &ValidatedAutomationCommand) -> AutomationCommandResult {
+    AutomationCommandResult {
+        index: command.index,
+        command: command.name.clone(),
+        status: "skipped".to_string(),
+        created_ids: Vec::new(),
+        updated_ids: automation_target_ids(&command.argv),
+        resolved_ids: automation_item_ids(&command.argv),
+        error: Some(current().text(Message::AutomationNotExecutedAfterFailure)),
     }
 }
 

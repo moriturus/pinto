@@ -1,13 +1,13 @@
 use super::automation::{
     AutomationExecution, ValidatedAutomationCommand, automation_command_name,
-    automation_execution_result_with_localizer, automation_target_ids, first_item_id_in_output,
-    parsed_item_id, read_automation_plan,
+    automation_execution_result_with_localizer, automation_target_ids, parsed_item_id,
+    read_automation_plan,
 };
 use super::item::{combine_template_body, report_failures};
 use super::sprint::cmd_sprint_with_localizer;
 use crate::cli::args::{Cli, SprintArgs, SprintCommand};
 use clap::CommandFactory;
-use pinto::automation::AutomationPlan;
+use pinto::automation::{AutomationPlan, AutomationProducerResult};
 use pinto::backlog::ItemId;
 use pinto::error::Error;
 use pinto::i18n::localizer_from;
@@ -34,7 +34,7 @@ fn automation_names_and_target_ids_cover_command_shapes() {
     assert!(automation_target_ids(&[]).is_empty());
     assert_eq!(
         automation_target_ids(&argv(&["move", "T-1", "invalid", "T-2"])),
-        ["T-1", "T-2"]
+        ["T-1"]
     );
     assert_eq!(automation_target_ids(&argv(&["edit", "T-3"])), ["T-3"]);
     assert_eq!(
@@ -107,11 +107,16 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
     };
     let created = automation_execution_result_with_localizer(
         &command,
+        &command.argv,
         &AutomationExecution {
             success: true,
             exit_code: Some(0),
             stdout: "Created T-42: Task".to_string(),
             stderr: String::new(),
+            producer_result: Some(AutomationProducerResult {
+                created_ids: vec!["T-42".to_string()],
+                updated_ids: Vec::new(),
+            }),
         },
         "succeeded",
         &localizer,
@@ -125,11 +130,13 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
     ] {
         let failed = automation_execution_result_with_localizer(
             &command,
+            &command.argv,
             &AutomationExecution {
                 success: false,
                 exit_code,
                 stdout: String::new(),
                 stderr: String::new(),
+                producer_result: None,
             },
             "failed",
             &localizer,
@@ -139,20 +146,18 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
 
     let stderr = automation_execution_result_with_localizer(
         &command,
+        &command.argv,
         &AutomationExecution {
             success: false,
             exit_code: Some(1),
             stdout: String::new(),
             stderr: "  user-facing failure\n".to_string(),
+            producer_result: None,
         },
         "failed",
         &localizer,
     );
     assert_eq!(stderr.error.as_deref(), Some("user-facing failure"));
-    assert_eq!(
-        first_item_id_in_output("created: [T-1], next T-2"),
-        Some("T-1".to_string())
-    );
     assert_eq!(parsed_item_id(Some(&"bad".to_string())), None);
 }
 
