@@ -1501,3 +1501,66 @@ fn selected_public_result_apis_have_error_contract_guards() {
         );
     }
 }
+
+/// Extracts the trailing `## Publishing a release` section, which holds the
+/// generic, reusable release procedure.
+fn publishing_a_release_section(reproducibility: &str) -> String {
+    let start = reproducibility
+        .find("## Publishing a release")
+        .expect("reproducibility guide has a Publishing a release section");
+    reproducibility[start..].to_string()
+}
+
+#[test]
+fn release_publishing_procedure_is_version_agnostic() {
+    let reproducibility = repository_file("docs/book/src/reproducibility.md");
+    let section = publishing_a_release_section(&reproducibility);
+
+    // AC3: no fixed historical release value (a bare X.Y.Z) may reappear in the
+    // generic procedure. The current published-version examples that must stay
+    // concrete live in installation.md / README.md, not in this section.
+    let fixed_version = regex::Regex::new(r"\b\d+\.\d+\.\d+\b").expect("valid version regex");
+    if let Some(found) = fixed_version.find(&section) {
+        panic!(
+            "generic release procedure reintroduced a fixed version {:?}; \
+             derive the version from the manifest instead",
+            found.as_str()
+        );
+    }
+
+    // AC1: the procedure derives the version from the manifest and reuses it.
+    for marker in ["cargo pkgid", "VERSION=", "$VERSION"] {
+        assert!(
+            section.contains(marker),
+            "release procedure omits the command-derived version marker {marker}"
+        );
+    }
+
+    // AC2: the documented pre-tag workflow verifies each release contract and
+    // that the tag is still available before it is created.
+    assert!(
+        section.contains("Pre-tag verification"),
+        "release procedure omits the pre-tag verification workflow"
+    );
+    let pretag_start = section
+        .find("Pre-tag verification")
+        .expect("pre-tag verification heading exists");
+    let pretag = &section[pretag_start..];
+    for marker in [
+        "Cargo.toml",
+        "Cargo.lock",
+        "CHANGELOG.md",
+        "cargo install pinto-cli --version",
+        "git tag --list",
+    ] {
+        assert!(
+            pretag.contains(marker),
+            "pre-tag workflow omits the {marker} verification"
+        );
+    }
+    let pretag_lower = pretag.to_lowercase();
+    assert!(
+        pretag_lower.contains("available") || pretag_lower.contains("availability"),
+        "pre-tag workflow does not verify tag availability"
+    );
+}

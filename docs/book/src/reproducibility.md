@@ -76,30 +76,60 @@ from the clean checkout as the source-install check.
 
 ## Publishing a release
 
-For each release, update the package version in `Cargo.toml` and both
-committed lockfiles, move the relevant entries from `[Unreleased]` into a dated
-`CHANGELOG.md` heading, and update the published-version installation examples. For a breaking change
-while pinto remains in the `0.x` series, increment the minor version as the
-`0.2.0` CLI rename demonstrates. Before publishing, run the complete local
-release gate and verify the package without uploading it:
+Choose the next version once and derive every command below from the manifest so
+the procedure never embeds a stale published version. After bumping the version
+in `Cargo.toml`, export it from `cargo pkgid`:
 
 ```bash
+VERSION="$(cargo pkgid | sed 's/.*[@#]//')"
+```
+
+For each release, update the package version in `Cargo.toml` and both committed
+lockfiles, move the relevant entries from `[Unreleased]` into a dated
+`CHANGELOG.md` heading, and update the published-version installation examples to
+match `$VERSION`. For a breaking change while pinto remains in the `0.x` series,
+increment the minor version, as the earlier CLI rename demonstrates.
+
+### Pre-tag verification
+
+Before creating the tag, confirm the bumped tree is internally consistent and the
+tag is still available. These checks require the package version in `Cargo.toml`,
+both committed lockfiles, the dated `CHANGELOG.md` entry, and the installation
+examples to agree on `$VERSION`, and that the `$VERSION` tag does not already
+exist:
+
+```bash
+test "$(cargo pkgid | sed 's/.*[@#]//')" = "$VERSION"                    # Cargo.toml package version
+for lock in $(git ls-files '*Cargo.lock'); do grep -Fq "version = \"$VERSION\"" "$lock" || echo "missing $VERSION in $lock"; done
+grep -Fq "## [$VERSION]" CHANGELOG.md                                    # dated changelog entry
+grep -Fq "cargo install pinto-cli --version $VERSION" README.md docs/book/src/installation.md
+git tag --list "$VERSION" | grep -qx "$VERSION" \
+  && { echo "tag $VERSION already exists"; false; } \
+  || echo "tag $VERSION is available"
+```
+
+Once these pass, create the tag on the release commit so the release-metadata
+gate — which treats the tag as the publication source of truth — sees a
+consistent tree, then run the complete local gate and verify the package without
+uploading it:
+
+```bash
+git tag "$VERSION"
 mise run release-check
 cargo publish --dry-run --all-features --locked
 ```
 
-The release gate must pass before a public release. A release is not ready
-while the package version, lockfiles, installation examples, CHANGELOG heading,
-and release tag disagree, or while the SQLite compatibility guidance is
-incomplete. Keep the next work items under the undated `[Unreleased]` heading
-until the release commit is tagged.
+The release gate must pass before a public release. A release is not ready while
+the package version, lockfiles, installation examples, CHANGELOG heading, and
+release tag disagree, or while the SQLite compatibility guidance is incomplete.
+Keep the next work items under the undated `[Unreleased]` heading until the
+release commit is tagged.
 
 After the release commit has passed CI and has been fast-forwarded to `main`,
-create the repository's version tag and push it together with `main`. Publish
-the same locked package to crates.io only after the tag points at that commit:
+push the tag together with `main`. Publish the same locked package to crates.io
+only after the tag points at that commit:
 
 ```bash
-git tag 0.2.0
-git push origin main 0.2.0
+git push origin main "$VERSION"
 mise run release-publish
 ```
