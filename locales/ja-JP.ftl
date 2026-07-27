@@ -151,6 +151,7 @@ kanban-help-entries =
     {$dependency_add}: 依存関係を追加
     {$dependency_remove}: 依存関係を解除
     {$edit}: アイテムを編集
+    {$split}: アイテムを分割
     {$reload}: ボードを再読込
     {$maximize}: 選択列を最大化
     {$search}: 検索

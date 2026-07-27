@@ -4,7 +4,9 @@ This demo contains two PBIs and a Kanban configuration with custom aliases:
 
 - `A` and `v` open or close details; the footer displays the first as `A`.
 - `Cmd+q` and `Esc` leave Kanban mode.
-- `?` opens the non-modal secondary-operation help window; `Ctrl+?` starts regex search.
+- `?` opens the non-modal secondary-operation help window, which lists the
+  secondary operations including `s` to split the selected PBI; `Ctrl+?` starts
+  regex search.
 - `a`/`Left` and `d`/`Right` select adjacent columns.
 - In the default keymap, `a` opens the add form, `d` adds a dependency, and
   `D` removes one, while `p` sets or clears a parent; this demo overrides

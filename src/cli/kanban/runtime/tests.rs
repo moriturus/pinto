@@ -127,6 +127,7 @@ mod interaction_decision_tests {
     use super::super::render::*;
     use super::super::*;
     use pinto::backlog::{BacklogItem, Status};
+    use pinto::kanban_keys::KeyAction;
     use pinto::rank::Rank;
     use pinto::service::SearchFilter;
 
@@ -199,6 +200,22 @@ mod interaction_decision_tests {
                 event::KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
             ),
             HelpKeyAction::PassThrough
+        );
+    }
+
+    #[test]
+    fn help_entries_list_the_split_action() {
+        let keymap = keymap();
+        let split_key = keymap.first(KeyAction::Split);
+        let lines: Vec<String> = help_entries(&keymap, false)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains(split_key) && line.contains("split item")),
+            "the Kanban help menu should list the split action; got: {lines:?}"
         );
     }
 

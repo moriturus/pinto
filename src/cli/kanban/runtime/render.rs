@@ -357,6 +357,7 @@ fn help_lines(
     let dependency_add = help_key(keymap, KeyAction::DependencyAdd);
     let dependency_remove = help_key(keymap, KeyAction::DependencyRemove);
     let edit = help_key(keymap, KeyAction::Edit);
+    let split = help_key(keymap, KeyAction::Split);
     let reload = help_key(keymap, KeyAction::Reload);
     let maximize = help_key(keymap, KeyAction::Maximize);
     let search = help_key(keymap, KeyAction::Search);
@@ -371,6 +372,7 @@ fn help_lines(
         &dependency_add,
         &dependency_remove,
         &edit,
+        &split,
         &reload,
         &maximize,
         &search,
@@ -396,6 +398,7 @@ fn help_lines(
     let dependency_add = pad(&dependency_add);
     let dependency_remove = pad(&dependency_remove);
     let edit = pad(&edit);
+    let split = pad(&split);
     let reload = pad(&reload);
     let maximize = pad(&maximize);
     let search = pad(&search);
@@ -412,6 +415,7 @@ fn help_lines(
             ("dependency_add", dependency_add.as_str()),
             ("dependency_remove", dependency_remove.as_str()),
             ("edit", edit.as_str()),
+            ("split", split.as_str()),
             ("reload", reload.as_str()),
             ("maximize", maximize.as_str()),
             ("search", search.as_str()),
@@ -522,6 +526,11 @@ fn wrap_hint_groups(hints: &str, width: u16) -> Vec<Line<'static>> {
 #[cfg(test)]
 pub(crate) fn header(view: &BoardView, width: u16) -> Line<'static> {
     header_with_localizer(view, width, current())
+}
+
+#[cfg(test)]
+pub(crate) fn help_entries(keymap: &KeyMap, show_clear_filter: bool) -> Vec<Line<'static>> {
+    help_lines(keymap, show_clear_filter, current())
 }
 
 fn header_with_localizer(view: &BoardView, width: u16, localizer: &Localizer) -> Line<'static> {

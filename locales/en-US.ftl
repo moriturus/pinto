@@ -151,6 +151,7 @@ kanban-help-entries =
     {$dependency_add}: add dependency
     {$dependency_remove}: remove dependency
     {$edit}: edit item
+    {$split}: split item
     {$reload}: reload board
     {$maximize}: maximize column
     {$search}: search

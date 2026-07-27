@@ -649,6 +649,54 @@ mod pty_tests {
     }
 
     #[test]
+    fn kanban_pty_help_overlay_lists_split() {
+        let dir = TempDir::new().expect("temp dir");
+        pinto(dir.path()).arg("init").assert().success();
+        pinto(dir.path())
+            .args(["add", "First card"])
+            .assert()
+            .success();
+
+        let config_path = dir.path().join(".pinto/config.toml");
+        let config = std::fs::read_to_string(&config_path).expect("config");
+        std::fs::write(
+            config_path,
+            config.replace("confirm_quit = true", "confirm_quit = false"),
+        )
+        .expect("disable quit confirmation");
+
+        let mut session = TuiSession::start(dir.path(), &["kanban"], None);
+        session.wait_until(
+            |bytes| {
+                bytes
+                    .windows(b"First card".len())
+                    .any(|window| window == b"First card")
+            },
+            "kanban did not render the card",
+        );
+
+        // Give the help popup room to render every entry without scrolling.
+        session.pty.resize(40, 120).expect("resize for help popup");
+        let _ = unsafe { libc::kill(session.child.0.id() as libc::pid_t, libc::SIGWINCH) };
+
+        // Open the help overlay and confirm it lists the split operation. ratatui positions each
+        // help field with its own cursor move, so match the "split" label alone; it appears nowhere
+        // else on the board.
+        session.send(b"?", "open help overlay");
+        session.wait_until(
+            |bytes| {
+                bytes
+                    .windows(b"split".len())
+                    .any(|window| window == b"split")
+            },
+            "help overlay did not list the split action",
+        );
+
+        session.leave_with(b"q");
+        session.assert_success(WAIT);
+    }
+
+    #[test]
     fn kanban_pty_startup_filters_compose_without_mutating_the_board() {
         let dir = TempDir::new().expect("temp dir");
         pinto(dir.path()).arg("init").assert().success();
