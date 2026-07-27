@@ -367,6 +367,39 @@ fn graph_cycles_are_reported_once_with_stable_members() {
     );
 }
 
+/// Depth that overflows the default test-thread stack under naive recursion,
+/// so cycle inspection must run on an explicit heap stack. See P-50.
+const DEEP_GRAPH: usize = 100_000;
+
+#[test]
+fn deep_acyclic_chain_reports_no_cycle_without_a_stack_overflow() {
+    // T-1 -> T-2 -> ... -> T-DEEP, no back edge.
+    let edges: BTreeMap<String, BTreeSet<String>> = (1..DEEP_GRAPH)
+        .map(|n| (format!("T-{n}"), BTreeSet::from([format!("T-{}", n + 1)])))
+        .collect();
+
+    assert!(
+        graph_cycles(&edges).is_empty(),
+        "a straight chain has no cycle"
+    );
+}
+
+#[test]
+fn deep_chain_closing_into_a_cycle_is_detected_without_a_stack_overflow() {
+    // T-1 -> T-2 -> ... -> T-DEEP -> T-1: one cycle spanning every node.
+    let edges: BTreeMap<String, BTreeSet<String>> = (1..=DEEP_GRAPH)
+        .map(|n| {
+            let next = if n == DEEP_GRAPH { 1 } else { n + 1 };
+            (format!("T-{n}"), BTreeSet::from([format!("T-{next}")]))
+        })
+        .collect();
+
+    let cycles = graph_cycles(&edges);
+
+    assert_eq!(cycles.len(), 1, "exactly one cycle");
+    assert_eq!(cycles[0].len(), DEEP_GRAPH, "the cycle spans every node");
+}
+
 async fn doctor_with_counted_inspections(project_dir: &Path, fix: bool) -> (DoctorReport, usize) {
     let (board_dir, backend, config) = open_board(project_dir).await.expect("open board");
     let inspections = std::cell::Cell::new(0usize);

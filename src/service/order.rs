@@ -99,15 +99,19 @@ pub fn hierarchical(items: Vec<BacklogItem>) -> Vec<BacklogItem> {
         .collect()
 }
 
-/// Depth-first pre-order emit of `i` then its subtree. `emitted` breaks any
-/// (invalid) cycle reached through children.
-fn visit(i: usize, children: &[Vec<usize>], emitted: &mut [bool], out: &mut Vec<usize>) {
-    if std::mem::replace(&mut emitted[i], true) {
-        return;
-    }
-    out.push(i);
-    for &c in &children[i] {
-        visit(c, children, emitted, out);
+/// Depth-first pre-order emit of `root` then its subtree, using an explicit
+/// heap stack so a chain thousands of levels deep cannot overflow the native
+/// call stack. `emitted` breaks any (invalid) cycle reached through children.
+fn visit(root: usize, children: &[Vec<usize>], emitted: &mut [bool], out: &mut Vec<usize>) {
+    let mut stack = vec![root];
+    while let Some(i) = stack.pop() {
+        if std::mem::replace(&mut emitted[i], true) {
+            continue;
+        }
+        out.push(i);
+        // Push children in reverse so they pop — and emit — in input order,
+        // reproducing the recursive left-to-right pre-order exactly.
+        stack.extend(children[i].iter().rev().copied());
     }
 }
 
@@ -185,5 +189,29 @@ mod tests {
         let ids = ordered_ids(&items);
         assert_eq!(ids.len(), 2, "no item dropped");
         assert!(ids.contains(&"T-1".to_string()) && ids.contains(&"T-2".to_string()));
+    }
+
+    /// Depth that overflows the default test-thread stack under naive recursion,
+    /// so the traversal must run on an explicit heap stack. See P-50.
+    const DEEP: u32 = 100_000;
+
+    #[test]
+    fn deep_parent_chain_orders_without_a_stack_overflow() {
+        // Each item's parent is the one above it: a single chain DEEP levels deep.
+        let items: Vec<_> = (1..=DEEP)
+            .map(|n| {
+                let parent = (n > 1).then(|| format!("T-{}", n - 1));
+                item(&format!("T-{n}"), "a", parent.as_deref())
+            })
+            .collect();
+        let order = hierarchical_order(&items);
+        assert_eq!(order.len(), items.len(), "every item is emitted once");
+        // Pre-order down a single chain preserves input order.
+        assert_eq!(order.first().copied(), Some(0));
+        assert_eq!(order.last().copied(), Some(items.len() - 1));
+        assert!(
+            order.windows(2).all(|w| w[0] < w[1]),
+            "a straight chain emits in ascending input order"
+        );
     }
 }

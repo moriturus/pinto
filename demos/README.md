@@ -57,6 +57,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`remove-force-safety`](single/remove-force-safety) — permanent removal, reverse-reference guards, and issued-ID history
   - [`parent-child`](single/parent-child) — parent/child hierarchy
   - [`child-points`](single/child-points) — opt-in recursive parent point aggregation
+  - [`deep-board`](single/deep-board) — stack-safe deep parent/child traversal, ordering, and aggregation
   - [`labels`](single/labels) — labels and label filters
   - [`sprint-lifecycle`](single/sprint-lifecycle) — sprint close rollover and spillover reporting
   - [`sprint-edit-delete`](single/sprint-edit-delete) — edit a goal-less Sprint, start it, and delete a Sprint while retaining PBIs

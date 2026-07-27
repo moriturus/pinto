@@ -40,7 +40,7 @@ pub(crate) fn column_display_rows(
     let mut out = Vec::new();
     let mut emitted = HashSet::new();
     for &r in &forest.roots {
-        visit(r, 0, None, items, &forest, expanded, &mut emitted, &mut out);
+        visit(r, items, &forest, expanded, &mut emitted, &mut out);
     }
     // Pick up items that cannot be reached from any route (such as circulating parent links).
     for &i in &forest.unreachable {
@@ -57,34 +57,40 @@ pub(crate) fn column_display_rows(
     out
 }
 
-/// DFS body of `column_display_rows`. Dive into the unfolding parent's child. Break the cycle with emit completed.
-#[allow(clippy::too_many_arguments)]
+/// DFS body of `column_display_rows`, rooted at `root` (depth 0, no parent).
+///
+/// Uses an explicit heap stack so a chain thousands of levels deep cannot
+/// overflow the native call stack. Only expanded parents dive into their
+/// children; `emitted` breaks any (invalid) cycle reached through children.
 fn visit(
-    i: usize,
-    depth: usize,
-    parent_index: Option<usize>,
+    root: usize,
     items: &[BacklogItem],
     forest: &Forest,
     expanded: &HashSet<ItemId>,
     emitted: &mut HashSet<usize>,
     out: &mut Vec<DisplayRow>,
 ) {
-    if !emitted.insert(i) {
-        return;
-    }
-    let kids = &forest.children[i];
-    let child_count = kids.len();
-    let is_expanded = child_count > 0 && expanded.contains(&items[i].id);
-    out.push(DisplayRow {
-        item_index: i,
-        depth,
-        child_count,
-        expanded: is_expanded,
-        parent_index,
-    });
-    if is_expanded {
-        for &c in kids {
-            visit(c, depth + 1, Some(i), items, forest, expanded, emitted, out);
+    let mut stack = vec![(root, 0_usize, None)];
+    while let Some((i, depth, parent_index)) = stack.pop() {
+        if !emitted.insert(i) {
+            continue;
+        }
+        let kids = &forest.children[i];
+        let child_count = kids.len();
+        let is_expanded = child_count > 0 && expanded.contains(&items[i].id);
+        out.push(DisplayRow {
+            item_index: i,
+            depth,
+            child_count,
+            expanded: is_expanded,
+            parent_index,
+        });
+        if is_expanded {
+            // Push children in reverse so they pop — and render — in input order,
+            // reproducing the recursive top-to-bottom layout exactly.
+            for &c in kids.iter().rev() {
+                stack.push((c, depth + 1, Some(i)));
+            }
         }
     }
 }
@@ -213,6 +219,32 @@ mod tests {
                 ("T-5".to_string(), 0), // roots T-1, T-5, T-4 in rank order
                 ("T-4".to_string(), 0),
             ]
+        );
+    }
+
+    #[test]
+    fn deep_expanded_chain_flattens_without_a_stack_overflow() {
+        // A single parent chain thousands of levels deep, fully expanded, must
+        // flatten on an explicit heap stack rather than the native call stack.
+        const DEEP: usize = 100_000;
+        let ids: Vec<String> = (1..=DEEP).map(|n| format!("T-{n}")).collect();
+        let items: Vec<_> = (1..=DEEP)
+            .map(|n| item(&ids[n - 1], "a", (n > 1).then(|| ids[n - 2].as_str())))
+            .collect();
+        let expanded: HashSet<ItemId> = ids.iter().map(|id| id.parse().unwrap()).collect();
+
+        let rows = column_display_rows(&items, &expanded);
+
+        assert_eq!(
+            rows.len(),
+            DEEP,
+            "every item becomes exactly one visible row"
+        );
+        assert_eq!(rows.first().map(|r| r.depth), Some(0));
+        assert_eq!(rows.last().map(|r| r.depth), Some(DEEP - 1));
+        assert!(
+            rows.iter().enumerate().all(|(i, r)| r.depth == i),
+            "each level indents one deeper than the last down the chain"
         );
     }
 }

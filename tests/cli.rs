@@ -15,6 +15,8 @@ mod board;
 mod common;
 #[path = "cli/corruption.rs"]
 mod corruption;
+#[path = "cli/deep_board_stack_safety.rs"]
+mod deep_board_stack_safety;
 #[path = "cli/dependencies.rs"]
 mod dependencies;
 #[path = "cli/doctor.rs"]

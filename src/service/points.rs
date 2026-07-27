@@ -1,7 +1,7 @@
 //! Effective story-point calculation for opt-in parent-child aggregation.
 
 use crate::backlog::{BacklogItem, Status};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Apply the configured effective points to an in-memory view of PBIs.
 pub(crate) fn apply_effective_points(
@@ -49,15 +49,14 @@ pub(crate) fn effective_points(
         }
     }
 
-    let mut calculator = Calculator {
+    let calculator = Calculator {
         items,
         children,
         done_column,
         cache: vec![Cache::Unknown; items.len()],
+        on_path: vec![false; items.len()],
     };
-    (0..items.len())
-        .map(|index| calculator.effective(index, &mut HashSet::new()))
-        .collect()
+    calculator.compute_all()
 }
 
 #[derive(Clone, Copy)]
@@ -66,50 +65,111 @@ enum Cache {
     Computed(Option<u32>),
 }
 
+/// Enter/exit marker for the explicit-stack post-order traversal: `Enter`
+/// schedules a node's children, `Exit` combines their already-computed values.
+enum Phase {
+    Enter,
+    Exit,
+}
+
 struct Calculator<'a> {
     items: &'a [BacklogItem],
     children: Vec<Vec<usize>>,
     done_column: &'a Status,
     cache: Vec<Cache>,
+    /// Nodes currently on the depth-first path, so a parent cycle is detected as
+    /// a re-entry rather than recursing forever.
+    on_path: Vec<bool>,
 }
 
 impl Calculator<'_> {
-    fn effective(&mut self, index: usize, visiting: &mut HashSet<usize>) -> Option<u32> {
-        if let Cache::Computed(value) = self.cache[index] {
-            return value;
+    /// Compute the effective points for every item without recursion.
+    ///
+    /// A heap stack replaces the native call stack so chains thousands of levels
+    /// deep cannot overflow. Each node is combined only after its children, and
+    /// memoized so shared subtrees and repeated start nodes are computed once.
+    fn compute_all(mut self) -> Vec<Option<u32>> {
+        let mut stack: Vec<(usize, Phase)> = Vec::new();
+        for start in 0..self.items.len() {
+            if matches!(self.cache[start], Cache::Computed(_)) {
+                continue;
+            }
+            stack.push((start, Phase::Enter));
+            while let Some((index, phase)) = stack.pop() {
+                match phase {
+                    Phase::Enter => {
+                        if matches!(self.cache[index], Cache::Computed(_)) {
+                            continue;
+                        }
+                        if self.on_path[index] {
+                            // Already on the current path: a parent cycle. Its own
+                            // `Exit` frame will record `None`; skip this re-entry.
+                            continue;
+                        }
+                        self.on_path[index] = true;
+                        stack.push((index, Phase::Exit));
+                        for &child in &self.children[index] {
+                            // A done leaf always contributes a fixed `Some(0)`, so it
+                            // never needs its own frame. Everything else is scheduled
+                            // once, unless it is already computed.
+                            if !matches!(self.cache[child], Cache::Computed(_))
+                                && !self.is_done_leaf(child)
+                            {
+                                stack.push((child, Phase::Enter));
+                            }
+                        }
+                    }
+                    Phase::Exit => {
+                        let value = self.combine(index);
+                        self.on_path[index] = false;
+                        self.cache[index] = Cache::Computed(value);
+                    }
+                }
+            }
         }
-        if !visiting.insert(index) {
-            return None;
-        }
-
-        let value = if self.children[index].is_empty() {
-            self.items[index].points
-        } else {
-            self.sum_children(index, visiting)
-        };
-        visiting.remove(&index);
-        self.cache[index] = Cache::Computed(value);
-        value
-    }
-
-    fn contribution(&mut self, index: usize, visiting: &mut HashSet<usize>) -> Option<u32> {
-        if self.items[index].status == *self.done_column {
-            // A completed intermediate node is not counted itself, but active descendants are
-            // still eligible because the rule is applied to each item's status independently.
-            self.sum_children(index, visiting)
-        } else {
-            self.effective(index, visiting)
-        }
-    }
-
-    fn sum_children(&mut self, index: usize, visiting: &mut HashSet<usize>) -> Option<u32> {
-        self.children[index]
-            .clone()
+        self.cache
             .into_iter()
-            .try_fold(0_u32, |total, child| {
-                self.contribution(child, visiting)
+            .map(|slot| match slot {
+                Cache::Computed(value) => value,
+                Cache::Unknown => None,
+            })
+            .collect()
+    }
+
+    /// Effective points of `index`: a leaf's own estimate, otherwise the sum of
+    /// its children's contributions (with `None` on any gap or overflow).
+    fn combine(&self, index: usize) -> Option<u32> {
+        if self.children[index].is_empty() {
+            return self.items[index].points;
+        }
+        self.children[index]
+            .iter()
+            .try_fold(0_u32, |total, &child| {
+                self.contribution(child)
                     .and_then(|points| total.checked_add(points))
             })
+    }
+
+    /// The points a child adds to its parent's sum.
+    ///
+    /// A done leaf contributes zero; any other node contributes its effective
+    /// value. An uncomputed value at combine time means the child is still on the
+    /// path (a parent cycle), so it contributes `None` and makes the sum
+    /// uncomputable.
+    fn contribution(&self, child: usize) -> Option<u32> {
+        if self.is_done_leaf(child) {
+            return Some(0);
+        }
+        match self.cache[child] {
+            Cache::Computed(value) => value,
+            Cache::Unknown => None,
+        }
+    }
+
+    /// A completed item with no children: it is excluded from aggregation, so as
+    /// a child it contributes zero rather than its own stored estimate.
+    fn is_done_leaf(&self, index: usize) -> bool {
+        self.children[index].is_empty() && self.items[index].status == *self.done_column
     }
 }
 
@@ -227,5 +287,52 @@ mod tests {
         ];
 
         assert_eq!(points(&items, true), [None, None]);
+    }
+
+    /// Depth that overflows the default test-thread stack under naive recursion,
+    /// so aggregation must run on an explicit heap stack. See P-50.
+    const DEEP: u32 = 100_000;
+
+    #[test]
+    fn deep_parent_chain_aggregates_without_a_stack_overflow() {
+        // T-1 ← T-2 ← ... ← T-DEEP; only the deepest leaf carries an estimate.
+        let items: Vec<_> = (1..=DEEP)
+            .map(|n| {
+                item(
+                    n,
+                    "todo",
+                    (n == DEEP).then_some(2),
+                    (n > 1).then_some(n - 1),
+                )
+            })
+            .collect();
+
+        let calculated = points(&items, true);
+
+        assert_eq!(calculated.len(), items.len());
+        assert!(
+            calculated.iter().all(|points| *points == Some(2)),
+            "the single leaf estimate propagates up the whole chain"
+        );
+    }
+
+    #[test]
+    fn deep_parent_chain_terminating_in_a_cycle_is_uncomputable() {
+        // A deep chain whose deepest two links form a parent cycle: every node on
+        // the chain is uncomputable, and the traversal must terminate.
+        let items: Vec<_> = (1..=DEEP)
+            .map(|n| {
+                let parent = if n == 1 { DEEP } else { n - 1 };
+                item(n, "todo", Some(1), Some(parent))
+            })
+            .collect();
+
+        let calculated = points(&items, true);
+
+        assert_eq!(calculated.len(), items.len());
+        assert!(
+            calculated.iter().all(Option::is_none),
+            "a cycle anywhere on the chain makes every member uncomputable"
+        );
     }
 }

@@ -657,43 +657,73 @@ fn analyze_issued(records: &[RawItemRecord], issued: &IssuedHistory) -> Vec<Doct
 
 pub(super) fn graph_cycles(edges: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String>> {
     let mut state = BTreeMap::new();
-    let mut stack = Vec::new();
     let mut seen_cycles = HashSet::new();
     let mut cycles = Vec::new();
     for node in edges.keys() {
-        visit_graph(
-            node,
-            edges,
-            &mut state,
-            &mut stack,
-            &mut seen_cycles,
-            &mut cycles,
-        );
+        visit_graph(node, edges, &mut state, &mut seen_cycles, &mut cycles);
     }
     cycles.sort();
     cycles
 }
 
-fn visit_graph(
-    node: &str,
-    edges: &BTreeMap<String, BTreeSet<String>>,
+/// One depth-first search rooted at `root`, run on an explicit heap stack so a
+/// chain thousands of levels deep cannot overflow the native call stack.
+///
+/// The three-state coloring (0 = unvisited, 1 = on the current path, 2 = done)
+/// and the on-path cycle extraction are preserved exactly, so the reported
+/// cycles are identical to the earlier recursive traversal.
+fn visit_graph<'a>(
+    root: &'a str,
+    edges: &'a BTreeMap<String, BTreeSet<String>>,
     state: &mut BTreeMap<String, u8>,
-    stack: &mut Vec<String>,
     seen_cycles: &mut HashSet<String>,
     cycles: &mut Vec<Vec<String>>,
 ) {
-    if state.get(node).copied().unwrap_or(0) == 2 {
+    if state.get(root).copied().unwrap_or(0) == 2 {
         return;
     }
-    state.insert(node.to_string(), 1);
-    stack.push(node.to_string());
-    if let Some(targets) = edges.get(node) {
-        for target in targets {
-            match state.get(target).copied().unwrap_or(0) {
-                0 => visit_graph(target, edges, state, stack, seen_cycles, cycles),
+
+    // One frame per node on the DFS path: the node's outgoing edges and how far
+    // we have walked them. `path` is the same node list the recursion kept on
+    // its call stack, used to slice out a cycle at a back edge.
+    struct Frame<'a> {
+        node: &'a str,
+        targets: Vec<&'a String>,
+        cursor: usize,
+    }
+
+    let mut path: Vec<&'a str> = vec![root];
+    state.insert(root.to_string(), 1);
+    let mut frames: Vec<Frame<'a>> = vec![Frame {
+        node: root,
+        targets: edges.get(root).into_iter().flatten().collect(),
+        cursor: 0,
+    }];
+
+    while let Some(frame) = frames.last_mut() {
+        let next = (frame.cursor < frame.targets.len()).then(|| {
+            let target = frame.targets[frame.cursor];
+            frame.cursor += 1;
+            target
+        });
+
+        match next {
+            Some(target) => match state.get(target.as_str()).copied().unwrap_or(0) {
+                0 => {
+                    state.insert(target.clone(), 1);
+                    path.push(target.as_str());
+                    frames.push(Frame {
+                        node: target.as_str(),
+                        targets: edges.get(target.as_str()).into_iter().flatten().collect(),
+                        cursor: 0,
+                    });
+                }
                 1 => {
-                    if let Some(start) = stack.iter().position(|value| value == target) {
-                        let mut cycle = stack[start..].to_vec();
+                    if let Some(start) = path.iter().position(|value| *value == target.as_str()) {
+                        let mut cycle: Vec<String> = path[start..]
+                            .iter()
+                            .map(|value| (*value).to_string())
+                            .collect();
                         cycle.sort();
                         let key = cycle.join(",");
                         if seen_cycles.insert(key) {
@@ -702,9 +732,12 @@ fn visit_graph(
                     }
                 }
                 _ => {}
+            },
+            None => {
+                state.insert(frame.node.to_string(), 2);
+                frames.pop();
+                path.pop();
             }
         }
     }
-    stack.pop();
-    state.insert(node.to_string(), 2);
 }
