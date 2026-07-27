@@ -371,7 +371,7 @@ jobs:
       - name: Setup nightly Rust
         # Pinned to a SHA, so the toolchain can no longer be inferred from the
         # `@nightly` ref and must be named explicitly.
-        uses: dtolnay/rust-toolchain@4fd1da8b0805d2d2e936788875a7d65dbd677dc2 # nightly
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # nightly
         with:
           toolchain: nightly
       - name: Cache Cargo dependencies and build artifacts
