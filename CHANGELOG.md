@@ -7,6 +7,35 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-28
+
+This patch release improves automation, deep-board safety, and multi-record
+recovery without changing the board data format or breaking the existing CLI
+contract.
+
+### Added
+
+- Added output placeholders to sequential `pinto automate` plans, allowing
+  later commands to consume IDs produced by earlier `add` and `split` commands
+  through references such as `@command[0].created_ids[0]`.
+- Added operation-level recovery for `split` and `import --force` across the
+  File, Git, and SQLite backends, with restoration or transaction guarantees
+  and actionable Git commit-failure guidance.
+- Added large-board performance regression checks with reproducible benchmark
+  reports and CI coverage for the smoke and scheduled benchmark paths.
+
+### Fixed
+
+- Fixed deep parent/child ordering, Kanban layout, point aggregation, and
+  dependency-cycle inspection to avoid native stack overflows on deeply nested
+  boards.
+- Fixed the Kanban help overlay so it lists the existing `split` action.
+
+### Documentation
+
+- Documented public Rust API error contracts and the pre-tag release
+  verification workflow.
+
 ## [0.4.0] - 2026-07-25
 
 This minor release adds PBI splitting, letting you derive new PBIs from an
