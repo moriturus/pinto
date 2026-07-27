@@ -58,7 +58,7 @@ fn assert_json_document(path: &str) {
 
 fn assert_yaml_document(path: &str) {
     let contents = repository_file(path);
-    serde_yaml::from_str::<serde_yaml::Value>(&contents)
+    yaml_rust2::YamlLoader::load_from_str(&contents)
         .unwrap_or_else(|error| panic!("{path} is not structurally valid YAML: {error}"));
 }
 
@@ -238,7 +238,11 @@ fn maintained_configuration_and_metadata_have_structural_parsers() {
         assert_toml_document(path);
     }
     assert_json_document("demos/single/automation-plan/plan.json");
-    for path in [".github/workflows/ci.yml", ".github/workflows/pages.yml"] {
+    for path in [
+        ".github/workflows/ci.yml",
+        ".github/workflows/pages.yml",
+        ".github/dependabot.yml",
+    ] {
         assert_yaml_document(path);
     }
 }
@@ -532,7 +536,7 @@ fn toolchain_locks_cargo_and_separates_ci_roles() {
     for marker in [
         "Setup pinned development toolchain",
         "current-stable:",
-        "dtolnay/rust-toolchain@stable",
+        "dtolnay/rust-toolchain@",
         "release:",
         "cargo build --release --all-features --locked",
         "./scripts/verify-package.sh",

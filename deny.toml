@@ -17,9 +17,17 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
-multiple-versions = "warn"
+# Deny duplicate versions so a newly introduced duplicate fails the gate. The
+# skip list records the currently approved duplicates pulled transitively; add a
+# new entry (with a reason) only after a reviewed decision. See
+# docs/dependencies.md.
+multiple-versions = "deny"
 wildcards = "deny"
 highlight = "all"
+skip = [
+    { crate = "hashbrown@0.16.1", reason = "Transitive: older release still pulled alongside hashbrown 0.17." },
+    { crate = "unicode-width@0.1.14", reason = "Transitive: older release still pulled alongside unicode-width 0.2." },
+]
 
 [sources]
 unknown-registry = "deny"

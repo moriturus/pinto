@@ -1,0 +1,30 @@
+# Scheduled maintenance proposals. Dependabot opens reviewable pull requests for
+# Cargo crates and GitHub Actions so security and compatibility updates never
+# drift untracked. Actions are pinned to commit SHAs; Dependabot rewrites the
+# SHA and the trailing version comment together. Review guidance lives in
+# docs/dependencies.md.
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions-all:
+        patterns:
+          - "*"
