@@ -227,6 +227,48 @@ fn maintained_guidance_has_resolvable_relative_links() {
 }
 
 #[test]
+fn readme_is_a_concise_entry_point_to_detailed_guidance() {
+    let readme = repository_file("README.md");
+    let line_count = readme.lines().count();
+    assert!(
+        line_count <= 120,
+        "README should remain an entry point, but has {line_count} lines"
+    );
+
+    for marker in [
+        "## Documentation",
+        "[Installation](docs/book/src/installation.md)",
+        "[Quick start](docs/book/src/quickstart.md)",
+        "[CLI reference](docs/book/src/cli.md)",
+        "[Configuration](docs/book/src/configuration.md)",
+        "[Data format](docs/book/src/data-format.md)",
+        "[Kanban (TUI)](docs/book/src/kanban.md)",
+        "[Cookbook](docs/book/src/cookbook.md)",
+        "[Team-scale best practices](docs/book/src/team-scale.md)",
+        "[Contributing](docs/book/src/contributing.md)",
+        "[Testing and fuzzing](docs/book/src/testing.md)",
+        "[Local CI](docs/book/src/local-ci.md)",
+        "[Reproducibility](docs/book/src/reproducibility.md)",
+        "[Undoing a mutation](docs/book/src/undo.md)",
+        "[Merging shared boards](docs/book/src/merging.md)",
+        "[Dogfooding](docs/book/src/dogfooding.md)",
+        "[Design decisions](docs/DESIGN.md)",
+        "[JSON output](docs/json-schema.md)",
+        "[Storage migration](docs/migration.md)",
+        "[Stability decisions](docs/stability.md)",
+        "[Dependency decisions](docs/dependencies.md)",
+        "[External command contract](docs/plugin-contract.md)",
+        "[Agent skills](docs/skills.md)",
+        "[Benchmarks](docs/benchmarks.md)",
+    ] {
+        assert!(
+            readme.contains(marker),
+            "README navigation omits detailed guidance: {marker}"
+        );
+    }
+}
+
+#[test]
 fn maintained_configuration_and_metadata_have_structural_parsers() {
     for path in [
         "Cargo.toml",
@@ -896,13 +938,8 @@ fn i18n_localizer_cache_demo_contains_repeated_rendering_commands_and_data() {
 
 #[test]
 fn kanban_documentation_covers_startup_scope_filters() {
-    let readme = repository_file("README.md");
     let kanban = repository_file("docs/book/src/kanban.md");
     for option in ["--sprint", "--label", "--all-labels", "--search", "--regex"] {
-        assert!(
-            readme.contains(option),
-            "README omits Kanban option {option}"
-        );
         assert!(
             kanban.contains(option),
             "Kanban guide omits startup option {option}"
