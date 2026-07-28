@@ -195,9 +195,9 @@ impl AutomationPlan {
                     }],
                     "items": {
                         "type": "string",
-                        "description": "Literal command arguments, or an item-ID output placeholder in a supported item-ID position.",
+                        "description": "Literal command arguments, or an item-ID output placeholder in a supported item-ID position. Escape a literal placeholder marker as @@command.",
                         "oneOf": [
-                            {"type": "string", "not": {"pattern": "@command"}},
+                            {"type": "string", "not": {"pattern": "(^|[^@])@command"}},
                             {"$ref": "#/$defs/output_placeholder"}
                         ]
                     }
@@ -268,11 +268,21 @@ mod tests {
             schema["$defs"]["output_placeholder"]["pattern"],
             r"^@command\[[0-9]+\]\.created_ids\[[0-9]+\]$"
         );
+        assert_eq!(
+            schema["$defs"]["command"]["items"]["oneOf"][0]["not"]["pattern"],
+            "(^|[^@])@command"
+        );
         assert!(
             schema["$defs"]["output_placeholder"]["description"]
                 .as_str()
                 .expect("placeholder description")
                 .contains("zero-based")
+        );
+        assert!(
+            schema["$defs"]["command"]["items"]["description"]
+                .as_str()
+                .expect("literal argument description")
+                .contains("@@command")
         );
     }
 }

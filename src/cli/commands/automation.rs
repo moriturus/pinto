@@ -651,8 +651,32 @@ impl PlaceholderError {
     }
 }
 
+const OUTPUT_REFERENCE_MARKER: &str = "@command";
+const ESCAPED_OUTPUT_REFERENCE_MARKER: &str = "@@command";
+
+fn find_unescaped_output_reference(raw: &str) -> Option<usize> {
+    let mut search_from = 0;
+    while let Some(offset) = raw[search_from..].find('@') {
+        let index = search_from + offset;
+        let remainder = &raw[index..];
+        if remainder.starts_with(ESCAPED_OUTPUT_REFERENCE_MARKER) {
+            search_from = index + ESCAPED_OUTPUT_REFERENCE_MARKER.len();
+            continue;
+        }
+        if remainder.starts_with(OUTPUT_REFERENCE_MARKER) {
+            return Some(index);
+        }
+        search_from = index + 1;
+    }
+    None
+}
+
+fn unescape_output_references(raw: &str) -> String {
+    raw.replace(ESCAPED_OUTPUT_REFERENCE_MARKER, OUTPUT_REFERENCE_MARKER)
+}
+
 fn parse_output_reference(raw: &str) -> Result<Option<OutputReference>, PlaceholderError> {
-    if !raw.contains("@command") {
+    if find_unescaped_output_reference(raw).is_none() {
         return Ok(None);
     }
 
@@ -755,7 +779,7 @@ fn resolve_automation_command(
             let reference =
                 parse_output_reference(raw).map_err(|error| error.localized(localizer))?;
             let Some(reference) = reference else {
-                return Ok(raw.clone());
+                return Ok(unescape_output_references(raw));
             };
             let result = producer_results
                 .get(reference.command_index)

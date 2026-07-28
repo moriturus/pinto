@@ -669,6 +669,53 @@ fn automate_accepts_a_multiline_plan_from_stdin_and_reports_json() {
 }
 
 #[test]
+fn automate_escapes_literal_placeholders_in_multiline_bodies_for_dry_run_and_apply() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    let plan = r###"{"commands":[["add","Parent"],["add","Child","--parent","@command[0].created_ids[0]","--body","# Notes\n\nKeep @@command[0].created_ids[0] as text"]]}"###;
+
+    let dry_run = pinto(dir.path())
+        .args(["automate", "--plan", plan, "--dry-run", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let dry_report: serde_json::Value =
+        serde_json::from_slice(&dry_run).expect("dry-run automation report");
+    assert_eq!(dry_report["status"], "dry_run");
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"])),
+        serde_json::json!([])
+    );
+
+    let applied = pinto(dir.path())
+        .args(["automate", "--plan", plan, "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&applied).expect("automation report");
+    assert_eq!(report["status"], "completed");
+    assert_eq!(
+        report["commands"][0]["created_ids"],
+        serde_json::json!(["T-1"])
+    );
+    assert_eq!(
+        report["commands"][1]["created_ids"],
+        serde_json::json!(["T-2"])
+    );
+
+    let child = show_json(pinto(dir.path()).args(["show", "T-2", "--json"]));
+    assert_eq!(child["parent"], "T-1");
+    assert_eq!(
+        child["body"],
+        "# Notes\n\nKeep @command[0].created_ids[0] as text"
+    );
+}
+
+#[test]
 fn automate_accepts_a_plan_file_and_dry_run_does_not_mutate_the_board() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

@@ -442,6 +442,12 @@ Unknown, future, malformed, or out-of-range references fail the dependent
 command and skip the remaining plan. Dry-run resolves references in the
 isolated preview board; IDs in a dry-run report are preview values.
 
+To pass a placeholder-looking string literally in an ordinary argument such as
+`--body`, prefix the marker with a second `@`: write
+`@@command[0].created_ids[0]`. Pinto removes one `@` immediately before
+executing the command. The escaped form is literal text, while an unescaped
+placeholder-like string outside an item-ID position remains invalid.
+
 The dry-run snapshot holds the board write lock, so a concurrent writer cannot
 be mixed into the preview. Use `pinto export --json` for the same consistency
 boundary when an automation consumer needs a complete active-board read. It

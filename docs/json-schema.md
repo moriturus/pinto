@@ -117,6 +117,12 @@ commands can be referenced; the token is never shell-expanded and is accepted
 only in item-ID positions. An out-of-range output is reported at execution
 time, after which dependent and later commands are skipped.
 
+To pass a placeholder-looking string literally in an ordinary argument such as
+`--body`, prefix the marker with a second `@`: write
+`@@command[0].created_ids[0]`. Pinto removes one `@` immediately before
+executing the command. The escaped form is literal text, while an unescaped
+placeholder-like string outside an item-ID position remains invalid.
+
 For example, this plan creates two items, then uses the actual first ID without
 predicting the next `issued_ids` number:
 
