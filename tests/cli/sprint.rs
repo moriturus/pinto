@@ -395,6 +395,125 @@ fn sprint_edit_rejects_empty_title_and_no_fields_without_mutation() {
 }
 
 #[test]
+fn sprint_goal_outcome_can_be_set_updated_and_cleared_without_changing_goal() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One", "--goal", "Ship it"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--goal-achieved", "true"])
+        .assert()
+        .success();
+    let achieved = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(achieved[0]["goal"], "Ship it");
+    assert_eq!(achieved[0]["goal_achieved"], true);
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--goal-achieved", "false"])
+        .assert()
+        .success();
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]))[0]["goal_achieved"],
+        false
+    );
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--clear-goal-achieved"])
+        .assert()
+        .success();
+    let cleared = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(cleared[0]["goal"], "Ship it");
+    assert_eq!(cleared[0]["goal_achieved"], serde_json::Value::Null);
+}
+
+#[test]
+fn sprint_goal_report_calculates_rate_and_ignores_blank_goals() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    for (id, title, goal, outcome) in [
+        ("S-1", "Achieved", Some("Ship it"), Some("true")),
+        ("S-2", "Not achieved", Some("Ship more"), Some("false")),
+        ("S-3", "No goal", None, Some("false")),
+        ("S-4", "Unevaluated", Some("Explore"), None),
+    ] {
+        let mut args = vec!["sprint", "new", id, title];
+        if let Some(goal) = goal {
+            args.extend(["--goal", goal]);
+        }
+        pinto(dir.path()).args(args).assert().success();
+        if let Some(outcome) = outcome {
+            pinto(dir.path())
+                .args(["sprint", "edit", id, "--goal-achieved", outcome])
+                .assert()
+                .success();
+        }
+    }
+
+    let report =
+        json_stdout(pinto(dir.path()).args(["sprint", "goal", "--recent", "10", "--json"]));
+    assert_eq!(report["evaluated_sprints"], 2);
+    assert_eq!(report["achieved_sprints"], 1);
+    assert_eq!(report["achievement_rate"], 50.0);
+    assert_eq!(
+        report["sprints"][2]["goal_achieved"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        report["sprints"][3]["goal_achieved"],
+        serde_json::Value::Null
+    );
+
+    pinto(dir.path())
+        .args(["sprint", "goal", "--recent", "10"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Achievement rate: 50.0%"))
+        .stdout(predicate::str::contains("S-1"))
+        .stdout(predicate::str::contains("achieved"));
+}
+
+#[test]
+fn sprint_goal_report_communicates_an_unavailable_rate() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "No goal"])
+        .assert()
+        .success();
+
+    let report = json_stdout(pinto(dir.path()).args(["sprint", "goal", "--json"]));
+    assert_eq!(report["evaluated_sprints"], 0);
+    assert_eq!(report["achieved_sprints"], 0);
+    assert_eq!(report["achievement_rate"], serde_json::Value::Null);
+    pinto(dir.path())
+        .args(["sprint", "goal"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Achievement rate: n/a"));
+}
+
+#[test]
+fn sprint_goal_outcome_validation_is_actionable() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint One"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--goal-achieved", "maybe"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("invalid value"))
+        .stderr(predicate::str::contains("true"));
+}
+
+#[test]
 fn sprint_capacity_sets_and_displays_calculated_hours() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

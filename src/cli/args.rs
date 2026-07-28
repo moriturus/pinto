@@ -502,6 +502,22 @@ pub(super) enum SprintCommand {
         /// Replacement sprint goal. Pass an empty value to clear the goal.
         #[arg(long, short = 'g')]
         goal: Option<String>,
+        /// Explicitly record whether the Sprint Goal was achieved (`true` or `false`).
+        #[arg(
+            long = "goal-achieved",
+            short = 'A',
+            value_name = "BOOL",
+            action = clap::ArgAction::Set,
+            conflicts_with = "clear_goal_achieved"
+        )]
+        goal_achieved: Option<bool>,
+        /// Clear the recorded Sprint Goal result and mark it unevaluated.
+        #[arg(
+            long = "clear-goal-achieved",
+            short = 'N',
+            conflicts_with = "goal_achieved"
+        )]
+        clear_goal_achieved: bool,
         /// Replacement planned start date and time (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, in UTC).
         #[arg(long, short = 's', requires = "end", value_parser = parse_utc_datetime)]
         start: Option<chrono::DateTime<chrono::Utc>>,
@@ -578,6 +594,16 @@ pub(super) enum SprintCommand {
         /// Number of recent sprints to aggregate (default: 5).
         #[arg(long, short = 'n', default_value_t = 5, value_parser = parse_positive_usize)]
         recent: usize,
+    },
+    /// Report Sprint Goal outcomes and the aggregate achievement rate.
+    #[command(visible_alias = "g")]
+    Goal {
+        /// Number of recent Sprints to include (default: 5).
+        #[arg(long, short = 'n', default_value_t = 5, value_parser = parse_positive_usize)]
+        recent: usize,
+        /// Output machine-readable JSON instead of human-readable formatting.
+        #[arg(long, short = 'j')]
+        json: bool,
     },
     /// Set and display available work time for sprints.
     #[command(visible_alias = "cap")]

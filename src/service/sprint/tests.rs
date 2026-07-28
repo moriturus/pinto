@@ -201,6 +201,8 @@ async fn edit_updates_title_goal_and_period() {
         Some("Updated title".to_string()),
         Some("Updated goal".to_string()),
         Some((start, end)),
+        None,
+        false,
     )
     .await
     .expect("edit succeeds");

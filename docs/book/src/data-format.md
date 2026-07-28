@@ -48,7 +48,9 @@ recorded when a PBI crosses the configured workflow boundaries.
 
 A Sprint uses the same TOML-frontmatter/Markdown-body shape under `.pinto/sprints/`. Its title,
 state, planned dates, capacity settings, and timestamps are structured fields; its goal is the
-Markdown body. Closing a Sprint writes `closed_at` plus `spillover_points`, `spillover_items`, and
+Markdown body. `goal_achieved = true` or `goal_achieved = false` records the explicit boolean
+retrospective result in frontmatter; when the field is omitted, the Goal is unevaluated. Closing
+a Sprint writes `closed_at` plus `spillover_points`, `spillover_items`, and
 `unestimated_spillover_items`. Zero spillover values and an unset close time are omitted before
 close. These fields preserve retrospective context after unfinished PBIs are rolled over or
 released, while velocity continues to count completed work only.

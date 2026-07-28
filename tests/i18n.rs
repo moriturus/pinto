@@ -527,6 +527,8 @@ fn representative_subcommands_work_in_both_supported_locales() {
             (&["dod", "clear"], true),
             (&["sprint", "new", "S-1", "Sprint", "--goal", "Ship"], true),
             (&["sprint", "list"], true),
+            (&["sprint", "edit", "S-1", "--goal-achieved", "true"], true),
+            (&["sprint", "goal", "--json"], true),
             (&["sprint", "capacity", "S-1"], false),
             (&["sprint", "add", "S-1", "T-2"], true),
             (&["sprint", "start", "S-1"], true),

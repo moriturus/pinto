@@ -12,6 +12,7 @@ mod dependency;
 mod doctor;
 mod dod;
 mod export;
+mod goal;
 mod import;
 mod item;
 mod lifecycle;
@@ -44,6 +45,7 @@ pub use dependency::{
 pub use doctor::{DoctorFix, DoctorIssue, DoctorIssueKind, DoctorReport, doctor};
 pub use dod::{clear_common_dod, common_dod, set_common_dod};
 pub use export::{BoardSnapshot, export_snapshot};
+pub use goal::{SprintGoalReport, SprintGoalReportRow, sprint_goal_report};
 pub use import::{ImportOutcome, import_board};
 pub use item::{
     AddItemOutcome, EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, RebalanceOutcome,

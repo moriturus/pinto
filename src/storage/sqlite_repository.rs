@@ -142,6 +142,17 @@ CREATE TABLE IF NOT EXISTS metadata (
 );
 "#;
 
+/// Additive schema extensions that can also be created for an existing supported database.
+///
+/// This table is deliberately separate from `sprints`: adding an outcome must not change the
+/// existing Sprint table layout or the meaning of velocity and other historical reports.
+const SPRINT_GOAL_OUTCOME_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS sprint_goal_outcomes (
+  sprint_id TEXT PRIMARY KEY REFERENCES sprints(id) ON DELETE CASCADE,
+  achieved INTEGER NOT NULL CHECK (achieved IN (0, 1))
+);
+"#;
+
 impl SqliteRepository {
     /// Build a repository for `.pinto/` without I/O; connections open during operations.
     pub fn new(root: impl Into<PathBuf>) -> Self {
@@ -361,5 +372,7 @@ fn open_conn(db_path: &Path) -> Result<Connection> {
             .map_err(|e| sqlite_err(db_path, &e))?;
     }
     ensure_metadata(db_path, &conn, had_existing_tables)?;
+    conn.execute_batch(SPRINT_GOAL_OUTCOME_SCHEMA)
+        .map_err(|e| sqlite_err(db_path, &e))?;
     Ok(conn)
 }

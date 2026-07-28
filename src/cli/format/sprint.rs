@@ -1,6 +1,6 @@
 //! Sprint text formatting.
 
-use pinto::service::VelocityReport;
+use pinto::service::{SprintGoalReport, VelocityReport};
 use pinto::sprint::{Sprint, SprintCapacity};
 use pinto::timezone::DisplayTimezone;
 
@@ -24,6 +24,30 @@ pub(crate) fn format_velocity(report: &VelocityReport, recent: usize) -> String 
     match report.change_percent {
         Some(change) => out.push_str(&format!("Change: {change:+.1}% vs prior average\n")),
         None => out.push_str("Change: n/a (need a non-zero prior average)\n"),
+    }
+    out
+}
+
+/// Format Sprint Goal outcomes and the aggregate achievement rate.
+pub(crate) fn format_sprint_goal_report(report: &SprintGoalReport, recent: usize) -> String {
+    let mut out = format!("Sprint Goal outcomes (last {recent} sprints)\n");
+    for row in &report.sprints {
+        let outcome = match row.goal_achieved {
+            Some(true) => "achieved",
+            Some(false) => "not-achieved",
+            None => "unevaluated",
+        };
+        out.push_str(&format!(
+            "{}  {}  {}\n",
+            row.sprint_id, outcome, row.sprint_title
+        ));
+    }
+    match report.achievement_rate {
+        Some(rate) => out.push_str(&format!(
+            "Achievement rate: {rate:.1}% ({}/{} evaluated)\n",
+            report.achieved_sprints, report.evaluated_sprints
+        )),
+        None => out.push_str("Achievement rate: n/a (no evaluated Sprint Goals)\n"),
     }
     out
 }

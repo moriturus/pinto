@@ -3,15 +3,19 @@
 use crate::cli::args::*;
 use crate::cli::format::report::format_burndown;
 use crate::cli::format::sprint::{
-    format_sprint_capacity, format_sprints_with_timezone, format_velocity,
+    format_sprint_capacity, format_sprint_goal_report, format_sprints_with_timezone,
+    format_velocity,
 };
-use crate::cli::json::{burndown_json, sprint_capacity_json, sprints_json};
+use crate::cli::json::{
+    burndown_json, sprint_capacity_json, sprint_goal_report_json, sprints_json,
+};
 use pinto::backlog::ItemId;
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::{
     SprintCloseAction, assign_sprint_by_status, assign_sprint_raw, burndown, close_sprint,
     create_sprint, delete_sprint, display_settings, edit_sprint, list_sprints, set_sprint_capacity,
-    sprint_capacity, sprint_load_warnings, start_sprint, template_body, unassign_sprint, velocity,
+    sprint_capacity, sprint_goal_report, sprint_load_warnings, start_sprint, template_body,
+    unassign_sprint, velocity,
 };
 
 use pinto::sprint::SprintId;
@@ -97,6 +101,8 @@ pub(super) async fn cmd_sprint_with_localizer(
             id,
             title,
             goal,
+            goal_achieved,
+            clear_goal_achieved,
             start,
             end,
         } => {
@@ -105,7 +111,16 @@ pub(super) async fn cmd_sprint_with_localizer(
                 (Some(start), Some(end)) => Some((start, end)),
                 _ => None,
             };
-            let sprint = edit_sprint(&dir, &id, title, goal, period).await?;
+            let sprint = edit_sprint(
+                &dir,
+                &id,
+                title,
+                goal,
+                period,
+                goal_achieved,
+                clear_goal_achieved,
+            )
+            .await?;
             println!(
                 "{}",
                 localizer.format(
@@ -243,6 +258,14 @@ pub(super) async fn cmd_sprint_with_localizer(
                 println!("{}", localizer.text(Message::NoSprints));
             } else {
                 print!("{}", format_velocity(&report, recent));
+            }
+        }
+        SprintCommand::Goal { recent, json } => {
+            let report = sprint_goal_report(&dir, recent).await?;
+            if json {
+                println!("{}", sprint_goal_report_json(&report)?);
+            } else {
+                print!("{}", format_sprint_goal_report(&report, recent));
             }
         }
         SprintCommand::Capacity {

@@ -12,7 +12,7 @@ use pinto::backlog::{BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
 use pinto::service::{
-    Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail,
+    Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail, SprintGoalReport,
 };
 use pinto::sprint::{Sprint, SprintCapacity, SprintId, SprintSpillover, SprintState};
 use serde::{Deserialize, Serialize};
@@ -101,6 +101,8 @@ struct SprintJson {
     title: String,
     state: String,
     goal: String,
+    #[serde(default)]
+    goal_achieved: Option<bool>,
     start: Option<String>,
     end: Option<String>,
     closed_at: Option<String>,
@@ -118,6 +120,7 @@ impl SprintJson {
             title: sprint.title.clone(),
             state: sprint.state.to_string(),
             goal: sprint.goal.clone(),
+            goal_achieved: sprint.goal_achieved,
             start: sprint.start.map(|d| d.to_rfc3339()),
             end: sprint.end.map(|d| d.to_rfc3339()),
             closed_at: sprint.closed_at.map(|d| d.to_rfc3339()),
@@ -136,10 +139,43 @@ struct SprintCapacityJson {
     hours: f64,
 }
 
+#[derive(Debug, Serialize)]
+struct SprintGoalReportRowJson {
+    id: String,
+    title: String,
+    goal_achieved: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct SprintGoalReportJson {
+    sprints: Vec<SprintGoalReportRowJson>,
+    evaluated_sprints: usize,
+    achieved_sprints: usize,
+    achievement_rate: Option<f64>,
+}
+
 pub(super) fn sprint_capacity_json(capacity: &SprintCapacity) -> serde_json::Result<String> {
     serde_json::to_string_pretty(&SprintCapacityJson {
         working_days: capacity.working_days,
         hours: capacity.hours,
+    })
+}
+
+/// Format the Sprint Goal outcome report as a stable JSON object.
+pub(super) fn sprint_goal_report_json(report: &SprintGoalReport) -> serde_json::Result<String> {
+    serde_json::to_string_pretty(&SprintGoalReportJson {
+        sprints: report
+            .sprints
+            .iter()
+            .map(|row| SprintGoalReportRowJson {
+                id: row.sprint_id.to_string(),
+                title: row.sprint_title.clone(),
+                goal_achieved: row.goal_achieved,
+            })
+            .collect(),
+        evaluated_sprints: report.evaluated_sprints,
+        achieved_sprints: report.achieved_sprints,
+        achievement_rate: report.achievement_rate,
     })
 }
 
@@ -276,6 +312,7 @@ impl SprintJson {
             id: SprintId::from_str(&self.id)?,
             title: self.title,
             goal: self.goal,
+            goal_achieved: self.goal_achieved,
             start: self.start.as_deref().map(parse_timestamp).transpose()?,
             end: self.end.as_deref().map(parse_timestamp).transpose()?,
             daily_work_hours: None,

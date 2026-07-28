@@ -95,6 +95,12 @@ impl FromStr for SprintState {
     }
 }
 
+/// Whether the Sprint Goal was achieved.
+///
+/// `None` on [`Sprint::goal_achieved`] means that the goal has not been evaluated yet. The value
+/// is intentionally independent from the goal text and from PBI delivery metrics.
+pub type SprintGoalOutcome = Option<bool>;
+
 /// Unfinished work captured when a sprint is closed.
 ///
 /// This is retrospective context only. It is deliberately separate from completed points so
@@ -121,6 +127,9 @@ pub struct Sprint {
     pub title: String,
     /// Sprint goal (free description, multiple lines allowed).
     pub goal: String,
+    /// Explicit Sprint Goal result: `Some(true)` achieved, `Some(false)` not achieved, or `None`
+    /// when unevaluated.
+    pub goal_achieved: SprintGoalOutcome,
     /// Planned start date and time, or `None` when unset.
     pub start: Option<DateTime<Utc>>,
     /// Planned end date and time, or `None` when unset.
@@ -154,6 +163,7 @@ impl Sprint {
             id,
             title,
             goal: String::new(),
+            goal_achieved: None,
             start: None,
             end: None,
             daily_work_hours: None,
@@ -207,6 +217,12 @@ impl Sprint {
         }
         self.updated = now;
         Ok(())
+    }
+
+    /// Set or clear the explicit Sprint Goal result and refresh `updated`.
+    pub fn set_goal_achieved(&mut self, achieved: SprintGoalOutcome, now: DateTime<Utc>) {
+        self.goal_achieved = achieved;
+        self.updated = now;
     }
 
     /// Start a sprint (`planned` → `active`) and update `updated`.
@@ -391,6 +407,7 @@ mod tests {
         assert_eq!(s.id, sid("S-1"));
         assert_eq!(s.title, "Sprint 1");
         assert_eq!(s.goal, "");
+        assert_eq!(s.goal_achieved, None);
         assert_eq!(s.start, None);
         assert_eq!(s.end, None);
         assert_eq!(s.daily_work_hours, None);
@@ -402,6 +419,19 @@ mod tests {
         assert_eq!(s.closed_at, None);
         assert_eq!(s.created, epoch());
         assert_eq!(s.updated, epoch());
+    }
+
+    #[test]
+    fn goal_outcome_updates_without_changing_goal_text() {
+        let mut sprint = Sprint::new(sid("S-1"), "Sprint 1", epoch()).unwrap();
+        sprint.goal = "Ship the sprint".to_string();
+        let updated = epoch() + chrono::Duration::seconds(10);
+
+        sprint.set_goal_achieved(Some(true), updated);
+
+        assert_eq!(sprint.goal, "Ship the sprint");
+        assert_eq!(sprint.goal_achieved, Some(true));
+        assert_eq!(sprint.updated, updated);
     }
 
     #[test]

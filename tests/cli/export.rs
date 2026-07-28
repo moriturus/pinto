@@ -52,6 +52,10 @@ fn export_json_contains_the_complete_board_snapshot_without_mutating_it() {
         .assert()
         .success();
     pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--goal-achieved", "true"])
+        .assert()
+        .success();
+    pinto(dir.path())
         .args(["dod", "set", "- [ ] tests pass\n- [ ] docs updated"])
         .assert()
         .success();
@@ -99,6 +103,54 @@ fn export_json_contains_the_complete_board_snapshot_without_mutating_it() {
         before_files,
         "export does not change board files"
     );
+}
+
+#[test]
+fn import_accepts_an_older_snapshot_without_a_sprint_goal_result() {
+    let source = TempDir::new().expect("source temp dir");
+    pinto(source.path()).arg("init").assert().success();
+    pinto(source.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Compatibility Sprint",
+            "--goal",
+            "Ship the parser",
+        ])
+        .assert()
+        .success();
+    pinto(source.path())
+        .args(["sprint", "edit", "S-1", "--goal-achieved", "false"])
+        .assert()
+        .success();
+
+    let mut old_snapshot = json_stdout(pinto(source.path()).args(["export", "--json"]));
+    for sprint in old_snapshot["sprints"]
+        .as_array_mut()
+        .expect("sprints array")
+    {
+        sprint
+            .as_object_mut()
+            .expect("sprint object")
+            .remove("goal_achieved");
+    }
+
+    let target = TempDir::new().expect("target temp dir");
+    pinto(target.path()).arg("init").assert().success();
+    let snapshot_path = source.path().join("old-export.json");
+    fs::write(
+        &snapshot_path,
+        serde_json::to_vec_pretty(&old_snapshot).expect("serialize old snapshot"),
+    )
+    .expect("write old snapshot");
+    pinto(target.path())
+        .args(["import", snapshot_path.to_str().expect("snapshot path")])
+        .assert()
+        .success();
+
+    let imported = json_stdout(pinto(target.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(imported[0]["goal_achieved"], serde_json::Value::Null);
 }
 
 #[test]

@@ -16,6 +16,7 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
         return Err(corrupt(db, "empty sprint title"));
     }
     let goal: String = column(db, row, 2, "sprint goal")?;
+    let goal_achieved_raw: Option<i64> = column(db, row, 15, "sprint goal achieved")?;
     let state: String = column(db, row, 3, "sprint state")?;
     let closed_at: Option<String> = column(db, row, 4, "sprint closed_at")?;
     let start: Option<String> = column(db, row, 5, "sprint start_at")?;
@@ -28,6 +29,16 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
     let unestimated_spillover_items_raw: i64 = column(db, row, 12, "unestimated_spillover_items")?;
     let created: String = column(db, row, 13, "sprint created")?;
     let updated: String = column(db, row, 14, "sprint updated")?;
+    let goal_achieved = goal_achieved_raw
+        .map(|value| match value {
+            0 => Ok(false),
+            1 => Ok(true),
+            other => Err(corrupt(
+                db,
+                format!("invalid sprint goal achieved value {other}"),
+            )),
+        })
+        .transpose()?;
     let parse_dt_opt = |s: Option<String>| s.map(|v| dt_from_str(db, &v)).transpose();
     let closed_at = parse_dt_opt(closed_at)?;
     let start = parse_dt_opt(start)?;
@@ -109,6 +120,7 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
         id: SprintId::new(id).map_err(|e| corrupt(db, format!("invalid sprint id: {e}")))?,
         title,
         goal,
+        goal_achieved,
         start,
         end,
         daily_work_hours,
@@ -125,7 +137,7 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
 }
 
 /// A `SELECT` list containing the columns read by [`sprint_from`] in that order.
-const SPRINT_COLUMNS: &str = "id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated";
+const SPRINT_COLUMNS: &str = "id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated, (SELECT achieved FROM sprint_goal_outcomes WHERE sprint_id = sprints.id)";
 
 pub(super) fn upsert_sprint(db: &Path, tx: &Transaction<'_>, sprint: &Sprint) -> Result<()> {
     tx.execute(
@@ -157,6 +169,20 @@ pub(super) fn upsert_sprint(db: &Path, tx: &Transaction<'_>, sprint: &Sprint) ->
         ],
     )
     .map_err(|e| sqlite_err(db, &e))?;
+    if let Some(achieved) = sprint.goal_achieved {
+        tx.execute(
+            "INSERT INTO sprint_goal_outcomes (sprint_id, achieved) VALUES (?1, ?2) \
+             ON CONFLICT(sprint_id) DO UPDATE SET achieved = excluded.achieved",
+            params![sprint.id.as_str(), i64::from(achieved)],
+        )
+        .map_err(|e| sqlite_err(db, &e))?;
+    } else {
+        tx.execute(
+            "DELETE FROM sprint_goal_outcomes WHERE sprint_id = ?1",
+            [sprint.id.as_str()],
+        )
+        .map_err(|e| sqlite_err(db, &e))?;
+    }
     Ok(())
 }
 

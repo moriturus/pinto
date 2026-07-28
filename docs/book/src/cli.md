@@ -313,6 +313,9 @@ The Sprint commands create and manage time-boxed work:
 ```bash
 pinto sprint new S-1 "Sprint 1" --goal "Ship the parser" --start 2026-07-01 --end 2026-07-14
 pinto sprint edit S-1 --goal "Ship the parser" --start 2026-07-01 --end 2026-07-14
+pinto sprint edit S-1 --goal-achieved true     # record the retrospective outcome
+pinto sprint edit S-1 --goal-achieved false    # update it when the assessment changes
+pinto sprint edit S-1 --clear-goal-achieved    # return to unevaluated
 pinto sprint start S-1
 pinto sprint add S-1 T-1
 pinto sprint add S-1 --status todo --limit 3
@@ -324,7 +327,14 @@ pinto sprint remove S-1
 ```
 
 Reports include `pinto sprint burndown`, `pinto sprint velocity`,
-`pinto sprint capacity`, and `pinto cycletime`.
+`pinto sprint capacity`, `pinto sprint goal`, and `pinto cycletime`.
+
+`pinto sprint goal` reports the explicit boolean outcome for the most recent five Sprints and
+calculates `achieved evaluated / all evaluated` as a percentage. A Sprint with a blank Goal or no
+recorded outcome is shown as unevaluated and is excluded from the denominator. Use `--recent N`
+to select a different number of Sprints and `--json` for the machine-readable fields
+`goal_achieved`, `evaluated_sprints`, `achieved_sprints`, and `achievement_rate`. The rate is
+`null` (human output: `n/a`) when no Sprint Goal has been evaluated.
 
 After a successful `pinto sprint start` or `pinto sprint add`, pinto prints a non-blocking warning
 to stderr when the Sprint's estimated assigned points exceed either its configured capacity-hours

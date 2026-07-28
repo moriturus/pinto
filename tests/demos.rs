@@ -411,6 +411,27 @@ fn sprint_lifecycle_demo_persists_rollover_and_separate_spillover() {
 }
 
 #[test]
+fn sprint_goal_demo_reports_boolean_outcomes_without_counting_blank_goals() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let demo = root.join("demos/single/sprint-goal");
+    let report = json_output(
+        "single/sprint-goal",
+        &demo,
+        &["sprint", "goal", "--recent", "10", "--json"],
+    );
+
+    assert_eq!(report["evaluated_sprints"], 2);
+    assert_eq!(report["achieved_sprints"], 1);
+    assert_eq!(report["achievement_rate"], 50.0);
+    assert_eq!(report["sprints"][0]["goal_achieved"], true);
+    assert_eq!(report["sprints"][1]["goal_achieved"], false);
+    assert_eq!(
+        report["sprints"][3]["goal_achieved"],
+        serde_json::Value::Null
+    );
+}
+
+#[test]
 fn intentional_error_demos_are_registered_and_keep_user_error_contracts() {
     let demos = discovered_demos();
     for name in INTENTIONAL_ERROR_DEMOS {

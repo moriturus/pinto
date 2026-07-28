@@ -183,6 +183,8 @@ struct SprintFrontmatter {
     title: String,
     state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    goal_achieved: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     closed_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     start: Option<DateTime<Utc>>,
@@ -210,6 +212,7 @@ impl SprintFrontmatter {
             id: sprint.id.to_string(),
             title: sprint.title.clone(),
             state: sprint.state.to_string(),
+            goal_achieved: sprint.goal_achieved,
             closed_at: sprint.closed_at,
             start: sprint.start,
             end: sprint.end,
@@ -236,6 +239,7 @@ impl SprintFrontmatter {
             id,
             title: self.title,
             goal,
+            goal_achieved: self.goal_achieved,
             start: self.start,
             end: self.end,
             daily_work_hours: self.daily_work_hours,
@@ -578,6 +582,7 @@ updated = \"1970-01-01T00:00:00Z\"
         )
         .expect("valid sprint");
         sprint.goal = "Ship the MVP\nwith tests".to_string();
+        sprint.goal_achieved = Some(true);
         sprint.state = SprintState::Closed;
         sprint.closed_at = Some(epoch() + Duration::seconds(20));
         sprint.start = Some(epoch());
@@ -590,6 +595,7 @@ updated = \"1970-01-01T00:00:00Z\"
         sprint.updated = epoch() + Duration::seconds(30);
 
         let text = sprint_to_markdown(&sprint).expect("serialize");
+        assert!(text.contains("goal_achieved = true"));
         let parsed = sprint_from_markdown(&text, Path::new("sprint-1.md")).expect("parse");
         assert_eq!(parsed, sprint);
     }
@@ -610,6 +616,7 @@ updated = \"1970-01-01T00:00:00Z\"
 
         assert_eq!(sprint.closed_at, None);
         assert_eq!(sprint.spillover, crate::sprint::SprintSpillover::default());
+        assert_eq!(sprint.goal_achieved, None);
     }
 
     #[test]

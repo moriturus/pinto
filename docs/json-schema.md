@@ -31,6 +31,7 @@ pinto list --json
 pinto show T-1 T-2 --json
 pinto board --json
 pinto sprint list --json
+pinto sprint goal --json
 pinto export --json
 ```
 
@@ -88,6 +89,30 @@ Every object from `sprint list --json` includes `closed_at`,
 zero until close, then preserve the estimated points and item counts that were unfinished at that
 moment. They are retrospective context and are not included in velocity points, averages, or
 change percentages.
+
+## Sprint Goal outcomes
+
+`pinto sprint list --json` includes `goal_achieved` as `true`, `false`, or `null`. The value is an
+explicit boolean assessment and is independent of the Sprint Goal text, PBI completion, velocity,
+burndown, capacity, and cycle-time calculations. `sprint edit --goal-achieved true|false` sets or
+updates it; `sprint edit --clear-goal-achieved` clears it back to `null`.
+
+`pinto sprint goal --json` returns the selected Sprints and the aggregate fields below:
+
+```json
+{
+  "sprints": [
+    {"id": "S-1", "title": "Sprint 1", "goal_achieved": true}
+  ],
+  "evaluated_sprints": 1,
+  "achieved_sprints": 1,
+  "achievement_rate": 100.0
+}
+```
+
+Only non-blank Goals with a recorded boolean are evaluated. When none are evaluated,
+`achievement_rate` is `null`, never `0.0`. Snapshots created before `goal_achieved` was added
+remain importable and restore the field as `null`.
 
 `automate --json` returns an object with `status`, `dry_run`, and a `commands`
 array. Each command entry includes its one-based `index`, command name, status

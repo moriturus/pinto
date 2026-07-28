@@ -107,10 +107,11 @@ fn package_contains_only_runtime_files() {
         );
     }
 
-    // The operation-level recovery helpers are two additional runtime modules; keep one slot for
-    // small source-file additions without allowing repository-only material into the package.
+    // The operation-level recovery helpers and Sprint Goal reporting are intentional runtime
+    // modules; keep the ceiling explicit without allowing repository-only material into the
+    // package.
     assert!(
-        files.len() <= 133,
+        files.len() <= 134,
         "package file count unexpectedly grew to {}",
         files.len()
     );

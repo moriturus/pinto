@@ -67,6 +67,7 @@ fn full_sprint(id: &str, created: i64) -> Sprint {
     )
     .expect("contract sprint is valid");
     sprint.goal = "Ship the parser\n多言語対応".to_string();
+    sprint.goal_achieved = Some(true);
     sprint.state = SprintState::Active;
     sprint.start = Some(timestamp(2_000));
     sprint.end = Some(timestamp(2_000) + Duration::days(7));
@@ -174,6 +175,7 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
     let mut updated_sprint = sprint.clone();
     updated_sprint.title = "更新済み契約 Sprint".to_string();
     updated_sprint.goal = "Updated goal\n更新された目標".to_string();
+    updated_sprint.goal_achieved = Some(false);
     updated_sprint.updated = timestamp(3_300);
     SprintRepository::save(backend, &updated_sprint)
         .await

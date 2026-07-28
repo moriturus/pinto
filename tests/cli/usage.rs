@@ -414,7 +414,14 @@ fn cli_options_have_short_forms() {
         ),
         (
             &["sprint", "edit", "--help"],
-            &["-t, --title", "-g, --goal", "-s, --start", "-e, --end"],
+            &[
+                "-t, --title",
+                "-g, --goal",
+                "-A, --goal-achieved",
+                "-N, --clear-goal-achieved",
+                "-s, --start",
+                "-e, --end",
+            ],
         ),
         (
             &["sprint", "close", "--help"],
@@ -429,6 +436,10 @@ fn cli_options_have_short_forms() {
         (&["sprint", "list", "--help"], &["-j, --json"]),
         (&["sprint", "burndown", "--help"], &["-j, --json"]),
         (&["sprint", "velocity", "--help"], &["-n, --recent"]),
+        (
+            &["sprint", "goal", "--help"],
+            &["-n, --recent", "-j, --json"],
+        ),
         (
             &["sprint", "capacity", "--help"],
             &[

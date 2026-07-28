@@ -343,6 +343,7 @@ fn item_id_arguments(cli: &Cli) -> Vec<&String> {
             | SprintCommand::List { .. }
             | SprintCommand::Burndown { .. }
             | SprintCommand::Velocity { .. }
+            | SprintCommand::Goal { .. }
             | SprintCommand::Capacity { .. } => Vec::new(),
         },
         Command::Init

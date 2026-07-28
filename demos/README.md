@@ -68,6 +68,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`sprint-bulk-assignment`](single/sprint-bulk-assignment) — assign ranked PBIs by status with an optional count limit
   - [`sprint-capacity`](single/sprint-capacity) — sprint capacity calculation
   - [`sprint-load-warning`](single/sprint-load-warning) — non-blocking Sprint capacity and velocity warnings
+  - [`sprint-goal`](single/sprint-goal) — explicit boolean Sprint Goal outcomes and achievement rate
   - [`cycletime`](single/cycletime) — cycle time and lead time
   - [`burndown`](single/burndown) — sprint burndown
   - [`velocity`](single/velocity) — sprint velocity

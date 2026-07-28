@@ -81,10 +81,22 @@ pub async fn edit_sprint(
     title: Option<String>,
     goal: Option<String>,
     period: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    goal_achieved: Option<bool>,
+    clear_goal_achieved: bool,
 ) -> Result<Sprint> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let mut sprint = SprintRepository::load(&repo, id).await?;
-    sprint.update_details(title, goal, period, Utc::now())?;
+    let now = Utc::now();
+    if title.is_some() || goal.is_some() || period.is_some() {
+        sprint.update_details(title, goal, period, now)?;
+    } else if goal_achieved.is_none() && !clear_goal_achieved {
+        return Err(Error::NothingToUpdate);
+    }
+    if clear_goal_achieved {
+        sprint.set_goal_achieved(None, now);
+    } else if goal_achieved.is_some() {
+        sprint.set_goal_achieved(goal_achieved, now);
+    }
     SprintRepository::save(&repo, &sprint).await?;
     repo.commit(&format!("pinto: update {}", sprint.id)).await?;
     Ok(sprint)

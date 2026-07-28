@@ -440,6 +440,7 @@ async fn sprint_roundtrips_all_fields() {
     let (_dir, repo) = repo();
     let mut s = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint One", ts(1_000)).unwrap();
     s.goal = "Ship the MVP\nwith tests".to_string();
+    s.goal_achieved = Some(false);
     s.state = crate::sprint::SprintState::Closed;
     s.closed_at = Some(ts(4_000));
     s.start = Some(ts(1_000));
@@ -473,6 +474,14 @@ async fn sprint_roundtrips_all_fields() {
         cols.iter().any(|column| column == "closed_at"),
         "closed_at column exists: {cols:?}"
     );
+    let achieved: i64 = conn
+        .query_row(
+            "SELECT achieved FROM sprint_goal_outcomes WHERE sprint_id = 'S-1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("Sprint Goal outcome row exists");
+    assert_eq!(achieved, 0);
     for expected in [
         "spillover_points",
         "spillover_items",
@@ -873,6 +882,98 @@ async fn sprint_save_load_roundtrips() {
     SprintRepository::save(&repo, &s).await.expect("save");
     let loaded = SprintRepository::load(&repo, &s.id).await.expect("load");
     assert_eq!(loaded, s);
+}
+
+#[tokio::test]
+async fn sprint_goal_outcome_can_be_cleared_without_leaving_a_relation_row() {
+    let (_dir, repo) = repo();
+    let mut sprint = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint 1", ts(1_000)).unwrap();
+    sprint.goal = "Ship the release".to_string();
+    sprint.goal_achieved = Some(true);
+    SprintRepository::save(&repo, &sprint)
+        .await
+        .expect("save outcome");
+
+    sprint.goal_achieved = None;
+    SprintRepository::save(&repo, &sprint)
+        .await
+        .expect("clear outcome");
+
+    let loaded = SprintRepository::load(&repo, &sprint.id)
+        .await
+        .expect("load cleared sprint");
+    assert_eq!(loaded.goal_achieved, None);
+    let count: i64 = raw(&repo)
+        .query_row(
+            "SELECT COUNT(*) FROM sprint_goal_outcomes WHERE sprint_id = 'S-1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count outcome rows");
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn existing_supported_database_gets_the_goal_outcome_table_additively() {
+    let (_dir, repo) = repo();
+    let sprint = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint 1", ts(1_000)).unwrap();
+    SprintRepository::save(&repo, &sprint)
+        .await
+        .expect("initialize database");
+    raw(&repo)
+        .execute("DROP TABLE sprint_goal_outcomes", [])
+        .expect("simulate a pre-outcome supported database");
+
+    let loaded = SprintRepository::load(&repo, &sprint.id)
+        .await
+        .expect("additive table initialization succeeds");
+    assert_eq!(loaded.goal_achieved, None);
+    let conn = raw(&repo);
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sprint_goal_outcomes')",
+            [],
+            |row| row.get(0),
+        )
+        .expect("inspect additive table");
+    assert!(table_exists);
+    let version: String = conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("schema version remains present");
+    assert_eq!(version, "2");
+}
+
+#[tokio::test]
+async fn corrupted_sprint_goal_outcome_is_rejected_instead_of_coerced() {
+    let (_dir, repo) = repo();
+    let mut sprint = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint 1", ts(1_000)).unwrap();
+    sprint.goal = "Ship the release".to_string();
+    sprint.goal_achieved = Some(true);
+    SprintRepository::save(&repo, &sprint)
+        .await
+        .expect("save outcome");
+
+    let conn = raw(&repo);
+    conn.execute("PRAGMA ignore_check_constraints = ON", [])
+        .expect("disable checks for corruption fixture");
+    conn.execute(
+        "UPDATE sprint_goal_outcomes SET achieved = 2 WHERE sprint_id = 'S-1'",
+        [],
+    )
+    .expect("corrupt outcome");
+    drop(conn);
+
+    let err = SprintRepository::load(&repo, &sprint.id)
+        .await
+        .expect_err("invalid boolean storage must be rejected");
+    assert!(
+        err.to_string()
+            .contains("invalid sprint goal achieved value 2")
+    );
 }
 
 #[tokio::test]

@@ -625,6 +625,7 @@ async fn missing_required_field_returns_parse_error() {
 fn sample_sprint() -> Sprint {
     let mut s = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint 1", ts(1_000)).unwrap();
     s.goal = "## ゴール\n\nログイン機能を完成させる".to_string();
+    s.goal_achieved = Some(false);
     s.start = Some(ts(2_000));
     s.end = Some(ts(9_000));
     s.start(ts(2_000)).expect("planned -> active");
@@ -684,6 +685,10 @@ async fn sprint_frontmatter_carries_fields_and_goal_body() {
     assert!(
         text.contains("state = \"active\""),
         "frontmatter carries state"
+    );
+    assert!(
+        text.contains("goal_achieved = false"),
+        "frontmatter carries the explicit Goal result"
     );
     let frontmatter = text.split("+++\n").nth(1).expect("frontmatter exists");
     assert!(
