@@ -76,12 +76,28 @@ fn large_board_benchmark_has_ci_baseline_and_failure_contract() {
         assert!(runner.contains(marker), "benchmark runner omits {marker}");
     }
 
-    let workflow =
-        fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("read CI workflow");
+    let workflow = fs::read_to_string(root.join(".github/workflows/benchmarks.yml"))
+        .expect("read benchmark workflow");
     for marker in [
         "large-board-smoke",
-        "large-board-scheduled",
         "--sizes 1000",
+        "large-board-baseline-linux-x86_64.json",
+        "tolerance=20",
+        "ACT:-",
+        "actions/upload-artifact",
+        "env.ACT",
+        "retention-days",
+    ] {
+        assert!(
+            workflow.contains(marker),
+            "benchmark workflow omits {marker}"
+        );
+    }
+
+    let scheduled = fs::read_to_string(root.join(".github/workflows/scheduled.yml"))
+        .expect("read scheduled workflow");
+    for marker in [
+        "large-board-scheduled",
         "--sizes 10000",
         "large-board-baseline-linux-x86_64.json",
         "tolerance=20",
@@ -90,7 +106,10 @@ fn large_board_benchmark_has_ci_baseline_and_failure_contract() {
         "env.ACT",
         "retention-days",
     ] {
-        assert!(workflow.contains(marker), "CI workflow omits {marker}");
+        assert!(
+            scheduled.contains(marker),
+            "scheduled workflow omits {marker}"
+        );
     }
 
     let baseline = fs::read_to_string(root.join("benchmarks/large-board-baseline.json"))

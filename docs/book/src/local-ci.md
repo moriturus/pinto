@@ -2,10 +2,11 @@
 
 Use [`nektos/act`](https://nektosact.com/) to run a selected GitHub Actions job
 before pushing. `act` needs a Docker-compatible engine for containerized Linux
-runners. The current `release` and `check` jobs do not require repository
-secrets; never commit a token or a secret file. If a future job needs a secret,
-provide it through act's `--secret-file` or `--secret` options from a path that
-is outside the repository.
+runners. The `check` job is in `ci.yml`, while the release job is in
+`release.yml`; neither requires repository secrets. Never commit a token or a
+secret file. If a future job needs a secret, provide it through act's
+`--secret-file` or `--secret` options from a path that is outside the
+repository.
 
 Install Docker Desktop or Docker Engine, install `act` using the
 [official installation guide](https://nektosact.com/installation/index.html),
@@ -47,7 +48,8 @@ act push -j check --matrix os:ubuntu-latest
 
 `act` uses Docker containers for these Linux jobs. It is useful for fast
 feedback, but GitHub-hosted runner parity remains the responsibility of the
-real CI job.
+real CI job. The Windows matrix leg remains a host-executed validation and is
+not emulated by a Linux Docker container.
 
 ## Windows
 

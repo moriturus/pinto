@@ -18,7 +18,15 @@ fn repository_file(path: &str) -> String {
         .unwrap_or_else(|error| panic!("expected repository file {path}: {error}"))
 }
 
-const WORKFLOWS: &[&str] = &[".github/workflows/ci.yml", ".github/workflows/pages.yml"];
+const WORKFLOWS: &[&str] = &[
+    ".github/workflows/ci.yml",
+    ".github/workflows/coverage.yml",
+    ".github/workflows/dependency-policy.yml",
+    ".github/workflows/benchmarks.yml",
+    ".github/workflows/scheduled.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/pages.yml",
+];
 
 /// AC1: every third-party Actions reference is pinned to a 40-character commit
 /// SHA and keeps a trailing human-readable version comment.

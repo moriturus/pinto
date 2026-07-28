@@ -1,0 +1,61 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  large-board-smoke:
+    name: large-board 1,000-item smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup pinned development toolchain
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          version: 2026.7.6
+          install: true
+          install_args: rust
+          cache: true
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-rust-1.97.0-cargo-
+      - name: Build benchmark runner
+        run: cargo build --release --bin pinto --example large_board_bench --locked
+      - name: Run 1,000-item benchmark gate
+        run: >-
+          tolerance=20;
+          if [ "${ACT:-}" = "true" ]; then tolerance=50; fi;
+          ./scripts/large-board-benchmark.sh
+          --sizes 1000
+          --samples 3
+          --baseline benchmarks/large-board-baseline-linux-x86_64.json
+          --tolerance "$tolerance"
+          --output target/large-board-smoke.json
+      - name: Upload benchmark evidence
+        if: ${{ always() && env.ACT != 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: large-board-smoke-${{ github.run_id }}
+          path: target/large-board-smoke.json
+          retention-days: 14
+          if-no-files-found: ignore

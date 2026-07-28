@@ -549,7 +549,7 @@ Body marker\n";
     let fuzz_target = repository_file("fuzz/fuzz_targets/markdown_frontmatter_parse.rs");
     assert!(fuzz_target.contains("parse_item_markdown"));
 
-    let workflow = repository_file(".github/workflows/ci.yml");
+    let workflow = repository_file(".github/workflows/scheduled.yml");
     assert!(workflow.contains("cargo fuzz run ${{ matrix.target }}"));
     assert!(workflow.contains("markdown_frontmatter_parse"));
     let testing = repository_file("docs/book/src/testing.md");
@@ -579,12 +579,21 @@ fn toolchain_locks_cargo_and_separates_ci_roles() {
         "Setup pinned development toolchain",
         "current-stable:",
         "dtolnay/rust-toolchain@",
+    ] {
+        assert!(workflow.contains(marker), "CI workflow omits {marker}");
+    }
+
+    let release_workflow = repository_file(".github/workflows/release.yml");
+    for marker in [
         "release:",
         "cargo build --release --all-features --locked",
         "./scripts/verify-package.sh",
         "cargo install --path . --locked",
     ] {
-        assert!(workflow.contains(marker), "CI workflow omits {marker}");
+        assert!(
+            release_workflow.contains(marker),
+            "release workflow omits {marker}"
+        );
     }
 
     let installation = repository_file("docs/book/src/installation.md");
@@ -634,7 +643,7 @@ fn allowlisted_package_is_verified_in_release_paths() {
     }
     assert!(!verifier.contains("package-size-budget.bytes"));
 
-    let workflow = repository_file(".github/workflows/ci.yml");
+    let workflow = repository_file(".github/workflows/release.yml");
     assert!(workflow.contains("./scripts/verify-package.sh"));
 
     let mise = repository_file("mise.toml");
@@ -1160,11 +1169,10 @@ fn release_gate_checks_version_and_sqlite_compatibility_contracts() {
         );
     }
 
-    let workflow = repository_file(".github/workflows/ci.yml");
+    let workflow = repository_file(".github/workflows/release.yml");
     let release_job = workflow
         .split_once("  release:")
-        .and_then(|(_, rest)| rest.split_once("  coverage:"))
-        .map(|(job, _)| job)
+        .map(|(_, rest)| rest)
         .expect("workflow contains a bounded release job");
     assert!(
         release_job.contains("./scripts/check-release-metadata.sh"),
@@ -1211,11 +1219,10 @@ fn coverage_gate_checks_the_uploaded_cobertura_metric() {
         assert!(checker.contains(marker), "coverage checker omits {marker}");
     }
 
-    let workflow = repository_file(".github/workflows/ci.yml");
+    let workflow = repository_file(".github/workflows/coverage.yml");
     let coverage_job = workflow
         .split_once("  coverage:")
-        .and_then(|(_, rest)| rest.split_once("  dependency-policy:"))
-        .map(|(job, _)| job)
+        .map(|(_, rest)| rest)
         .expect("workflow contains a bounded coverage job");
     assert!(coverage_job.contains("if: success()"));
     assert!(!coverage_job.contains("if: always()"));
@@ -1239,7 +1246,7 @@ fn kanban_runtime_coverage_has_a_separate_targeted_guard() {
         );
     }
 
-    let workflow = repository_file(".github/workflows/ci.yml");
+    let workflow = repository_file(".github/workflows/coverage.yml");
     assert!(workflow.contains("Check Kanban runtime coverage"));
     assert!(workflow.contains("./scripts/check-kanban-coverage.sh coverage.xml 0.90"));
 }

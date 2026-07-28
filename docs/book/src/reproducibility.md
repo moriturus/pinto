@@ -11,12 +11,12 @@ Development and release commands use Rust 1.97.0, pinned in `mise.toml`.
 `Cargo.toml` continues to declare Rust 1.89 as the minimum supported version.
 CI keeps the responsibilities separate:
 
-| Job | Toolchain | Scope |
-| --- | --- | --- |
-| `msrv` | Rust 1.89.0 | Default and all-feature build/test compatibility |
-| `check` | Pinned Rust 1.97.0 | Full `mise run check` quality gate on each primary OS |
-| `current-stable` | Latest stable channel | Forward-compatibility test suite with all features |
-| `release` | Pinned Rust 1.97.0 | Release build, package, and source-install verification |
+| Job | Workflow | Toolchain | Scope |
+| --- | --- | --- | --- |
+| `msrv` | `ci.yml` | Rust 1.89.0 | Default and all-feature build/test compatibility |
+| `check` | `ci.yml` | Pinned Rust 1.97.0 | Full `mise run check` quality gate on each primary OS |
+| `current-stable` | `ci.yml` | Latest stable channel | Forward-compatibility test suite with all features |
+| `release` | `release.yml` | Pinned Rust 1.97.0 | Release build, package, and source-install verification |
 
 The all-feature MSRV checks and the pinned quality gate intentionally cover
 different support contracts. The latest-stable job does only the forward
