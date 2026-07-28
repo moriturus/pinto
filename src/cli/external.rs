@@ -307,11 +307,11 @@ fn current_command_name(name: &str) -> Option<&'static str> {
 fn executable_base_name(file_name: &str) -> &str {
     #[cfg(windows)]
     {
-        return file_name
+        file_name
             .strip_suffix(".exe")
             .or_else(|| file_name.strip_suffix(".cmd"))
             .or_else(|| file_name.strip_suffix(".bat"))
-            .unwrap_or(file_name);
+            .unwrap_or(file_name)
     }
     #[cfg(not(windows))]
     {
