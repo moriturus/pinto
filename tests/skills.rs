@@ -97,6 +97,27 @@ fn skill_has_agent_skills_metadata_and_guidance() {
 }
 
 #[test]
+fn skill_documents_the_automation_plan_contract_and_recovery() {
+    let body = skill_body(&read(SKILL_PATH)).to_ascii_lowercase();
+    let normalized = body.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    for phrase in [
+        "the json report has top-level `status`, `dry_run`, and `commands` fields",
+        "per-command entries use one-based `index` values",
+        "`created_ids` contains ids produced by `add` or `split`",
+        "both placeholder indexes are zero-based",
+        "apply is sequential rather than transactional",
+        "do not rerun successful producer commands",
+        "verify the applied prefix with `pinto show` or `pinto list` using `--json`",
+    ] {
+        assert!(
+            normalized.contains(phrase),
+            "skill is missing automation guidance: {phrase}"
+        );
+    }
+}
+
+#[test]
 fn skill_commands_exist_in_the_current_cli() {
     let skill = read(SKILL_PATH);
     for line in skill.lines() {

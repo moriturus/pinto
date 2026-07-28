@@ -158,6 +158,11 @@ Use `automate` for several related commands that benefit from one reviewable pla
 }
 ```
 
+The plan envelope contains a non-empty `commands` array. Each command is an argv
+array, so command names and options are passed as separate strings and the
+normal CLI parser remains authoritative. Plans can be read from a file or
+standard input; they never invoke a shell.
+
 Preview the complete plan first, then apply the same file only when the preview succeeds and the user requested the writes:
 
 ```bash
@@ -169,7 +174,40 @@ Use `--dry-run` to execute the validated commands in an isolated copy of the boa
 
 Use a file or standard input for long or multiline values. Do not put API keys, provider settings, shell syntax, or unknown fields in the plan. Do not include recursive or interactive commands (`automate`, `shell`, `kanban`, or `completion`). The plan runs through normal CLI validation and never invokes a shell.
 
-Check the report's `status`, `dry_run`, and per-command `status` fields instead of parsing localized error text. Treat a real apply as sequential rather than transactional: a failure leaves earlier commands applied, stops at the failing command, and marks later commands `skipped`. Inspect the applied prefix before repairing or retrying a partial failure.
+The JSON report has top-level `status`, `dry_run`, and `commands` fields.
+Per-command entries use one-based `index` values and include the command name,
+`status` (`valid`, `succeeded`, `failed`, or `skipped`), `created_ids`,
+`updated_ids`, `resolved_ids`, and an optional `error`. `created_ids` contains
+IDs produced by `add` or `split` (also accepted as `a` and `spl`) in creation
+order. `updated_ids` contains the resolved update targets, and `resolved_ids`
+records every resolved item-ID argument in argument order. Use these
+structured fields instead of parsing localized error text.
+
+An earlier successful `add` or `split` can provide a later item-ID argument with
+a complete placeholder such as
+`@command[0].created_ids[0]`. Both placeholder indexes are zero-based: the
+first selects an earlier command and the second selects an ID from that
+producer's `created_ids` output. Placeholders are accepted only in item-ID
+positions, are never shell-expanded, and must refer to an earlier successful
+producer. Supported positions include add parent/dependencies, split source,
+show, move, reorder, edit ID/parent, remove, restore, dep, link, and sprint
+add/unassign. The one-based `index` in the JSON report is separate from these
+zero-based placeholder indexes.
+
+Apply is sequential rather than transactional: a failure leaves earlier
+commands applied, stops at the failing command, and marks later commands
+`skipped`. Do not rerun successful producer commands. Verify the applied prefix
+with `pinto show` or `pinto list` using `--json`, then use the apply report's
+authoritative `created_ids`, `updated_ids`, and `resolved_ids` to repair the
+failed command or create a new suffix plan. Replace references to already
+applied producers with those literal IDs when retrying; never use IDs from a
+dry-run report, because dry-run IDs belong only to the isolated preview board.
+
+For a literal placeholder-looking value in an ordinary argument such as
+`--body`, prefix the marker with a second `@`: write
+`@@command[0].created_ids[0]`. Pinto removes one `@` immediately before
+executing the command. The escaped form is literal text, while an unescaped
+placeholder-like string outside an item-ID position remains invalid.
 
 ## Preserve the local source of truth
 
