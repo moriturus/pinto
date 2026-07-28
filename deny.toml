@@ -26,6 +26,7 @@ wildcards = "deny"
 highlight = "all"
 skip = [
     { crate = "hashbrown@0.16.1", reason = "Transitive: older release still pulled alongside hashbrown 0.17." },
+    { crate = "syn@2.0.118", reason = "Transitive proc-macro dependencies still require syn 2; updated clap, serde, and thiserror use syn 3." },
     { crate = "unicode-width@0.1.14", reason = "Transitive: older release still pulled alongside unicode-width 0.2." },
 ]
 

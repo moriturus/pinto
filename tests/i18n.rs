@@ -232,9 +232,9 @@ fn localized_help_preserves_aliases_and_short_options() {
         .env("LC_ALL", "ja_JP.UTF-8")
         .assert()
         .success()
-        .stdout(predicate::str::contains("aliases: d]"))
-        .stdout(predicate::str::contains("aliases: ln]"))
-        .stdout(predicate::str::contains("aliases: auto]"));
+        .stdout(predicate::str::contains("alias: d]"))
+        .stdout(predicate::str::contains("alias: ln]"))
+        .stdout(predicate::str::contains("alias: auto]"));
 
     // Subcommand short options (including board's -o, -f, -j, and -w).
     let mut board = Command::cargo_bin("pinto").expect("binary builds");

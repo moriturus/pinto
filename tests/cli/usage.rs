@@ -121,11 +121,11 @@ fn new_toplevel_aliases_are_listed_in_help() {
     let out = pinto(dir.path()).arg("--help").assert().success();
     let stdout = String::from_utf8(out.get_output().stdout.clone()).expect("utf8");
     for alias in [
-        "aliases: d]",
-        "aliases: ln]",
-        "aliases: dd]",
-        "aliases: mig]",
-        "aliases: auto]",
+        "alias: d]",
+        "alias: ln]",
+        "alias: dd]",
+        "alias: mig]",
+        "alias: auto]",
     ] {
         assert!(
             stdout.contains(alias),
@@ -187,7 +187,7 @@ fn cli_options_have_short_forms() {
             &["sprint", "unassign", "--help"],
             &["Unassign a PBI from its sprint"],
         ),
-        (&["sprint", "--help"], &["aliases: rm]", "aliases: u]"]),
+        (&["sprint", "--help"], &["alias: rm]", "alias: u]"]),
         (&["sprint", "list", "--help"], &["-j, --json"]),
         (&["sprint", "burndown", "--help"], &["-j, --json"]),
         (&["sprint", "velocity", "--help"], &["-n, --recent"]),
