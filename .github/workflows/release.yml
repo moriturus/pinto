@@ -6,7 +6,7 @@ on:
       - "*.*.*"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   release:
-    name: release build and package
+    name: release build, package, and GitHub Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,3 +49,13 @@ jobs:
         run: ./scripts/verify-package.sh
       - name: Verify source install with locked dependencies
         run: cargo install --path . --locked --root "$RUNNER_TEMP/pinto"
+      - name: Extract release notes from CHANGELOG
+        run: ./scripts/extract-release-notes.sh "$GITHUB_REF_NAME" >"$RUNNER_TEMP/pinto-release-notes.md"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/pinto-release-notes.md"

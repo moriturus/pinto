@@ -10,6 +10,10 @@ const CHECKER: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/scripts/check-release-metadata.sh"
 );
+const NOTES_EXTRACTOR: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/scripts/extract-release-notes.sh"
+);
 
 fn write_fixture_file(root: &Path, relative: &str, contents: &str) {
     let path = root.join(relative);
@@ -94,6 +98,61 @@ fn diagnostics(output: &Output) -> String {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     )
+}
+
+fn extract_notes(root: &Path, tag: &str) -> Output {
+    Command::new("sh")
+        .args([
+            NOTES_EXTRACTOR,
+            tag,
+            "--root",
+            root.to_str().expect("fixture path is UTF-8"),
+        ])
+        .output()
+        .expect("run release notes extractor")
+}
+
+#[test]
+fn release_notes_extractor_returns_only_the_matching_changelog_section() {
+    let root = tempdir().expect("create changelog fixture directory");
+    write_fixture_file(
+        root.path(),
+        "CHANGELOG.md",
+        "# Changelog\n\n## [Unreleased]\n\n- pending\n\n## [0.2.0] - 2026-07-17\n\n### Added\n\n- matching release note\n\n## [0.1.0] - 2026-07-01\n\n- older release note\n",
+    );
+
+    let output = extract_notes(root.path(), "v0.2.0");
+    let notes = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "matching release notes were rejected:\n{}",
+        diagnostics(&output)
+    );
+    assert!(notes.contains("### Added"));
+    assert!(notes.contains("matching release note"));
+    assert!(!notes.contains("pending"));
+    assert!(!notes.contains("older release note"));
+}
+
+#[test]
+fn release_notes_extractor_rejects_a_tag_without_a_changelog_section() {
+    let root = tempdir().expect("create changelog fixture directory");
+    write_fixture_file(
+        root.path(),
+        "CHANGELOG.md",
+        "# Changelog\n\n## [Unreleased]\n\n- pending\n",
+    );
+
+    let output = extract_notes(root.path(), "0.2.0");
+    let message = diagnostics(&output);
+    assert!(
+        !output.status.success(),
+        "missing release notes were accepted"
+    );
+    assert!(
+        message.contains("no CHANGELOG section matches release 0.2.0"),
+        "missing release notes were not diagnosed:\n{message}"
+    );
 }
 
 #[test]

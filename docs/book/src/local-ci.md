@@ -3,7 +3,9 @@
 Use [`nektos/act`](https://nektosact.com/) to run a selected GitHub Actions job
 before pushing. `act` needs a Docker-compatible engine for containerized Linux
 runners. The `check` job is in `ci.yml`, while the release job is in
-`release.yml`; neither requires repository secrets. Never commit a token or a
+`release.yml`. The release job uses the GitHub-provided `GITHUB_TOKEN` with
+`contents: write` to create the release, so inspect it with a dry run locally
+instead of accidentally publishing a real release. Never commit a token or a
 secret file. If a future job needs a secret, provide it through act's
 `--secret-file` or `--secret` options from a path that is outside the
 repository.
@@ -20,12 +22,11 @@ act -l
 
 ## macOS and Linux
 
-The release job uses `ubuntu-latest`, so run only that job to reproduce the
-release build and package path. This intentionally skips the `check` matrix,
-including its Windows entry:
+The release job uses `ubuntu-latest`, so inspect only that job to reproduce the
+release build and package path without creating a release:
 
 ```bash
-act push -j release
+act -n push -j release
 ```
 
 On Apple Silicon, add `--container-architecture linux/amd64` if the selected
@@ -37,7 +38,12 @@ The selected job runs the same commands used by CI:
 cargo build --release --all-features --locked
 ./scripts/verify-package.sh
 cargo install --path . --locked --root "$PWD/.tmp/pinto"
+./scripts/extract-release-notes.sh "$GITHUB_REF_NAME"
 ```
+
+The live GitHub run executes the final `gh release create` step with the
+tag-matched notes and the workflow token. Local dry runs do not publish or
+require a repository token.
 
 To run only the Linux leg of the quality-check matrix, select its matrix value
 explicitly:

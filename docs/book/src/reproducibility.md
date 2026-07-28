@@ -16,7 +16,7 @@ CI keeps the responsibilities separate:
 | `msrv` | `ci.yml` | Rust 1.89.0 | Default and all-feature build/test compatibility |
 | `check` | `ci.yml` | Pinned Rust 1.97.0 | Full `mise run check` quality gate on each primary OS |
 | `current-stable` | `ci.yml` | Latest stable channel | Forward-compatibility test suite with all features |
-| `release` | `release.yml` | Pinned Rust 1.97.0 | Release build, package, and source-install verification |
+| `release` | `release.yml` | Pinned Rust 1.97.0 | Release build, package, source-install, and GitHub Release creation |
 
 The all-feature MSRV checks and the pinned quality gate intentionally cover
 different support contracts. The latest-stable job does only the forward
@@ -124,6 +124,12 @@ the package version, lockfiles, installation examples, CHANGELOG heading, and
 release tag disagree, or while the SQLite compatibility guidance is incomplete.
 Keep the next work items under the undated `[Unreleased]` heading until the
 release commit is tagged.
+
+The tag-triggered `release.yml` workflow extracts the matching dated section from
+`CHANGELOG.md` with `scripts/extract-release-notes.sh` and runs
+`gh release create` with the GitHub-provided token.
+The workflow therefore creates the GitHub Release and its notes automatically
+after the build and package checks pass; no manual release-entry step is needed.
 
 ## Published Book destinations
 
