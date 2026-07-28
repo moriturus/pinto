@@ -60,8 +60,10 @@ individual developers can use pinto without Scrum features, small teams can use 
 and larger teams should use the Git backend in a dedicated repository.
 
 The published book is available at [moriturus.github.io/pinto](https://moriturus.github.io/pinto/).
-The [`pages.yml`](.github/workflows/pages.yml) workflow rebuilds and deploys it to GitHub Pages on
-pushes to `main` and on manual dispatch.
+The [`pages.yml`](.github/workflows/pages.yml) workflow publishes one routed artifact on pushes to
+`main`, `develop`, and release tags, and on manual dispatch. The root redirects to `/latest/`,
+which is the stable `main` book; `/develop/` is the development book, and `/<version>/` preserves
+each semantic-version release.
 
 ## Selecting a board
 

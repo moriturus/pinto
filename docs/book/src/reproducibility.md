@@ -125,6 +125,22 @@ release tag disagree, or while the SQLite compatibility guidance is incomplete.
 Keep the next work items under the undated `[Unreleased]` heading until the
 release commit is tagged.
 
+## Published Book destinations
+
+The Pages workflow builds one artifact from the stable `main` ref, the current
+`develop` ref, and every semantic-version tag before deploying it.
+This keeps the routes available together:
+
+- `/pinto/` redirects to `/pinto/latest/`, which contains the stable `main` Book.
+- `/pinto/develop/` contains the development Book.
+- `/pinto/X.Y.Z/` contains the Book for the `X.Y.Z` release tag.
+
+The root is a small static redirect entry point, while `/latest/` is built
+directly from `main`; this avoids duplicate stable files and prevents the
+latest route from drifting. Historical version routes are rebuilt into the
+same artifact, so publishing a newer release does not remove older
+documentation.
+
 After the release commit has passed CI and has been fast-forwarded to `main`,
 push the tag together with `main`. Publish the same locked package to crates.io
 only after the tag points at that commit:
