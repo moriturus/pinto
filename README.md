@@ -19,10 +19,10 @@ plain text so that every change is easy to inspect and recover with Git.
 
 ## Installation
 
-The latest published release is `0.4.1`. Install it from crates.io:
+The latest published release is `0.4.2`. Install it from crates.io:
 
 ```bash
-cargo install pinto-cli --version 0.4.1
+cargo install pinto-cli --version 0.4.2
 pinto --version
 ```
 

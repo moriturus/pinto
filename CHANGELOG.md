@@ -7,6 +7,26 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-28
+
+This patch release adds external subcommands and improves automation and
+release workflows without changing the board data format or breaking the
+existing CLI contract.
+
+### Added
+
+- Added external subcommand binaries with nested command discovery, argument
+  forwarding, exit-code propagation, and versioned contract environment
+  variables.
+- Added escaped literal placeholders to sequential `pinto automate` plans.
+- Added versioned Book deployments and a tag-driven GitHub Release workflow
+  that derives release notes from `CHANGELOG.md`.
+
+### Fixed
+
+- Fixed CI and dependency-policy validation for `syn` 3 dependency updates.
+- Improved Windows compatibility for external command dispatch.
+
 ## [0.4.1] - 2026-07-28
 
 This patch release improves automation, deep-board safety, and multi-record
