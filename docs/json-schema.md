@@ -43,15 +43,23 @@ Do not parse the human-oriented table or board output when `--json` is
 available.
 
 `pinto sprint retro show --json` returns a one-element array, and
-`pinto sprint retro list --json` returns an array of Retro objects. Each object
-contains `id`, `body`, `created`, and `updated`; timestamps are RFC 3339 UTC
-strings. Retro command JSON is intentionally separate from `export --json`;
-board interchange does not include Retros yet.
+`pinto sprint retro list --json` returns an array of Retro objects. A show
+object contains `id`, `body`, `created`, `updated`, and generated `context`;
+list objects contain the record fields only. The `context.sprint` object
+contains the parent Sprint goal, state, planned `start`/`end`, and `closed_at`.
+The sibling `capacity`, `velocity`, `burndown`, `cycle_time`, and `spillover`
+fields reuse the existing report shapes and are `null` when the corresponding
+context is unavailable. `context.spillover` is populated only after close, so
+it is not a synthetic zero for a planned or incomplete Sprint. Timestamps are
+RFC 3339 UTC strings. Retro command JSON is intentionally separate from
+`export --json`; board interchange does not include Retros yet.
 
 `pinto sprint review show --json` returns a one-element array, and
-`pinto sprint review list --json` returns an array of Review objects. Each object
-contains `id`, `body`, `created`, and `updated`; timestamps are RFC 3339 UTC
-strings. Review command JSON is intentionally separate from `export --json`.
+`pinto sprint review list --json` returns an array of Review objects. A show
+object contains the same record fields and generated `context`; list objects
+contain the record fields only. Review command JSON is intentionally separate
+from `export --json`. The Review has no state of its own: `context.sprint.state`
+is the parent Sprint state.
 
 ## Complete board export
 

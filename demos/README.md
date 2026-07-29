@@ -72,6 +72,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`sprint-goal`](single/sprint-goal) — explicit boolean Sprint Goal outcomes and achievement rate
   - [`sprint-retro`](single/sprint-retro) — first-class Sprint Retro records, templates, and JSON output
   - [`sprint-review`](single/sprint-review) — first-class Sprint Review records, templates, and JSON output
+  - [`sprint-context`](single/sprint-context) — generated parent-Sprint context in Retro and Review views
   - [`cycletime`](single/cycletime) — cycle time and lead time
   - [`burndown`](single/burndown) — sprint burndown
   - [`velocity`](single/velocity) — sprint velocity

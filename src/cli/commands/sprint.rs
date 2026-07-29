@@ -3,8 +3,8 @@
 use crate::cli::args::*;
 use crate::cli::format::report::format_burndown;
 use crate::cli::format::sprint::{
-    format_sprint_capacity, format_sprint_goal_report, format_sprints_with_timezone,
-    format_velocity,
+    format_sprint_capacity, format_sprint_context, format_sprint_goal_report,
+    format_sprints_with_timezone, format_velocity,
 };
 use crate::cli::json::{
     burndown_json, review_json, reviews_json, sprint_capacity_json, sprint_goal_report_json,
@@ -17,7 +17,7 @@ use pinto::service::{
     close_sprint, create_sprint, create_sprint_retro, create_sprint_review,
     delete_sprint_with_options, display_settings, edit_sprint, edit_sprint_retro,
     edit_sprint_review, list_sprint_retros, list_sprint_reviews, list_sprints, set_sprint_capacity,
-    show_sprint_retro, show_sprint_review, sprint_capacity, sprint_goal_report,
+    show_sprint_retro, show_sprint_review, sprint_capacity, sprint_context, sprint_goal_report,
     sprint_load_warnings, start_sprint, template_body, unassign_sprint, velocity,
 };
 
@@ -144,6 +144,19 @@ fn format_review_detail(review: &SprintReview) -> String {
     }
 }
 
+/// Render a Review with generated parent-Sprint context followed by authored Markdown.
+fn format_review_detail_with_context(
+    review: &SprintReview,
+    context: &pinto::service::SprintContext,
+    timezone: pinto::timezone::DisplayTimezone,
+) -> String {
+    format!(
+        "{}\nMarkdown\n{}",
+        format_sprint_context(context, timezone),
+        format_review_detail(review)
+    )
+}
+
 /// Render the human-readable Review list.
 fn format_review_list(reviews: &[SprintReview]) -> String {
     reviews
@@ -205,14 +218,22 @@ async fn cmd_review(args: ReviewArgs, localizer: &Localizer) -> anyhow::Result<E
         Some(ReviewCommand::Show {
             sprint_id,
             json,
-            plain: _,
+            plain,
         }) => {
             let sprint_id: SprintId = sprint_id.parse()?;
             let review = show_sprint_review(&dir, &sprint_id).await?;
             if json {
-                println!("{}", review_json(&review)?);
-            } else {
+                let context = sprint_context(&dir, &sprint_id).await?;
+                println!("{}", review_json(&review, &context)?);
+            } else if plain {
                 print!("{}", format_review_detail(&review));
+            } else {
+                let context = sprint_context(&dir, &sprint_id).await?;
+                let timezone = display_settings(&dir).await?.timezone;
+                print!(
+                    "{}",
+                    format_review_detail_with_context(&review, &context, timezone)
+                );
             }
         }
         Some(ReviewCommand::List { json }) => {
@@ -252,6 +273,19 @@ fn format_retro_detail(retro: &SprintRetro) -> String {
     } else {
         format!("{}\n{}\n", retro.id, retro.body)
     }
+}
+
+/// Render a Retro with generated parent-Sprint context followed by authored Markdown.
+fn format_retro_detail_with_context(
+    retro: &SprintRetro,
+    context: &pinto::service::SprintContext,
+    timezone: pinto::timezone::DisplayTimezone,
+) -> String {
+    format!(
+        "{}\nMarkdown\n{}",
+        format_sprint_context(context, timezone),
+        format_retro_detail(retro)
+    )
 }
 
 /// Render the human-readable Retro list.
@@ -315,14 +349,22 @@ async fn cmd_retro(args: RetroArgs, localizer: &Localizer) -> anyhow::Result<Exi
         Some(RetroCommand::Show {
             sprint_id,
             json,
-            plain: _,
+            plain,
         }) => {
             let sprint_id: SprintId = sprint_id.parse()?;
             let retro = show_sprint_retro(&dir, &sprint_id).await?;
             if json {
-                println!("{}", crate::cli::json::retro_json(&retro)?);
-            } else {
+                let context = sprint_context(&dir, &sprint_id).await?;
+                println!("{}", crate::cli::json::retro_json(&retro, &context)?);
+            } else if plain {
                 print!("{}", format_retro_detail(&retro));
+            } else {
+                let context = sprint_context(&dir, &sprint_id).await?;
+                let timezone = display_settings(&dir).await?.timezone;
+                print!(
+                    "{}",
+                    format_retro_detail_with_context(&retro, &context, timezone)
+                );
             }
         }
         Some(RetroCommand::List { json }) => {

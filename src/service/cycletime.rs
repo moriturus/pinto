@@ -81,7 +81,7 @@ pub async fn cycle_time(project_dir: &Path, filter: &CycleTimeFilter) -> Result<
 /// Include items with `done_at` that match the sprint and completion-time filters. Cycle Time
 /// requires `start_at`; missing values go to `missing_start`. Lead Time uses `created`, which every
 /// completed item has.
-fn compute_report(items: &[BacklogItem], filter: &CycleTimeFilter) -> CycleTimeReport {
+pub(crate) fn compute_report(items: &[BacklogItem], filter: &CycleTimeFilter) -> CycleTimeReport {
     let mut cycle: Vec<Duration> = Vec::new();
     let mut lead: Vec<Duration> = Vec::new();
     let mut missing_start: Vec<ItemId> = Vec::new();

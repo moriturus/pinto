@@ -368,7 +368,10 @@ it can be created for a planned, active, or closed Sprint. Use
 `pinto sprint retro new <SPRINT-ID> --template <NAME>` to load
 `.pinto/templates/retro/<NAME>.md`; adding `--edit` opens the standard editor
 with that template as the initial body. The direct creation form
-`pinto sprint retro <SPRINT-ID>` is also accepted.
+`pinto sprint retro <SPRINT-ID>` is also accepted. The default `show` view adds
+a generated `Sprint Context` section containing the parent goal, state,
+schedule, and available delivery reports; `--plain` shows only the authored
+Markdown.
 
 `pinto sprint review` manages at most one Markdown Review per Sprint. The record
 is stored as `.pinto/review/<SPRINT-ID>.md`, independent of the parent Sprint
@@ -376,7 +379,9 @@ state, so it can be created for a planned, active, or closed Sprint. Use
 `pinto sprint review new <SPRINT-ID> --template <NAME>` to load
 `.pinto/templates/review/<NAME>.md`; adding `--edit` opens the standard editor
 with that template as the initial body. The direct creation form
-`pinto sprint review <SPRINT-ID>` is also accepted.
+`pinto sprint review <SPRINT-ID>` is also accepted. Review `show` exposes the
+same generated parent-Sprint context without adding a Review state of its own;
+unavailable metrics are shown as unavailable rather than zero.
 
 Velocity totals, averages, and changes count only PBIs completed by the actual close time.
 Close-time unfinished points and item counts are displayed separately as spillover and never added

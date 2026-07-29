@@ -112,7 +112,7 @@ pub async fn burndown(project_dir: &Path, sprint_id: &SprintId) -> Result<Burndo
 /// [`BurndownMetric::Count`]. Subtract work completed by each date (`done_at` on or before the
 /// target date). The ideal line interpolates linearly from the total to zero; a one-day period has
 /// an ideal value of zero at its only point. Assume `start <= end`.
-fn compute_burndown(
+pub(crate) fn compute_burndown(
     sprint_id: SprintId,
     sprint_title: String,
     start: NaiveDate,

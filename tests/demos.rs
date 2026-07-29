@@ -473,6 +473,39 @@ fn sprint_review_demo_contains_a_separate_json_review_record() {
 }
 
 #[test]
+fn sprint_context_demo_exposes_parent_history_without_rewriting_markdown() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let demo = root.join("demos/single/sprint-context");
+    let retro = json_output(
+        "single/sprint-context",
+        &demo,
+        &["sprint", "retro", "show", "S-1", "--json"],
+    );
+    let review = json_output(
+        "single/sprint-context",
+        &demo,
+        &["sprint", "review", "show", "S-1", "--json"],
+    );
+    for record in [retro[0].clone(), review[0].clone()] {
+        assert!(record["body"].as_str().is_some());
+        assert_eq!(record["context"]["sprint"]["state"], "closed");
+        assert_eq!(record["context"]["sprint"]["goal"], "Ship the parser");
+        assert_eq!(record["context"]["spillover"]["points"], 5);
+        assert_eq!(record["context"]["velocity"]["points"], 3);
+        assert_eq!(record["context"]["cycle_time"]["completed"], 1);
+    }
+    let human = run_pinto(&demo, &["sprint", "retro", "show", "S-1"]);
+    assert_success(
+        "single/sprint-context",
+        &["sprint", "retro", "show", "S-1"],
+        &human,
+    );
+    let output = String::from_utf8_lossy(&human.stdout);
+    assert!(output.contains("Sprint Context (generated)"));
+    assert!(output.contains("Spillover: 5 points, 1 items"));
+}
+
+#[test]
 fn sprint_delete_protection_demo_covers_the_protected_and_explicit_paths() {
     let demo = discovered_demos()
         .into_iter()

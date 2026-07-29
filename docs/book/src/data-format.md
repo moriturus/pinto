@@ -96,6 +96,13 @@ updated = "2026-07-29T00:00:00Z"
 The file, Git, and optional SQLite backends keep Review data separate from both
 the Sprint goal and Sprint Retro records.
 
+Retro and Review `show` views generate parent-Sprint context at read time. The
+context is not written into either Markdown body: it includes the parent goal,
+state, schedule, close-time spillover, and any available capacity, velocity,
+burndown, or Cycle/Lead Time reports. Missing context is displayed as
+unavailable and represented as `null` in `--json`; a closed Sprint's stored
+spillover remains available after unfinished PBIs are rolled over or released.
+
 Removing a Sprint protects these one-to-one child records by default. The
 `--delete-records` option is required to remove the matching Retro and Review
 files with the Sprint; records for other Sprints are unaffected.

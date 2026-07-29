@@ -2,6 +2,91 @@
 
 use super::common::*;
 
+#[test]
+fn retro_and_review_show_generated_sprint_context_separately_from_markdown() {
+    for record in ["retro", "review"] {
+        let dir = TempDir::new().expect("temp dir");
+        pinto(dir.path()).arg("init").assert().success();
+        pinto(dir.path())
+            .args([
+                "sprint",
+                "new",
+                "S-1",
+                "Sprint One",
+                "--goal",
+                "Ship it",
+                "--start",
+                "2026-07-06",
+                "--end",
+                "2026-07-08",
+            ])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["add", "Estimated task", "--points", "3"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["sprint", "add", "S-1", "T-1"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args([
+                "sprint",
+                "capacity",
+                "S-1",
+                "--daily-hours",
+                "4",
+                "--holidays",
+                "0",
+                "--deduction-factor",
+                "1",
+            ])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["sprint", record, "new", "S-1", "--body", "Authored notes"])
+            .assert()
+            .success();
+
+        let shown = show_json(pinto(dir.path()).args(["sprint", record, "show", "S-1", "--json"]));
+        assert_eq!(shown["body"], "Authored notes");
+        assert_eq!(shown["context"]["sprint"]["id"], "S-1");
+        assert_eq!(shown["context"]["sprint"]["goal"], "Ship it");
+        assert_eq!(shown["context"]["sprint"]["state"], "planned");
+        assert_eq!(
+            shown["context"]["sprint"]["start"],
+            "2026-07-06T00:00:00+00:00"
+        );
+        assert_eq!(
+            shown["context"]["sprint"]["end"],
+            "2026-07-08T00:00:00+00:00"
+        );
+        assert_eq!(shown["context"]["capacity"]["working_days"], 3);
+        assert_eq!(shown["context"]["capacity"]["hours"], 12.0);
+        assert_eq!(shown["context"]["velocity"], serde_json::Value::Null);
+        assert!(shown["context"]["burndown"].is_object());
+        assert_eq!(shown["context"]["cycle_time"], serde_json::Value::Null);
+        assert_eq!(shown["context"]["spillover"], serde_json::Value::Null);
+
+        pinto(dir.path())
+            .args(["sprint", record, "show", "S-1"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Sprint Context (generated)"))
+            .stdout(predicate::str::contains("Goal: Ship it"))
+            .stdout(predicate::str::contains("State: planned"))
+            .stdout(predicate::str::contains("Velocity: unavailable"))
+            .stdout(predicate::str::contains("Authored notes"));
+        pinto(dir.path())
+            .args(["sprint", record, "show", "S-1", "--plain"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Sprint Context (generated)").not())
+            .stdout(predicate::str::contains("Authored notes"));
+    }
+}
+
 fn create_sprints(dir: &Path) {
     pinto(dir)
         .args(["sprint", "new", "S-1", "Planned", "--goal", "Plan"])

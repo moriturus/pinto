@@ -1635,6 +1635,92 @@ fn sprint_velocity_handles_an_empty_board() {
 }
 
 #[test]
+fn sprint_context_preserves_close_time_history_after_unfinished_work_moves() {
+    for close_args in [vec!["--rollover", "S-2"], vec!["--release"]] {
+        let dir = TempDir::new().expect("temp dir");
+        pinto(dir.path()).arg("init").assert().success();
+        pinto(dir.path())
+            .args([
+                "sprint",
+                "new",
+                "S-1",
+                "Historical Sprint",
+                "--goal",
+                "Ship it",
+                "--start",
+                "2026-07-06",
+                "--end",
+                "2026-07-08",
+            ])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["sprint", "new", "S-2", "Next Sprint", "--goal", "Continue"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["add", "Completed", "--points", "3"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["add", "Unfinished", "--points", "5"])
+            .assert()
+            .success();
+        for id in ["T-1", "T-2"] {
+            pinto(dir.path())
+                .args(["sprint", "add", "S-1", id])
+                .assert()
+                .success();
+        }
+        pinto(dir.path())
+            .args(["sprint", "start", "S-1"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["move", "T-1", "done"])
+            .assert()
+            .success();
+        let mut close_command = vec!["sprint", "close", "S-1"];
+        close_command.extend(close_args);
+        pinto(dir.path()).args(close_command).assert().success();
+        pinto(dir.path())
+            .args([
+                "sprint",
+                "retro",
+                "new",
+                "S-1",
+                "--body",
+                "Historical notes",
+            ])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args([
+                "sprint",
+                "review",
+                "new",
+                "S-1",
+                "--body",
+                "Historical review",
+            ])
+            .assert()
+            .success();
+
+        for record in ["retro", "review"] {
+            let shown =
+                show_json(pinto(dir.path()).args(["sprint", record, "show", "S-1", "--json"]));
+            assert_eq!(shown["context"]["sprint"]["state"], "closed");
+            assert_eq!(shown["context"]["spillover"]["points"], 5);
+            assert_eq!(shown["context"]["spillover"]["items"], 1);
+            assert_eq!(shown["context"]["velocity"]["points"], 3);
+            assert_eq!(shown["context"]["velocity"]["completed_items"], 1);
+            assert_eq!(shown["context"]["cycle_time"]["completed"], 1);
+            assert!(shown["context"]["burndown"].is_object());
+        }
+    }
+}
+
+#[test]
 fn sprint_burndown_renders_chart_with_period_and_remaining() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();

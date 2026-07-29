@@ -7,6 +7,7 @@
 mod board;
 mod burndown;
 mod commits;
+mod context;
 mod cycletime;
 mod dependency;
 mod doctor;
@@ -39,6 +40,7 @@ use crate::storage::{Backend, BoardLock, BoardRecoveryPoint};
 pub use board::{Board, BoardColumn, BoardQuery, SortKey, board};
 pub use burndown::{Burndown, BurndownDay, BurndownMetric, burndown};
 pub use commits::{LinkOutcome, SyncOutcome, link_commits, sync_commits, unlink_commits};
+pub use context::{SprintContext, sprint_context};
 pub use cycletime::{CycleTimeFilter, CycleTimeReport, DurationSummary, cycle_time};
 pub use dependency::{
     DependencyOutcome, ItemDetail, add_dependency, archived_item_detail, item_detail,

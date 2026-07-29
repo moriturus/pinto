@@ -14,7 +14,8 @@ use pinto::rank::Rank;
 use pinto::retro::SprintRetro;
 use pinto::review::SprintReview;
 use pinto::service::{
-    Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail, SprintGoalReport,
+    Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail, SprintContext,
+    SprintGoalReport,
 };
 use pinto::sprint::{Sprint, SprintCapacity, SprintId, SprintSpillover, SprintState};
 use serde::{Deserialize, Serialize};
@@ -155,9 +156,22 @@ impl RetroJson {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct RetroDetailJson {
+    #[serde(flatten)]
+    record: RetroJson,
+    context: SprintContextJson,
+}
+
 /// Format one Sprint Retro detail as a one-element JSON array, matching PBI show output.
-pub(super) fn retro_json(retro: &SprintRetro) -> serde_json::Result<String> {
-    serde_json::to_string_pretty(&[RetroJson::from_retro(retro)])
+pub(super) fn retro_json(
+    retro: &SprintRetro,
+    context: &SprintContext,
+) -> serde_json::Result<String> {
+    serde_json::to_string_pretty(&[RetroDetailJson {
+        record: RetroJson::from_retro(retro),
+        context: SprintContextJson::from_context(context),
+    }])
 }
 
 /// Format Sprint Retros as a JSON array.
@@ -186,15 +200,120 @@ impl ReviewJson {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct ReviewDetailJson {
+    #[serde(flatten)]
+    record: ReviewJson,
+    context: SprintContextJson,
+}
+
 /// Format one Sprint Review detail as a one-element JSON array, matching PBI show output.
-pub(super) fn review_json(review: &SprintReview) -> serde_json::Result<String> {
-    serde_json::to_string_pretty(&[ReviewJson::from_review(review)])
+pub(super) fn review_json(
+    review: &SprintReview,
+    context: &SprintContext,
+) -> serde_json::Result<String> {
+    serde_json::to_string_pretty(&[ReviewDetailJson {
+        record: ReviewJson::from_review(review),
+        context: SprintContextJson::from_context(context),
+    }])
 }
 
 /// Format Sprint Reviews as a JSON array.
 pub(super) fn reviews_json(reviews: &[SprintReview]) -> serde_json::Result<String> {
     let dto: Vec<ReviewJson> = reviews.iter().map(ReviewJson::from_review).collect();
     serde_json::to_string_pretty(&dto)
+}
+
+#[derive(Debug, Serialize)]
+struct SprintContextSprintJson {
+    id: String,
+    title: String,
+    state: String,
+    goal: String,
+    goal_achieved: Option<bool>,
+    start: Option<String>,
+    end: Option<String>,
+    closed_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SpilloverJson {
+    points: u32,
+    items: u32,
+    unestimated_items: u32,
+}
+
+impl SpilloverJson {
+    fn from_spillover(spillover: &SprintSpillover) -> Self {
+        Self {
+            points: spillover.points,
+            items: spillover.items,
+            unestimated_items: spillover.unestimated_items,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct VelocityContextJson {
+    sprint_id: String,
+    sprint_title: String,
+    points: u32,
+    completed_items: usize,
+    unestimated_completed_items: usize,
+    incomplete_items: usize,
+    spillover: SpilloverJson,
+}
+
+#[derive(Debug, Serialize)]
+struct SprintContextJson {
+    sprint: SprintContextSprintJson,
+    capacity: Option<SprintCapacityJson>,
+    velocity: Option<VelocityContextJson>,
+    burndown: Option<BurndownJson>,
+    cycle_time: Option<CycleTimeJson>,
+    spillover: Option<SpilloverJson>,
+}
+
+impl SprintContextJson {
+    fn from_context(context: &SprintContext) -> Self {
+        Self {
+            sprint: SprintContextSprintJson {
+                id: context.sprint_id.to_string(),
+                title: context.sprint_title.clone(),
+                state: context.state.to_string(),
+                goal: context.goal.clone(),
+                goal_achieved: context.goal_achieved,
+                start: context.start.map(|value| value.to_rfc3339()),
+                end: context.end.map(|value| value.to_rfc3339()),
+                closed_at: context.closed_at.map(|value| value.to_rfc3339()),
+            },
+            capacity: context
+                .capacity
+                .as_ref()
+                .map(|capacity| SprintCapacityJson {
+                    working_days: capacity.working_days,
+                    hours: capacity.hours,
+                }),
+            velocity: context
+                .velocity
+                .as_ref()
+                .map(|velocity| VelocityContextJson {
+                    sprint_id: velocity.sprint_id.to_string(),
+                    sprint_title: velocity.sprint_title.clone(),
+                    points: velocity.points,
+                    completed_items: velocity.completed_items,
+                    unestimated_completed_items: velocity.unestimated_completed_items,
+                    incomplete_items: velocity.incomplete_items,
+                    spillover: SpilloverJson::from_spillover(&velocity.spillover),
+                }),
+            burndown: context.burndown.as_ref().map(BurndownJson::from_burndown),
+            cycle_time: context.cycle_time.as_ref().map(CycleTimeJson::from_report),
+            spillover: context
+                .spillover
+                .as_ref()
+                .map(SpilloverJson::from_spillover),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -466,33 +585,44 @@ struct CycleTimeJson {
     missing_start: Vec<String>,
 }
 
+impl CycleTimeJson {
+    fn from_report(report: &CycleTimeReport) -> Self {
+        Self {
+            completed: report.completed,
+            cycle: report.cycle.as_ref().map(DurationSummaryJson::from_summary),
+            lead: report.lead.as_ref().map(DurationSummaryJson::from_summary),
+            missing_start: report.missing_start.iter().map(ItemId::to_string).collect(),
+        }
+    }
+}
+
 /// Format the Cycle/Lead Time analysis results to JSON.
 pub(super) fn cycletime_json(report: &CycleTimeReport) -> serde_json::Result<String> {
-    let dto = CycleTimeJson {
-        completed: report.completed,
-        cycle: report.cycle.as_ref().map(DurationSummaryJson::from_summary),
-        lead: report.lead.as_ref().map(DurationSummaryJson::from_summary),
-        missing_start: report.missing_start.iter().map(ItemId::to_string).collect(),
-    };
+    let dto = CycleTimeJson::from_report(report);
     serde_json::to_string_pretty(&dto)
+}
+
+impl BurndownJson {
+    fn from_burndown(chart: &Burndown) -> Self {
+        Self {
+            sprint_id: chart.sprint_id.to_string(),
+            sprint_title: chart.sprint_title.clone(),
+            metric: chart.metric.as_str().to_string(),
+            total: chart.total,
+            days: chart
+                .days
+                .iter()
+                .map(|day| BurndownDayJson {
+                    date: day.date.to_string(),
+                    remaining: day.remaining,
+                    ideal: day.ideal,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// Format the burndown aggregation results into JSON.
 pub(super) fn burndown_json(chart: &Burndown) -> serde_json::Result<String> {
-    let dto = BurndownJson {
-        sprint_id: chart.sprint_id.to_string(),
-        sprint_title: chart.sprint_title.clone(),
-        metric: chart.metric.as_str().to_string(),
-        total: chart.total,
-        days: chart
-            .days
-            .iter()
-            .map(|d| BurndownDayJson {
-                date: d.date.to_string(),
-                remaining: d.remaining,
-                ideal: d.ideal,
-            })
-            .collect(),
-    };
-    serde_json::to_string_pretty(&dto)
+    serde_json::to_string_pretty(&BurndownJson::from_burndown(chart))
 }
