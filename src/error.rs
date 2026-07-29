@@ -145,10 +145,6 @@ pub enum Error {
         id: SprintId,
     },
 
-    /// A Sprint child-record namespace was invoked without an operation or Sprint ID.
-    #[error("sprint {0} requires a Sprint ID or a nested operation (use `sprint {0} --help`)")]
-    SprintRecordCommandRequired(SprintRecordKind),
-
     /// A PBI cannot be assigned to a Sprint after that Sprint has been closed.
     #[error(
         "cannot assign a PBI to closed sprint {0} (assign it to a planned or active sprint instead; use `sprint unassign {0} <item-id>` to remove an existing assignment)"
@@ -391,10 +387,6 @@ impl Error {
                 SprintRecordKind::Retro => "retro-exists",
                 SprintRecordKind::Review => "review-exists",
             },
-            Self::SprintRecordCommandRequired(kind) => match kind {
-                SprintRecordKind::Retro => "retro-command-required",
-                SprintRecordKind::Review => "review-command-required",
-            },
             Self::SprintClosed(_) => "sprint-closed",
             Self::InvalidSprintPeriod { .. } => "invalid-sprint-period",
             Self::InvalidDailyWorkHours(_) => "invalid-daily-work-hours",
@@ -532,11 +524,6 @@ impl Error {
                 "label" => kind.display_name(),
                 "id" => id,
             ),
-            Self::SprintRecordCommandRequired(kind) => message!(
-                Message::ErrorSprintRecordCommandRequired,
-                "kind" => kind.as_str(),
-                "label" => kind.display_name(),
-            ),
             Self::SprintClosed(id) => message!(Message::ErrorSprintClosed, "id" => id),
             Self::InvalidSprintPeriod { start, end } => message!(
                 Message::ErrorInvalidSprintPeriod,
@@ -664,11 +651,11 @@ impl Error {
         Error::Task(source.to_string())
     }
 
-    /// Is this error caused by the user (bad input or a missing target)?
+    /// Is this domain error caused by the user (bad input or a missing target)?
     ///
     /// The CLI maps user-fixable errors to exit code 1 and unexpected I/O or task failures to
-    /// code 2. Add any new user-facing variant here so the classification stays in one place and
-    /// no subcommand has to repeat it.
+    /// code 2. Add any new domain-layer user-facing variant here so its classification stays in
+    /// one place; CLI-only usage failures are classified by the CLI entrypoint.
     #[must_use]
     pub fn is_user_error(&self) -> bool {
         matches!(
@@ -698,7 +685,6 @@ impl Error {
                 | Error::SprintRecordsExist { .. }
                 | Error::SprintRecordNotFound { .. }
                 | Error::SprintRecordExists { .. }
-                | Error::SprintRecordCommandRequired(_)
                 | Error::SprintClosed(_)
                 | Error::InvalidSprintPeriod { .. }
                 | Error::InvalidDailyWorkHours(_)
@@ -777,7 +763,6 @@ mod tests {
                 kind: SprintRecordKind::Retro,
                 id: SprintId::new("S-1").unwrap(),
             },
-            Error::SprintRecordCommandRequired(SprintRecordKind::Retro),
             Error::SprintRecordNotFound {
                 kind: SprintRecordKind::Review,
                 id: SprintId::new("S-1").unwrap(),
@@ -786,7 +771,6 @@ mod tests {
                 kind: SprintRecordKind::Review,
                 id: SprintId::new("S-1").unwrap(),
             },
-            Error::SprintRecordCommandRequired(SprintRecordKind::Review),
             Error::SprintClosed(SprintId::new("S-1").unwrap()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
@@ -952,7 +936,6 @@ mod tests {
                 kind: SprintRecordKind::Retro,
                 id: sprint.clone(),
             },
-            Error::SprintRecordCommandRequired(SprintRecordKind::Retro),
             Error::SprintRecordNotFound {
                 kind: SprintRecordKind::Review,
                 id: sprint.clone(),
@@ -961,7 +944,6 @@ mod tests {
                 kind: SprintRecordKind::Review,
                 id: sprint.clone(),
             },
-            Error::SprintRecordCommandRequired(SprintRecordKind::Review),
             Error::SprintClosed(sprint.clone()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),

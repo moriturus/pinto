@@ -5,12 +5,14 @@ use super::automation::{
 };
 use super::item::{combine_template_body, report_failures};
 use super::sprint::cmd_sprint_with_localizer;
+use super::{CliUsageError, format_anyhow_error};
 use crate::cli::args::{Cli, SprintArgs, SprintCommand};
 use clap::CommandFactory;
 use pinto::automation::{AutomationPlan, AutomationProducerResult};
 use pinto::backlog::ItemId;
 use pinto::error::Error;
 use pinto::i18n::localizer_from;
+use pinto::sprint_record::SprintRecordKind;
 use std::path::Path;
 
 fn argv(values: &[&str]) -> Vec<String> {
@@ -254,4 +256,22 @@ async fn automation_plan_source_handles_inline_and_invalid_sources() {
         Some(Error::AutomationPlanSource { path, message })
             if path == Path::new(missing_path) && message == "file does not exist"
     ));
+}
+
+#[test]
+fn cli_usage_errors_keep_their_localized_message() {
+    let english = localizer_from(Some("en_US.UTF-8"), None);
+    let japanese = localizer_from(Some("ja_JP.UTF-8"), None);
+    let error = anyhow::Error::new(CliUsageError::SprintRecordCommandRequired(
+        SprintRecordKind::Retro,
+    ));
+
+    assert_eq!(
+        format_anyhow_error(&error, &english),
+        "sprint retro requires a Sprint ID or a nested operation (use `sprint retro --help`)"
+    );
+    assert_eq!(
+        format_anyhow_error(&error, &japanese),
+        "sprint retro には Sprint ID またはネストした操作を指定してください（`sprint retro --help` を確認してください）"
+    );
 }

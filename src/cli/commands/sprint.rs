@@ -294,7 +294,7 @@ async fn cmd_sprint_record(
         None => {
             let sprint_id = args
                 .sprint_id
-                .ok_or(pinto::error::Error::SprintRecordCommandRequired(kind))?;
+                .ok_or(super::CliUsageError::SprintRecordCommandRequired(kind))?;
             let sprint_id: SprintId = sprint_id.parse()?;
             let body =
                 record_creation_body(&dir, &sprint_id, kind, args.body, args.template, args.edit)

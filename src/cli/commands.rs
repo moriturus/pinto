@@ -8,6 +8,7 @@ use pinto::error::Error;
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::SearchFilter;
 use pinto::service::{LabelMatch, WipViolation, lock_board};
+use pinto::sprint_record::SprintRecordKind;
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -22,6 +23,26 @@ mod session;
 mod sprint;
 #[cfg(test)]
 mod tests;
+
+/// CLI-only usage failures that do not belong in the domain error contract.
+#[derive(Debug, thiserror::Error)]
+pub(super) enum CliUsageError {
+    /// A Sprint child-record namespace needs either a nested operation or a Sprint ID.
+    #[error("sprint {0} requires a Sprint ID or a nested operation (use `sprint {0} --help`)")]
+    SprintRecordCommandRequired(SprintRecordKind),
+}
+
+impl CliUsageError {
+    /// Render the CLI usage failure through the selected UI locale.
+    pub(super) fn localized(&self, localizer: &Localizer) -> String {
+        match self {
+            Self::SprintRecordCommandRequired(kind) => localizer.format(
+                Message::ErrorSprintRecordCommandRequired,
+                [("kind", kind.as_str()), ("label", kind.display_name())],
+            ),
+        }
+    }
+}
 
 pub(crate) async fn entrypoint() -> ExitCode {
     // clap defaults to exit code 2 for argument errors, but pinto reserves 2 for internal failures.
@@ -60,10 +81,10 @@ pub(crate) async fn entrypoint() -> ExitCode {
                 localizer.text(Message::ErrorPrefix),
                 format_anyhow_error(&e, localizer)
             );
-            // User-induced errors (including malformed board files) and a missing external command
-            // are code 1; unexpected internal errors are code 2. Classification is centralized in
-            // `Error::is_user_error()`.
+            // User-induced errors (including malformed board files), CLI usage errors, and a
+            // missing external command are code 1; unexpected internal errors are code 2.
             if e.downcast_ref::<Error>().is_some_and(Error::is_user_error)
+                || e.downcast_ref::<CliUsageError>().is_some()
                 || e.downcast_ref::<external::NotFound>().is_some()
             {
                 ExitCode::from(1)
@@ -76,15 +97,16 @@ pub(crate) async fn entrypoint() -> ExitCode {
 
 /// Render an anyhow chain while translating pinto-owned error variants at the CLI boundary.
 ///
-/// Context and external diagnostics remain in their original text; only the crate's structured
-/// [`Error`] values are selected from the Fluent catalog.
+/// Context and external diagnostics remain in their original text; pinto domain errors and CLI
+/// usage errors are selected from the Fluent catalog.
 pub(crate) fn format_anyhow_error(error: &anyhow::Error, localizer: &Localizer) -> String {
     error
         .chain()
-        .map(|cause| {
-            cause
-                .downcast_ref::<Error>()
-                .map_or_else(|| cause.to_string(), |error| error.localized(localizer))
+        .map(|cause| match cause.downcast_ref::<Error>() {
+            Some(error) => error.localized(localizer),
+            None => cause
+                .downcast_ref::<CliUsageError>()
+                .map_or_else(|| cause.to_string(), |error| error.localized(localizer)),
         })
         .collect::<Vec<_>>()
         .join(": ")
