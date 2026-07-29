@@ -5,9 +5,11 @@ use pinto::backlog::{BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
 use pinto::retro::SprintRetro;
+use pinto::review::SprintReview;
 use pinto::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
 use pinto::storage::{
-    Backend, BacklogItemRepository, SprintRepository, SprintRetroRepository, StorageBackend,
+    Backend, BacklogItemRepository, SprintRepository, SprintRetroRepository,
+    SprintReviewRepository, StorageBackend,
 };
 use tempfile::TempDir;
 
@@ -32,6 +34,11 @@ struct ContractSnapshot {
     retro_loaded_after_update: SprintRetro,
     retros_after_delete: Vec<SprintRetro>,
     retro_error_codes: Vec<&'static str>,
+    review_loaded: SprintReview,
+    reviews_before_update: Vec<SprintReview>,
+    review_loaded_after_update: SprintReview,
+    reviews_after_delete: Vec<SprintReview>,
+    review_error_codes: Vec<&'static str>,
 }
 
 fn timestamp(seconds: i64) -> DateTime<Utc> {
@@ -260,6 +267,53 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
         ),
     ];
 
+    let review = SprintReview::new(sprint.id.clone(), "Review body\nデモ", timestamp(5_000));
+    let second_review =
+        SprintReview::new(second_sprint.id.clone(), "Second Review", timestamp(5_100));
+    SprintReviewRepository::save(backend, &review)
+        .await
+        .expect("save first Review");
+    SprintReviewRepository::save(backend, &second_review)
+        .await
+        .expect("save second Review");
+    let review_loaded = SprintReviewRepository::load(backend, &review.id)
+        .await
+        .expect("load Review");
+    let reviews_before_update = SprintReviewRepository::list(backend)
+        .await
+        .expect("list Reviews");
+    let mut updated_review = review.clone();
+    updated_review.body = "Updated Review".to_string();
+    updated_review.updated = timestamp(5_200);
+    SprintReviewRepository::save(backend, &updated_review)
+        .await
+        .expect("update Review");
+    let review_loaded_after_update = SprintReviewRepository::load(backend, &review.id)
+        .await
+        .expect("load updated Review");
+    SprintReviewRepository::delete(backend, &second_review.id)
+        .await
+        .expect("delete Review");
+    let reviews_after_delete = SprintReviewRepository::list(backend)
+        .await
+        .expect("list after Review delete");
+    let review_error_codes = vec![
+        error_code(
+            SprintReviewRepository::load(
+                backend,
+                &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
+            )
+            .await,
+        ),
+        error_code(
+            SprintReviewRepository::delete(
+                backend,
+                &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
+            )
+            .await,
+        ),
+    ];
+
     ContractSnapshot {
         item_loaded,
         items_before_update,
@@ -280,11 +334,16 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
         retro_loaded_after_update,
         retros_after_delete,
         retro_error_codes,
+        review_loaded,
+        reviews_before_update,
+        review_loaded_after_update,
+        reviews_after_delete,
+        review_error_codes,
     }
 }
 
 #[tokio::test]
-async fn all_enabled_backends_share_item_sprint_and_retro_contracts() {
+async fn all_enabled_backends_share_item_sprint_retro_and_review_contracts() {
     let kinds = backend_kinds();
     let mut snapshots = Vec::with_capacity(kinds.len());
     for kind in kinds {
@@ -315,6 +374,10 @@ async fn all_enabled_backends_share_item_sprint_and_retro_contracts() {
     assert_eq!(
         expected.retro_error_codes,
         ["retro-not-found", "retro-not-found"]
+    );
+    assert_eq!(
+        expected.review_error_codes,
+        ["review-not-found", "review-not-found"]
     );
 }
 

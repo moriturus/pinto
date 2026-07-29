@@ -13,6 +13,7 @@ pub mod i18n;
 pub mod kanban_keys;
 pub mod rank;
 pub mod retro;
+pub mod review;
 pub mod service;
 pub mod sprint;
 pub mod storage;

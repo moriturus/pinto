@@ -345,7 +345,8 @@ fn item_id_arguments(cli: &Cli) -> Vec<&String> {
             | SprintCommand::Velocity { .. }
             | SprintCommand::Goal { .. }
             | SprintCommand::Capacity { .. }
-            | SprintCommand::Retro(_) => Vec::new(),
+            | SprintCommand::Retro(_)
+            | SprintCommand::Review(_) => Vec::new(),
         },
         Command::Init
         | Command::List(_)

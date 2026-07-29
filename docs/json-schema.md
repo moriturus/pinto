@@ -33,6 +33,8 @@ pinto board --json
 pinto sprint list --json
 pinto sprint retro show S-1 --json
 pinto sprint retro list --json
+pinto sprint review show S-1 --json
+pinto sprint review list --json
 pinto sprint goal --json
 pinto export --json
 ```
@@ -45,6 +47,11 @@ available.
 contains `id`, `body`, `created`, and `updated`; timestamps are RFC 3339 UTC
 strings. Retro command JSON is intentionally separate from `export --json`;
 board interchange does not include Retros yet.
+
+`pinto sprint review show --json` returns a one-element array, and
+`pinto sprint review list --json` returns an array of Review objects. Each object
+contains `id`, `body`, `created`, and `updated`; timestamps are RFC 3339 UTC
+strings. Review command JSON is intentionally separate from `export --json`.
 
 ## Complete board export
 

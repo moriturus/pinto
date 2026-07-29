@@ -3,6 +3,7 @@
 use crate::backlog::{BacklogItem, ItemId};
 use crate::error::Result;
 use crate::retro::SprintRetro;
+use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId};
 use std::future::Future;
 use std::path::PathBuf;
@@ -172,5 +173,36 @@ pub trait SprintRetroRepository {
     /// # Errors
     ///
     /// Returns [`crate::error::Error::RetroNotFound`] or persistence errors.
+    fn delete(&self, id: &SprintId) -> impl Future<Output = Result<()>>;
+}
+
+/// Persistence operations for Sprint Review records.
+pub trait SprintReviewRepository {
+    /// Save a Review, replacing any existing record with the same Sprint ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns serialization, parsing, I/O, or backend errors.
+    fn save(&self, review: &SprintReview) -> impl Future<Output = Result<()>>;
+
+    /// Load the Review belonging to `id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::ReviewNotFound`] or persistence errors.
+    fn load(&self, id: &SprintId) -> impl Future<Output = Result<SprintReview>>;
+
+    /// Return all Reviews in ascending creation-time order, using the Sprint ID as a tie-breaker.
+    ///
+    /// # Errors
+    ///
+    /// Returns persistence, parsing, or I/O/backend errors if a record cannot be read.
+    fn list(&self) -> impl Future<Output = Result<Vec<SprintReview>>>;
+
+    /// Delete the Review belonging to `id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::ReviewNotFound`] or persistence errors.
     fn delete(&self, id: &SprintId) -> impl Future<Output = Result<()>>;
 }

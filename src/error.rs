@@ -136,6 +136,20 @@ pub enum Error {
     #[error("sprint retro requires a Sprint ID or a nested operation (use `sprint retro --help`)")]
     RetroCommandRequired,
 
+    /// A Sprint Review with the specified Sprint ID cannot be found.
+    #[error("review not found: {0}")]
+    ReviewNotFound(SprintId),
+
+    /// A Sprint already has a Review record.
+    #[error("review already exists: {0} (use `sprint review edit` to update it)")]
+    ReviewExists(SprintId),
+
+    /// The `sprint review` namespace was invoked without an operation or Sprint ID.
+    #[error(
+        "sprint review requires a Sprint ID or a nested operation (use `sprint review --help`)"
+    )]
+    ReviewCommandRequired,
+
     /// A PBI cannot be assigned to a Sprint after that Sprint has been closed.
     #[error(
         "cannot assign a PBI to closed sprint {0} (assign it to a planned or active sprint instead; use `sprint unassign {0} <item-id>` to remove an existing assignment)"
@@ -372,6 +386,9 @@ impl Error {
             Self::RetroNotFound(_) => "retro-not-found",
             Self::RetroExists(_) => "retro-exists",
             Self::RetroCommandRequired => "retro-command-required",
+            Self::ReviewNotFound(_) => "review-not-found",
+            Self::ReviewExists(_) => "review-exists",
+            Self::ReviewCommandRequired => "review-command-required",
             Self::SprintClosed(_) => "sprint-closed",
             Self::InvalidSprintPeriod { .. } => "invalid-sprint-period",
             Self::InvalidDailyWorkHours(_) => "invalid-daily-work-hours",
@@ -495,6 +512,9 @@ impl Error {
             Self::RetroNotFound(id) => message!(Message::ErrorRetroNotFound, "id" => id),
             Self::RetroExists(id) => message!(Message::ErrorRetroExists, "id" => id),
             Self::RetroCommandRequired => localizer.text(Message::ErrorRetroCommandRequired),
+            Self::ReviewNotFound(id) => message!(Message::ErrorReviewNotFound, "id" => id),
+            Self::ReviewExists(id) => message!(Message::ErrorReviewExists, "id" => id),
+            Self::ReviewCommandRequired => localizer.text(Message::ErrorReviewCommandRequired),
             Self::SprintClosed(id) => message!(Message::ErrorSprintClosed, "id" => id),
             Self::InvalidSprintPeriod { start, end } => message!(
                 Message::ErrorInvalidSprintPeriod,
@@ -656,6 +676,9 @@ impl Error {
                 | Error::RetroNotFound(_)
                 | Error::RetroExists(_)
                 | Error::RetroCommandRequired
+                | Error::ReviewNotFound(_)
+                | Error::ReviewExists(_)
+                | Error::ReviewCommandRequired
                 | Error::SprintClosed(_)
                 | Error::InvalidSprintPeriod { .. }
                 | Error::InvalidDailyWorkHours(_)
@@ -725,6 +748,9 @@ mod tests {
             Error::RetroNotFound(SprintId::new("S-1").unwrap()),
             Error::RetroExists(SprintId::new("S-1").unwrap()),
             Error::RetroCommandRequired,
+            Error::ReviewNotFound(SprintId::new("S-1").unwrap()),
+            Error::ReviewExists(SprintId::new("S-1").unwrap()),
+            Error::ReviewCommandRequired,
             Error::SprintClosed(SprintId::new("S-1").unwrap()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
@@ -881,6 +907,9 @@ mod tests {
             Error::RetroNotFound(sprint.clone()),
             Error::RetroExists(sprint.clone()),
             Error::RetroCommandRequired,
+            Error::ReviewNotFound(sprint.clone()),
+            Error::ReviewExists(sprint.clone()),
+            Error::ReviewCommandRequired,
             Error::SprintClosed(sprint.clone()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),

@@ -4,6 +4,7 @@ use crate::backlog::{BacklogItem, ItemId, Status};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
 use crate::retro::SprintRetro;
+use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -333,6 +334,60 @@ pub(super) fn retro_from_markdown(text: &str, path: &Path) -> Result<SprintRetro
     let frontmatter: RetroFrontmatter =
         toml::from_str(front).map_err(|error| Error::parse(path, error.to_string()))?;
     frontmatter.into_retro(body.to_string(), path)
+}
+
+/// Review frontmatter fields. The Sprint ID is both the record identity and the filename stem;
+/// the Review content remains the Markdown body.
+#[derive(Debug, Serialize, Deserialize)]
+struct ReviewFrontmatter {
+    id: String,
+    created: DateTime<Utc>,
+    updated: DateTime<Utc>,
+}
+
+impl ReviewFrontmatter {
+    fn from_review(review: &SprintReview) -> Self {
+        Self {
+            id: review.id.to_string(),
+            created: review.created,
+            updated: review.updated,
+        }
+    }
+
+    fn into_review(self, body: String, path: &Path) -> Result<SprintReview> {
+        let id = self
+            .id
+            .parse::<SprintId>()
+            .map_err(|error| Error::parse(path, error.to_string()))?;
+        Ok(SprintReview {
+            id,
+            body,
+            created: self.created,
+            updated: self.updated,
+        })
+    }
+}
+
+/// Format a Sprint Review into `+++` frontmatter plus Markdown body.
+pub(super) fn review_to_markdown(review: &SprintReview) -> Result<String> {
+    let frontmatter = ReviewFrontmatter::from_review(review);
+    let toml = toml::to_string(&frontmatter).map_err(|error| {
+        Error::parse(
+            &PathBuf::from(format!("{}.md", review.id)),
+            error.to_string(),
+        )
+    })?;
+    Ok(assemble_markdown(&toml, &review.body))
+}
+
+/// Parse a Sprint Review Markdown document.
+pub(super) fn review_from_markdown(text: &str, path: &Path) -> Result<SprintReview> {
+    let (front, body) = split_frontmatter(text).ok_or_else(|| Error::MissingFrontmatter {
+        path: path.to_path_buf(),
+    })?;
+    let frontmatter: ReviewFrontmatter =
+        toml::from_str(front).map_err(|error| Error::parse(path, error.to_string()))?;
+    frontmatter.into_review(body.to_string(), path)
 }
 
 /// Split a document whose first line starts with `+++` into (frontmatter, body).

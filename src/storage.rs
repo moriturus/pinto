@@ -41,6 +41,8 @@ pub(crate) use markdown::{from_markdown as item_from_markdown, to_markdown as it
 pub use crate::config::StorageBackend;
 pub use file_repository::FileRepository;
 pub use git_repository::GitRepository;
-pub use repository::{BacklogItemRepository, SprintRepository, SprintRetroRepository};
+pub use repository::{
+    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
+};
 #[cfg(feature = "sqlite")]
 pub use sqlite_repository::SqliteRepository;

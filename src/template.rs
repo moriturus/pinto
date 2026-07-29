@@ -52,6 +52,8 @@ pub enum TemplateKind {
     Sprint,
     /// Sprint retrospective body.
     Retro,
+    /// Sprint Review body.
+    Review,
 }
 
 impl TemplateKind {
@@ -62,6 +64,7 @@ impl TemplateKind {
             Self::Item => "item",
             Self::Sprint => "sprint",
             Self::Retro => "retro",
+            Self::Review => "review",
         }
     }
 }

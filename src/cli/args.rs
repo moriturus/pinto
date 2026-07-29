@@ -626,6 +626,9 @@ pub(super) enum SprintCommand {
     /// Create, edit, show, or list a Sprint Retro record.
     #[command(visible_alias = "r")]
     Retro(RetroArgs),
+    /// Create, edit, show, or list a Sprint Review record.
+    #[command(visible_alias = "rv")]
+    Review(ReviewArgs),
 }
 
 /// Arguments for the `sprint retro` namespace.
@@ -692,6 +695,78 @@ pub(super) enum RetroCommand {
         plain: bool,
     },
     /// List Sprint Retro records.
+    #[command(visible_alias = "ls")]
+    List {
+        /// Output machine-readable JSON instead of human-readable formatting.
+        #[arg(long, short = 'j')]
+        json: bool,
+    },
+}
+
+/// Arguments for the `sprint review` namespace.
+#[derive(Debug, Args)]
+pub(super) struct ReviewArgs {
+    /// A nested operation (`new`, `edit`, `show`, or `list`). When omitted, a Sprint ID creates a
+    /// Review directly.
+    #[command(subcommand)]
+    pub(super) command: Option<ReviewCommand>,
+    /// Sprint ID for the direct creation form (`sprint review <SPRINT-ID>`).
+    #[arg(value_name = "SPRINT-ID")]
+    pub(super) sprint_id: Option<String>,
+    /// Markdown Review body.
+    #[arg(long, short = 'b', conflicts_with = "edit")]
+    pub(super) body: Option<String>,
+    /// The template name (`.pinto/templates/review/<name>.md`) to apply to the Review body.
+    #[arg(long, short = 't')]
+    pub(super) template: Option<String>,
+    /// Open the standard editor. On creation, the selected template is the initial body.
+    #[arg(long = "edit", short = 'E', conflicts_with = "body")]
+    pub(super) edit: bool,
+}
+
+/// Operations in the `sprint review` namespace.
+#[derive(Debug, Subcommand)]
+pub(super) enum ReviewCommand {
+    /// Create a Sprint Review record.
+    #[command(visible_aliases = ["n", "add"])]
+    New {
+        /// ID of the parent Sprint.
+        sprint_id: String,
+        /// Markdown Review body.
+        #[arg(long, short = 'b', conflicts_with = "edit")]
+        body: Option<String>,
+        /// The template name (`.pinto/templates/review/<name>.md`) to apply to the Review body.
+        #[arg(long, short = 't')]
+        template: Option<String>,
+        /// Open the standard editor with the selected template as the initial body.
+        #[arg(long = "edit", short = 'E', conflicts_with = "body")]
+        edit: bool,
+    },
+    /// Edit a Sprint Review record.
+    #[command(visible_alias = "e")]
+    Edit {
+        /// ID of the parent Sprint.
+        sprint_id: String,
+        /// Replacement Markdown Review body.
+        #[arg(long, short = 'b', conflicts_with = "edit")]
+        body: Option<String>,
+        /// Open the standard editor. This is also the default when no body is supplied.
+        #[arg(long = "edit", short = 'E')]
+        edit: bool,
+    },
+    /// Display a Sprint Review record.
+    #[command(visible_alias = "s")]
+    Show {
+        /// ID of the parent Sprint.
+        sprint_id: String,
+        /// Output machine-readable JSON instead of human-readable formatting.
+        #[arg(long, short = 'j')]
+        json: bool,
+        /// Show the raw Markdown body without rendering.
+        #[arg(long, short = 'p')]
+        plain: bool,
+    },
+    /// List Sprint Review records.
     #[command(visible_alias = "ls")]
     List {
         /// Output machine-readable JSON instead of human-readable formatting.

@@ -325,6 +325,10 @@ pinto sprint retro new S-1 --body "What went well\nWhat to improve"
 pinto sprint retro show S-1 --json
 pinto sprint retro edit S-1 --body "Updated retrospective notes"
 pinto sprint retro list --json
+pinto sprint review new S-1 --body "What was demonstrated\nWhat remains"
+pinto sprint review show S-1 --json
+pinto sprint review edit S-1 --body "Updated review notes"
+pinto sprint review list --json
 pinto sprint close S-1 --rollover S-2          # move unfinished PBIs to S-2
 # pinto sprint close S-1 --release             # alternative: clear their Sprint assignment
 pinto sprint remove S-1
@@ -360,6 +364,14 @@ it can be created for a planned, active, or closed Sprint. Use
 `.pinto/templates/retro/<NAME>.md`; adding `--edit` opens the standard editor
 with that template as the initial body. The direct creation form
 `pinto sprint retro <SPRINT-ID>` is also accepted.
+
+`pinto sprint review` manages at most one Markdown Review per Sprint. The record
+is stored as `.pinto/review/<SPRINT-ID>.md`, independent of the parent Sprint
+state, so it can be created for a planned, active, or closed Sprint. Use
+`pinto sprint review new <SPRINT-ID> --template <NAME>` to load
+`.pinto/templates/review/<NAME>.md`; adding `--edit` opens the standard editor
+with that template as the initial body. The direct creation form
+`pinto sprint review <SPRINT-ID>` is also accepted.
 
 Velocity totals, averages, and changes count only PBIs completed by the actual close time.
 Close-time unfinished points and item counts are displayed separately as spillover and never added

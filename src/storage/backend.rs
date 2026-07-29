@@ -9,13 +9,16 @@
 
 use super::file_repository::FileRepository;
 use super::git_repository::GitRepository;
-use super::repository::{BacklogItemRepository, SprintRepository, SprintRetroRepository};
+use super::repository::{
+    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
+};
 #[cfg(feature = "sqlite")]
 use super::sqlite_repository::SqliteRepository;
 use crate::backlog::{BacklogItem, ItemId};
 use crate::config::StorageBackend;
 use crate::error::{Error, Result};
 use crate::retro::SprintRetro;
+use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId};
 use std::path::PathBuf;
 
@@ -300,6 +303,44 @@ impl SprintRetroRepository for Backend {
             Backend::Git(repository) => SprintRetroRepository::delete(repository, id).await,
             #[cfg(feature = "sqlite")]
             Backend::Sqlite(repository) => SprintRetroRepository::delete(repository, id).await,
+        }
+    }
+}
+
+impl SprintReviewRepository for Backend {
+    async fn save(&self, review: &SprintReview) -> Result<()> {
+        match self {
+            Backend::File(repository) => SprintReviewRepository::save(repository, review).await,
+            Backend::Git(repository) => SprintReviewRepository::save(repository, review).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(repository) => SprintReviewRepository::save(repository, review).await,
+        }
+    }
+
+    async fn load(&self, id: &SprintId) -> Result<SprintReview> {
+        match self {
+            Backend::File(repository) => SprintReviewRepository::load(repository, id).await,
+            Backend::Git(repository) => SprintReviewRepository::load(repository, id).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(repository) => SprintReviewRepository::load(repository, id).await,
+        }
+    }
+
+    async fn list(&self) -> Result<Vec<SprintReview>> {
+        match self {
+            Backend::File(repository) => SprintReviewRepository::list(repository).await,
+            Backend::Git(repository) => SprintReviewRepository::list(repository).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(repository) => SprintReviewRepository::list(repository).await,
+        }
+    }
+
+    async fn delete(&self, id: &SprintId) -> Result<()> {
+        match self {
+            Backend::File(repository) => SprintReviewRepository::delete(repository, id).await,
+            Backend::Git(repository) => SprintReviewRepository::delete(repository, id).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(repository) => SprintReviewRepository::delete(repository, id).await,
         }
     }
 }

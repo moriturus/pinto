@@ -22,6 +22,7 @@ mod order;
 mod points;
 mod relations;
 mod retro;
+mod review;
 mod search;
 mod settings;
 mod sprint;
@@ -61,6 +62,9 @@ pub use next::{NextFilter, next_items};
 pub use order::{Forest, build_forest, hierarchical, hierarchical_order};
 pub(crate) use points::apply_effective_points;
 pub use retro::{create_sprint_retro, edit_sprint_retro, list_sprint_retros, show_sprint_retro};
+pub use review::{
+    create_sprint_review, edit_sprint_review, list_sprint_reviews, show_sprint_review,
+};
 pub use search::{SearchFilter, SearchMode};
 pub use settings::{DisplaySettings, TuiSettings, display_settings, tui_settings};
 pub(crate) use sprint::validate_sprint_assignment;

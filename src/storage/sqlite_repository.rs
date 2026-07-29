@@ -55,6 +55,7 @@ use std::path::{Path, PathBuf};
 
 mod items;
 mod retros;
+mod reviews;
 mod sprints;
 #[cfg(test)]
 mod tests;

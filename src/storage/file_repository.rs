@@ -5,6 +5,7 @@ use crate::backlog::{BacklogItem, ItemId};
 use crate::error::Error;
 use crate::error::Result;
 use crate::retro::SprintRetro;
+use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId};
 use crate::storage::WriteFailureInjector;
 use std::io;
@@ -13,6 +14,7 @@ use tokio::fs;
 
 mod items;
 mod retros;
+mod reviews;
 mod sprints;
 
 /// [`BacklogItemRepository`] and [`SprintRepository`] implementation backed by the `.pinto/` directory.
@@ -28,6 +30,7 @@ pub struct FileRepository {
 type ItemRecord = (PathBuf, BacklogItem);
 type SprintRecord = (PathBuf, Sprint);
 type RetroRecord = (PathBuf, SprintRetro);
+type ReviewRecord = (PathBuf, SprintReview);
 
 impl FileRepository {
     /// Build by specifying the board root (`.pinto/`). No file I/O is performed.
@@ -56,6 +59,12 @@ impl FileRepository {
         self.root.join("retro")
     }
 
+    /// Directory to put Sprint Review files (`<root>/review`).
+    #[must_use]
+    pub fn review_dir(&self) -> PathBuf {
+        self.root.join("review")
+    }
+
     /// The sprint file path for the specified ID (`<root>/sprints/<id>.md`).
     pub(crate) fn sprint_path_for(&self, id: &SprintId) -> PathBuf {
         self.sprints_dir().join(format!("{id}.md"))
@@ -64,6 +73,11 @@ impl FileRepository {
     /// The Retro file path for the specified Sprint ID (`<root>/retro/<id>.md`).
     pub(crate) fn retro_path_for(&self, id: &SprintId) -> PathBuf {
         self.retro_dir().join(format!("{id}.md"))
+    }
+
+    /// The Review file path for the specified Sprint ID (`<root>/review/<id>.md`).
+    pub(crate) fn review_path_for(&self, id: &SprintId) -> PathBuf {
+        self.review_dir().join(format!("{id}.md"))
     }
 
     /// Task file path for the specified ID (`<root>/tasks/<id>.md`).

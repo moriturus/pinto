@@ -12,6 +12,7 @@ use pinto::backlog::{BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
 use pinto::retro::SprintRetro;
+use pinto::review::SprintReview;
 use pinto::service::{
     Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail, SprintGoalReport,
 };
@@ -162,6 +163,37 @@ pub(super) fn retro_json(retro: &SprintRetro) -> serde_json::Result<String> {
 /// Format Sprint Retros as a JSON array.
 pub(super) fn retros_json(retros: &[SprintRetro]) -> serde_json::Result<String> {
     let dto: Vec<RetroJson> = retros.iter().map(RetroJson::from_retro).collect();
+    serde_json::to_string_pretty(&dto)
+}
+
+/// JSON representation of a Sprint Review record.
+#[derive(Debug, Serialize, Deserialize)]
+struct ReviewJson {
+    id: String,
+    body: String,
+    created: String,
+    updated: String,
+}
+
+impl ReviewJson {
+    fn from_review(review: &SprintReview) -> Self {
+        Self {
+            id: review.id.to_string(),
+            body: review.body.clone(),
+            created: review.created.to_rfc3339(),
+            updated: review.updated.to_rfc3339(),
+        }
+    }
+}
+
+/// Format one Sprint Review detail as a one-element JSON array, matching PBI show output.
+pub(super) fn review_json(review: &SprintReview) -> serde_json::Result<String> {
+    serde_json::to_string_pretty(&[ReviewJson::from_review(review)])
+}
+
+/// Format Sprint Reviews as a JSON array.
+pub(super) fn reviews_json(reviews: &[SprintReview]) -> serde_json::Result<String> {
+    let dto: Vec<ReviewJson> = reviews.iter().map(ReviewJson::from_review).collect();
     serde_json::to_string_pretty(&dto)
 }
 

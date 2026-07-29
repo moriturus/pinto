@@ -76,6 +76,26 @@ The file and Git backends keep this record as plain text. The optional SQLite
 backend also keeps Retro files in this dedicated directory so the format stays
 visible and compatible with the Sprint CLI.
 
+## Sprint Review files
+
+A Sprint Review is stored separately under `.pinto/review/` as
+`.pinto/review/<SPRINT-ID>.md`. Its ID is the parent Sprint ID, so the file name
+and the `id` frontmatter field must match. The body is free-form Markdown and
+the frontmatter records `id`, `created`, and `updated`:
+
+```markdown
++++
+id = "S-1"
+created = "2026-07-29T00:00:00Z"
+updated = "2026-07-29T00:00:00Z"
++++
+
+## Demonstrated
+```
+
+The file, Git, and optional SQLite backends keep Review data separate from both
+the Sprint goal and Sprint Retro records.
+
 ## Configuration
 
 `.pinto/config.toml` controls the shared workflow and presentation settings. The

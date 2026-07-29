@@ -14,10 +14,13 @@
 //! **Commit message convention**: `pinto: <verb> <id>` (`add` / `update` / `remove` / `archive`).
 
 use super::file_repository::FileRepository;
-use super::repository::{BacklogItemRepository, SprintRepository, SprintRetroRepository};
+use super::repository::{
+    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
+};
 use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
 use crate::retro::SprintRetro;
+use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -606,6 +609,24 @@ impl SprintRetroRepository for GitRepository {
 
     async fn delete(&self, id: &SprintId) -> Result<()> {
         SprintRetroRepository::delete(&self.file, id).await
+    }
+}
+
+impl SprintReviewRepository for GitRepository {
+    async fn save(&self, review: &SprintReview) -> Result<()> {
+        SprintReviewRepository::save(&self.file, review).await
+    }
+
+    async fn load(&self, id: &SprintId) -> Result<SprintReview> {
+        SprintReviewRepository::load(&self.file, id).await
+    }
+
+    async fn list(&self) -> Result<Vec<SprintReview>> {
+        SprintReviewRepository::list(&self.file).await
+    }
+
+    async fn delete(&self, id: &SprintId) -> Result<()> {
+        SprintReviewRepository::delete(&self.file, id).await
     }
 }
 

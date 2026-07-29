@@ -7,19 +7,22 @@ use crate::cli::format::sprint::{
     format_velocity,
 };
 use crate::cli::json::{
-    burndown_json, sprint_capacity_json, sprint_goal_report_json, sprints_json,
+    burndown_json, review_json, reviews_json, sprint_capacity_json, sprint_goal_report_json,
+    sprints_json,
 };
 use pinto::backlog::ItemId;
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::{
     SprintCloseAction, assign_sprint_by_status, assign_sprint_raw, burndown, close_sprint,
-    create_sprint, create_sprint_retro, delete_sprint, display_settings, edit_sprint,
-    edit_sprint_retro, list_sprint_retros, list_sprints, set_sprint_capacity, show_sprint_retro,
-    sprint_capacity, sprint_goal_report, sprint_load_warnings, start_sprint, template_body,
-    unassign_sprint, velocity,
+    create_sprint, create_sprint_retro, create_sprint_review, delete_sprint, display_settings,
+    edit_sprint, edit_sprint_retro, edit_sprint_review, list_sprint_retros, list_sprint_reviews,
+    list_sprints, set_sprint_capacity, show_sprint_retro, show_sprint_review, sprint_capacity,
+    sprint_goal_report, sprint_load_warnings, start_sprint, template_body, unassign_sprint,
+    velocity,
 };
 
 use pinto::retro::SprintRetro;
+use pinto::review::SprintReview;
 use pinto::sprint::SprintId;
 use pinto::template::{TemplateKind, TemplateName};
 use std::path::Path;
@@ -88,6 +91,158 @@ async fn edit_retro_in_editor(retro: &SprintRetro) -> anyhow::Result<String> {
     let initial = retro.body.clone();
     let slug = format!("retro-{}", retro.id);
     tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug)).await?
+}
+
+/// Resolve a Review creation body from direct text, a plain-text template, and optional editor
+/// input using the same precedence as the item add command.
+async fn review_creation_body(
+    dir: &Path,
+    sprint_id: &SprintId,
+    body: Option<String>,
+    template: Option<String>,
+    edit: bool,
+) -> anyhow::Result<String> {
+    let template_body = if let Some(template) = template {
+        let template: TemplateName = template.parse()?;
+        Some(template_body(dir, TemplateKind::Review, &template).await?)
+    } else {
+        None
+    };
+    if edit {
+        let initial = template_body.unwrap_or_default();
+        let slug = format!("review-{sprint_id}");
+        return tokio::task::spawn_blocking(move || {
+            crate::cli::editor::edit_in_editor(&initial, &slug)
+        })
+        .await?;
+    }
+
+    Ok(match (template_body, body) {
+        (Some(template), Some(body)) => super::item::combine_template_body(template, body),
+        (Some(template), None) => template,
+        (None, Some(body)) => body,
+        (None, None) => String::new(),
+    })
+}
+
+/// Open the standard editor for an existing Review and return the edited body.
+async fn edit_review_in_editor(review: &SprintReview) -> anyhow::Result<String> {
+    if crate::cli::editor::resolve_editor().is_none() {
+        return Err(pinto::error::Error::EditorNotSet.into());
+    }
+    let initial = review.body.clone();
+    let slug = format!("review-{}", review.id);
+    tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug)).await?
+}
+
+/// Render one Review for the human-readable detail view.
+fn format_review_detail(review: &SprintReview) -> String {
+    if review.body.is_empty() {
+        format!("{}\n", review.id)
+    } else {
+        format!("{}\n{}\n", review.id, review.body)
+    }
+}
+
+/// Render the human-readable Review list.
+fn format_review_list(reviews: &[SprintReview]) -> String {
+    reviews
+        .iter()
+        .map(|review| {
+            let summary = review.body.lines().next().unwrap_or("");
+            if summary.is_empty() {
+                format!("{}\n", review.id)
+            } else {
+                format!("{}  {}\n", review.id, summary)
+            }
+        })
+        .collect()
+}
+
+/// Execute the sprint review namespace, including its direct creation shorthand.
+async fn cmd_review(args: ReviewArgs, localizer: &Localizer) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    match args.command {
+        Some(ReviewCommand::New {
+            sprint_id,
+            body,
+            template,
+            edit,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let body = review_creation_body(&dir, &sprint_id, body, template, edit).await?;
+            let review = create_sprint_review(&dir, &sprint_id, body).await?;
+            println!(
+                "{}",
+                localizer.format(
+                    Message::CreatedReview,
+                    [("id", review.id.to_string().as_str())],
+                )
+            );
+        }
+        Some(ReviewCommand::Edit {
+            sprint_id,
+            body,
+            edit: _,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let body = match body {
+                Some(body) => body,
+                None => {
+                    let review = show_sprint_review(&dir, &sprint_id).await?;
+                    edit_review_in_editor(&review).await?
+                }
+            };
+            let review = edit_sprint_review(&dir, &sprint_id, body).await?;
+            println!(
+                "{}",
+                localizer.format(
+                    Message::UpdatedReview,
+                    [("id", review.id.to_string().as_str())],
+                )
+            );
+        }
+        Some(ReviewCommand::Show {
+            sprint_id,
+            json,
+            plain: _,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let review = show_sprint_review(&dir, &sprint_id).await?;
+            if json {
+                println!("{}", review_json(&review)?);
+            } else {
+                print!("{}", format_review_detail(&review));
+            }
+        }
+        Some(ReviewCommand::List { json }) => {
+            let reviews = list_sprint_reviews(&dir).await?;
+            if json {
+                println!("{}", reviews_json(&reviews)?);
+            } else if reviews.is_empty() {
+                println!("{}", localizer.text(Message::NoReviews));
+            } else {
+                print!("{}", format_review_list(&reviews));
+            }
+        }
+        None => {
+            let sprint_id = args
+                .sprint_id
+                .ok_or(pinto::error::Error::ReviewCommandRequired)?;
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let body =
+                review_creation_body(&dir, &sprint_id, args.body, args.template, args.edit).await?;
+            let review = create_sprint_review(&dir, &sprint_id, body).await?;
+            println!(
+                "{}",
+                localizer.format(
+                    Message::CreatedReview,
+                    [("id", review.id.to_string().as_str())],
+                )
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// Render one Retro for the human-readable detail view.
@@ -449,6 +604,7 @@ pub(super) async fn cmd_sprint_with_localizer(
             }
         }
         SprintCommand::Retro(args) => return cmd_retro(args, localizer).await,
+        SprintCommand::Review(args) => return cmd_review(args, localizer).await,
     }
     Ok(ExitCode::SUCCESS)
 }

@@ -450,6 +450,29 @@ fn sprint_retro_demo_contains_a_separate_json_retro_record() {
 }
 
 #[test]
+fn sprint_review_demo_contains_a_separate_json_review_record() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let demo = root.join("demos/single/sprint-review");
+    let reviews = json_output(
+        "single/sprint-review",
+        &demo,
+        &["sprint", "review", "list", "--json"],
+    );
+    assert_eq!(reviews.as_array().map(Vec::len), Some(1));
+    assert_eq!(reviews[0]["id"], "S-1");
+    assert!(
+        reviews[0]["body"]
+            .as_str()
+            .is_some_and(|body| { body.contains("Demonstrated") && body.contains("Follow-up") })
+    );
+    let path = demo.join(".pinto/review/S-1.md");
+    assert!(
+        path.is_file(),
+        "Review uses the dedicated storage directory"
+    );
+}
+
+#[test]
 fn intentional_error_demos_are_registered_and_keep_user_error_contracts() {
     let demos = discovered_demos();
     for name in INTENTIONAL_ERROR_DEMOS {
