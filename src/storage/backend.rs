@@ -26,7 +26,9 @@ pub enum Backend {
     File(FileRepository),
     /// Git backend, which commits every change operation.
     Git(GitRepository),
-    /// SQLite backend (optional feature `sqlite`), stored in one database file.
+    /// SQLite backend (optional feature `sqlite`). PBIs and Sprints live in one database file;
+    /// Sprint Retro and Review records stay in the shared `.pinto/retro/` and `.pinto/review/`
+    /// Markdown directories so they survive backend migration without a per-backend copy.
     #[cfg(feature = "sqlite")]
     Sqlite(SqliteRepository),
 }
@@ -52,46 +54,14 @@ impl Backend {
     ) -> Result<()> {
         match self {
             Backend::File(repository) => {
-                for kind in record_kinds() {
-                    for record in SprintRecordRepository::list(repository, kind).await? {
-                        SprintRecordRepository::delete(repository, kind, &record.id).await?;
-                    }
-                }
-                for item in BacklogItemRepository::list(repository).await? {
-                    BacklogItemRepository::delete(repository, &item.id).await?;
-                }
-                for sprint in SprintRepository::list(repository).await? {
-                    SprintRepository::delete(repository, &sprint.id).await?;
-                }
+                clear_active_board(repository).await?;
                 repository.save_batch(items).await?;
-                for sprint in sprints {
-                    SprintRepository::save(repository, sprint).await?;
-                }
-                for record in records {
-                    SprintRecordRepository::save(repository, record).await?;
-                }
-                Ok(())
+                save_sprints_and_records(repository, sprints, records).await
             }
             Backend::Git(repository) => {
-                for kind in record_kinds() {
-                    for record in SprintRecordRepository::list(repository, kind).await? {
-                        SprintRecordRepository::delete(repository, kind, &record.id).await?;
-                    }
-                }
-                for item in BacklogItemRepository::list(repository).await? {
-                    BacklogItemRepository::delete(repository, &item.id).await?;
-                }
-                for sprint in SprintRepository::list(repository).await? {
-                    SprintRepository::delete(repository, &sprint.id).await?;
-                }
+                clear_active_board(repository).await?;
                 repository.save_item_batch(items).await?;
-                for sprint in sprints {
-                    SprintRepository::save(repository, sprint).await?;
-                }
-                for record in records {
-                    SprintRecordRepository::save(repository, record).await?;
-                }
-                Ok(())
+                save_sprints_and_records(repository, sprints, records).await
             }
             #[cfg(feature = "sqlite")]
             Backend::Sqlite(repository) => repository.replace_board(items, sprints, records).await,
@@ -323,8 +293,44 @@ impl SprintRecordRepository for Backend {
     }
 }
 
-fn record_kinds() -> [SprintRecordKind; 2] {
-    [SprintRecordKind::Retro, SprintRecordKind::Review]
+/// Delete every active PBI, Sprint, and Sprint child record from `repository`.
+///
+/// Shared by the file and Git arms of [`Backend::replace_board`]; the two backends differ only in
+/// how they batch the subsequent writes.
+async fn clear_active_board<R>(repository: &R) -> Result<()>
+where
+    R: BacklogItemRepository + SprintRepository + SprintRecordRepository,
+{
+    for kind in SprintRecordKind::ALL {
+        for record in SprintRecordRepository::list(repository, kind).await? {
+            SprintRecordRepository::delete(repository, kind, &record.id).await?;
+        }
+    }
+    for item in BacklogItemRepository::list(repository).await? {
+        BacklogItemRepository::delete(repository, &item.id).await?;
+    }
+    for sprint in SprintRepository::list(repository).await? {
+        SprintRepository::delete(repository, &sprint.id).await?;
+    }
+    Ok(())
+}
+
+/// Save every Sprint and child record after the PBIs have been written by a backend-specific batch.
+async fn save_sprints_and_records<R>(
+    repository: &R,
+    sprints: &[Sprint],
+    records: &[SprintRecord],
+) -> Result<()>
+where
+    R: SprintRepository + SprintRecordRepository,
+{
+    for sprint in sprints {
+        SprintRepository::save(repository, sprint).await?;
+    }
+    for record in records {
+        SprintRecordRepository::save(repository, record).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
