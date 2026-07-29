@@ -97,8 +97,8 @@ impl FromStr for SprintState {
 
 /// Whether the Sprint Goal was achieved.
 ///
-/// `None` on [`Sprint::goal_achieved`] means that the goal has not been evaluated yet. The value
-/// is intentionally independent from the goal text and from PBI delivery metrics.
+/// `None` on [`Sprint::goal_achieved`] means that the goal has not been evaluated yet. A recorded
+/// result requires a non-blank Goal but is otherwise independent from PBI delivery metrics.
 pub type SprintGoalOutcome = Option<bool>;
 
 /// Unfinished work captured when a sprint is closed.
@@ -128,7 +128,7 @@ pub struct Sprint {
     /// Sprint goal (free description, multiple lines allowed).
     pub goal: String,
     /// Explicit Sprint Goal result: `Some(true)` achieved, `Some(false)` not achieved, or `None`
-    /// when unevaluated.
+    /// when unevaluated. A recorded result is cleared whenever the Goal is blank.
     pub goal_achieved: SprintGoalOutcome,
     /// Planned start date and time, or `None` when unset.
     pub start: Option<DateTime<Utc>>,
@@ -215,14 +215,26 @@ impl Sprint {
             self.start = Some(start);
             self.end = Some(end);
         }
+        self.normalize_goal_outcome();
         self.updated = now;
         Ok(())
     }
 
     /// Set or clear the explicit Sprint Goal result and refresh `updated`.
+    ///
+    /// A result cannot be stored while the Goal is blank; supplying one in that state clears the
+    /// result instead.
     pub fn set_goal_achieved(&mut self, achieved: SprintGoalOutcome, now: DateTime<Utc>) {
         self.goal_achieved = achieved;
+        self.normalize_goal_outcome();
         self.updated = now;
+    }
+
+    /// Enforce the invariant that a recorded Goal result accompanies a non-blank Goal.
+    pub(crate) fn normalize_goal_outcome(&mut self) {
+        if self.goal.trim().is_empty() {
+            self.goal_achieved = None;
+        }
     }
 
     /// Start a sprint (`planned` → `active`) and update `updated`.
@@ -432,6 +444,34 @@ mod tests {
         assert_eq!(sprint.goal, "Ship the sprint");
         assert_eq!(sprint.goal_achieved, Some(true));
         assert_eq!(sprint.updated, updated);
+    }
+
+    #[test]
+    fn clearing_goal_clears_recorded_outcome() {
+        let mut sprint = Sprint::new(sid("S-1"), "Sprint 1", epoch()).unwrap();
+        sprint.goal = "Ship the sprint".to_string();
+        sprint.set_goal_achieved(Some(true), epoch() + chrono::Duration::seconds(10));
+
+        sprint
+            .update_details(
+                None,
+                Some("  \n".to_string()),
+                None,
+                epoch() + chrono::Duration::seconds(20),
+            )
+            .unwrap();
+
+        assert_eq!(sprint.goal, "  \n");
+        assert_eq!(sprint.goal_achieved, None);
+    }
+
+    #[test]
+    fn recording_outcome_without_goal_clears_it() {
+        let mut sprint = Sprint::new(sid("S-1"), "Sprint 1", epoch()).unwrap();
+
+        sprint.set_goal_achieved(Some(false), epoch() + chrono::Duration::seconds(10));
+
+        assert_eq!(sprint.goal_achieved, None);
     }
 
     #[test]

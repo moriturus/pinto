@@ -25,7 +25,8 @@ pub struct SprintContext {
     pub sprint_title: String,
     /// Parent Sprint goal text.
     pub goal: String,
-    /// Recorded goal outcome, or `None` when it is not evaluable or not recorded.
+    /// Recorded goal outcome, or `None` when it is not recorded. The write-side invariant clears
+    /// an outcome whenever the Goal is blank.
     pub goal_achieved: Option<bool>,
     /// Parent Sprint lifecycle state.
     pub state: SprintState,
@@ -118,9 +119,7 @@ pub(crate) fn build_sprint_context(
         sprint_id: sprint.id.clone(),
         sprint_title: sprint.title.clone(),
         goal: sprint.goal.clone(),
-        goal_achieved: (!sprint.goal.trim().is_empty())
-            .then_some(sprint.goal_achieved)
-            .flatten(),
+        goal_achieved: sprint.goal_achieved,
         state: sprint.state,
         start: sprint.start,
         end: sprint.end,

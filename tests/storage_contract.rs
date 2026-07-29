@@ -408,6 +408,33 @@ async fn all_enabled_backends_share_item_sprint_retro_and_review_contracts() {
     );
 }
 
+#[tokio::test]
+async fn all_enabled_backends_clear_blank_goal_outcomes_on_save() {
+    for kind in backend_kinds() {
+        let directory = TempDir::new().expect("create backend test directory");
+        let backend = Backend::open(directory.path().join(".pinto"), kind)
+            .await
+            .expect("open backend");
+        let mut sprint = Sprint::new(
+            SprintId::new("S-1").expect("valid sprint id"),
+            "Sprint One",
+            timestamp(1_000),
+        )
+        .expect("valid sprint");
+        sprint.goal = " \n".to_string();
+        sprint.goal_achieved = Some(true);
+
+        SprintRepository::save(&backend, &sprint)
+            .await
+            .expect("save sprint");
+        let loaded = SprintRepository::load(&backend, &sprint.id)
+            .await
+            .expect("load sprint");
+
+        assert_eq!(loaded.goal_achieved, None, "backend {kind}");
+    }
+}
+
 #[cfg(not(feature = "sqlite"))]
 #[test]
 fn sqlite_configuration_value_is_rejected_without_feature() {

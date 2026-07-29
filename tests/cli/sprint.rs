@@ -412,6 +412,18 @@ fn sprint_goal_outcome_can_be_set_updated_and_cleared_without_changing_goal() {
     assert_eq!(achieved[0]["goal_achieved"], true);
 
     pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--goal", ""])
+        .assert()
+        .success();
+    let blank_goal = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(blank_goal[0]["goal"], "");
+    assert_eq!(blank_goal[0]["goal_achieved"], serde_json::Value::Null);
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--goal", "Ship it"])
+        .assert()
+        .success();
+    pinto(dir.path())
         .args(["sprint", "edit", "S-1", "--goal-achieved", "false"])
         .assert()
         .success();
@@ -430,7 +442,7 @@ fn sprint_goal_outcome_can_be_set_updated_and_cleared_without_changing_goal() {
 }
 
 #[test]
-fn sprint_goal_report_calculates_rate_and_ignores_blank_goals() {
+fn sprint_goal_report_calculates_rate_from_recorded_outcomes() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
     for (id, title, goal, outcome) in [
@@ -451,6 +463,9 @@ fn sprint_goal_report_calculates_rate_and_ignores_blank_goals() {
                 .success();
         }
     }
+
+    let sprints = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(sprints[2]["goal_achieved"], serde_json::Value::Null);
 
     let report =
         json_stdout(pinto(dir.path()).args(["sprint", "goal", "--recent", "10", "--json"]));

@@ -140,6 +140,8 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
 const SPRINT_COLUMNS: &str = "id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated, (SELECT achieved FROM sprint_goal_outcomes WHERE sprint_id = sprints.id)";
 
 pub(super) fn upsert_sprint(db: &Path, tx: &Transaction<'_>, sprint: &Sprint) -> Result<()> {
+    let mut sprint = sprint.clone();
+    sprint.normalize_goal_outcome();
     tx.execute(
         "INSERT INTO sprints (id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
@@ -152,8 +154,8 @@ pub(super) fn upsert_sprint(db: &Path, tx: &Transaction<'_>, sprint: &Sprint) ->
           created = excluded.created, updated = excluded.updated",
         params![
             sprint.id.as_str(),
-            sprint.title,
-            sprint.goal,
+            &sprint.title,
+            &sprint.goal,
             sprint.state.as_str(),
             sprint.closed_at.map(dt_to_str),
             sprint.start.map(dt_to_str),

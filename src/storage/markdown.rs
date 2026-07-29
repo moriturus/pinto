@@ -296,7 +296,9 @@ fn is_zero(value: &u32) -> bool {
 
 /// Format the sprint into a Markdown string with a structured title and a Markdown goal body.
 pub(super) fn sprint_to_markdown(sprint: &Sprint) -> Result<String> {
-    let fm = SprintFrontmatter::from_sprint(sprint);
+    let mut sprint = sprint.clone();
+    sprint.normalize_goal_outcome();
+    let fm = SprintFrontmatter::from_sprint(&sprint);
     let toml = toml::to_string(&fm)
         .map_err(|e| Error::parse(&PathBuf::from(format!("{}.md", sprint.id)), e.to_string()))?;
     Ok(assemble_markdown(&toml, &sprint.goal))

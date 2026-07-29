@@ -13,8 +13,8 @@ pub struct SprintGoalReportRow {
     pub sprint_id: SprintId,
     /// Sprint display title.
     pub sprint_title: String,
-    /// Explicit result, or `None` when the result is not evaluated. A blank Goal is always exposed
-    /// as `None` even if a stored boolean exists.
+    /// Explicit result, or `None` when the result is not evaluated. The write-side invariant
+    /// clears a result whenever the Goal is blank.
     pub goal_achieved: SprintGoalOutcome,
 }
 
@@ -23,7 +23,7 @@ pub struct SprintGoalReportRow {
 pub struct SprintGoalReport {
     /// Selected Sprints in creation order.
     pub sprints: Vec<SprintGoalReportRow>,
-    /// Number of selected Sprints with a non-blank Goal and an evaluated result.
+    /// Number of selected Sprints with an evaluated result.
     pub evaluated_sprints: usize,
     /// Number of evaluated Sprints whose result is `true`.
     pub achieved_sprints: usize,
@@ -33,8 +33,8 @@ pub struct SprintGoalReport {
 
 /// Report Sprint Goal outcomes for the most recent `recent` Sprints.
 ///
-/// A stored boolean is considered evaluable only when the Sprint Goal is non-blank. This keeps
-/// incomplete planned records from becoming failures merely because a result was stored.
+/// The write-side Sprint invariant ensures that a stored boolean always accompanies a non-blank
+/// Goal, so this report can expose the stored outcome directly.
 ///
 /// # Errors
 ///
@@ -55,11 +55,7 @@ pub(crate) fn compute_sprint_goal_report(sprints: &[Sprint], recent: usize) -> S
         .map(|sprint| SprintGoalReportRow {
             sprint_id: sprint.id.clone(),
             sprint_title: sprint.title.clone(),
-            goal_achieved: if sprint.goal.trim().is_empty() {
-                None
-            } else {
-                sprint.goal_achieved
-            },
+            goal_achieved: sprint.goal_achieved,
         })
         .collect::<Vec<_>>();
     let evaluated_sprints = rows
@@ -100,12 +96,12 @@ mod tests {
     }
 
     #[test]
-    fn computes_rate_only_from_non_blank_goals_with_boolean_results() {
+    fn computes_rate_from_recorded_boolean_results() {
         let report = compute_sprint_goal_report(
             &[
                 sprint("S-1", "Ship it", Some(true)),
                 sprint("S-2", "Ship more", Some(false)),
-                sprint("S-3", "", Some(false)),
+                sprint("S-3", "", None),
                 sprint("S-4", "Explore", None),
             ],
             10,

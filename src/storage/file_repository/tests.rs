@@ -770,6 +770,27 @@ async fn save_then_load_roundtrips_default_sprint() {
 }
 
 #[tokio::test]
+async fn save_clears_outcome_for_blank_goal() {
+    let (_dir, repo) = repo();
+    let mut sprint = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint 1", ts(1_000)).unwrap();
+    sprint.goal = "  \n".to_string();
+    sprint.goal_achieved = Some(true);
+
+    SprintRepository::save(&repo, &sprint)
+        .await
+        .expect("save succeeds");
+    let loaded = SprintRepository::load(&repo, &sprint.id)
+        .await
+        .expect("load succeeds");
+    assert_eq!(loaded.goal_achieved, None);
+
+    let text = fs::read_to_string(repo.sprints_dir().join("S-1.md"))
+        .await
+        .expect("read saved sprint");
+    assert!(!text.contains("goal_achieved"), "saved file: {text}");
+}
+
+#[tokio::test]
 async fn sprint_frontmatter_carries_fields_and_goal_body() {
     let (_dir, repo) = repo();
     let sprint = sample_sprint();

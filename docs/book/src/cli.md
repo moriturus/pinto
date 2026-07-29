@@ -341,8 +341,9 @@ Reports include `pinto sprint burndown`, `pinto sprint velocity`,
 `pinto sprint capacity`, `pinto sprint goal`, and `pinto cycletime`.
 
 `pinto sprint goal` reports the explicit boolean outcome for the most recent five Sprints and
-calculates `achieved evaluated / all evaluated` as a percentage. A Sprint with a blank Goal or no
-recorded outcome is shown as unevaluated and is excluded from the denominator. Use `--recent N`
+calculates `achieved evaluated / all evaluated` as a percentage. A Sprint with no recorded outcome
+is shown as unevaluated and is excluded from the denominator; writes clear an outcome whenever
+the Goal is blank. Use `--recent N`
 to select a different number of Sprints and `--json` for the machine-readable fields
 `goal_achieved`, `evaluated_sprints`, `achieved_sprints`, and `achievement_rate`. The rate is
 `null` (human output: `n/a`) when no Sprint Goal has been evaluated.

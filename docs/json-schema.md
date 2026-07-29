@@ -130,10 +130,11 @@ change percentages.
 
 ## Sprint Goal outcomes
 
-`pinto sprint list --json` includes `goal_achieved` as `true`, `false`, or `null`. The value is an
-explicit boolean assessment and is independent of the Sprint Goal text, PBI completion, velocity,
-burndown, capacity, and cycle-time calculations. `sprint edit --goal-achieved true|false` sets or
-updates it; `sprint edit --clear-goal-achieved` clears it back to `null`.
+`pinto sprint list --json` includes `goal_achieved` as `true`, `false`, or `null`. A recorded
+boolean always accompanies a non-blank Sprint Goal; the result is otherwise independent of PBI
+completion, velocity, burndown, capacity, and cycle-time calculations. `sprint edit --goal-achieved
+true|false` sets or updates it; `sprint edit --clear-goal-achieved` clears it back to `null`, and
+clearing the Goal also clears the result.
 
 `pinto sprint goal --json` returns the selected Sprints and the aggregate fields below:
 
@@ -148,7 +149,8 @@ updates it; `sprint edit --clear-goal-achieved` clears it back to `null`.
 }
 ```
 
-Only non-blank Goals with a recorded boolean are evaluated. When none are evaluated,
+Only Sprints with a recorded boolean are evaluated. A blank Goal cannot retain a recorded result.
+When none are evaluated,
 `achievement_rate` is `null`, never `0.0`. Snapshots created before `goal_achieved` was added
 remain importable and restore the field as `null`.
 
