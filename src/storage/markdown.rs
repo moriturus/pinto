@@ -267,7 +267,7 @@ impl SprintFrontmatter {
         if self.title.trim().is_empty() {
             return Err(Error::parse(path, Error::EmptySprintTitle.to_string()));
         }
-        Ok(Sprint {
+        let mut sprint = Sprint {
             id,
             title: self.title,
             goal,
@@ -286,7 +286,12 @@ impl SprintFrontmatter {
             closed_at: self.closed_at,
             created: self.created,
             updated: self.updated,
-        })
+        };
+        // A hand-edited file can pair a recorded outcome with a blank Goal. Enforce the same
+        // invariant on load as on save so downstream reports never trust an outcome the tool would
+        // itself clear on the next write.
+        sprint.normalize_goal_outcome();
+        Ok(sprint)
     }
 }
 
@@ -704,6 +709,27 @@ updated = \"1970-01-01T00:00:00Z\"
         assert!(text.contains("goal_achieved = true"));
         let parsed = sprint_from_markdown(&text, Path::new("sprint-1.md")).expect("parse");
         assert_eq!(parsed, sprint);
+    }
+
+    #[test]
+    fn sprint_markdown_clears_recorded_outcome_when_goal_is_blank() {
+        // A hand-edited file can record an outcome without a Goal. Loading normalizes it away, the
+        // same invariant the save path enforces.
+        let text = "\
++++
+id = \"S-1\"
+title = \"Sprint One\"
+state = \"closed\"
+goal_achieved = true
+created = \"1970-01-01T00:00:00Z\"
+updated = \"1970-01-01T00:00:00Z\"
++++
+";
+
+        let sprint = sprint_from_markdown(text, Path::new("S-1.md")).expect("parse sprint");
+
+        assert_eq!(sprint.goal, "");
+        assert_eq!(sprint.goal_achieved, None);
     }
 
     #[test]
