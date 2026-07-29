@@ -1,7 +1,7 @@
 //! Shared persistence contracts for every supported backend.
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use pinto::backlog::{BacklogItem, ItemId, Status};
+use pinto::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
 use pinto::retro::SprintRetro;
@@ -69,6 +69,10 @@ fn full_item(id: u32, rank: &str) -> BacklogItem {
     item.start_at = Some(timestamp(1_100));
     item.done_at = Some(timestamp(1_200));
     item.commits = vec!["abc123".to_string(), "def456".to_string()];
+    item.source = Some(ActionSource::new(
+        ActionSourceKind::Review,
+        SprintId::new("S-1").expect("contract source Sprint ID is valid"),
+    ));
     item.body = "## 本文\n\n- [ ] Unicode ✅".to_string();
     item.updated = timestamp(1_300);
     item

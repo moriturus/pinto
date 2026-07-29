@@ -4,6 +4,7 @@
 
 #![warn(clippy::missing_errors_doc)]
 
+mod action;
 mod board;
 mod burndown;
 mod commits;
@@ -37,6 +38,7 @@ mod wip;
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::storage::{Backend, BoardLock, BoardRecoveryPoint};
+pub use action::linked_action_items;
 pub use board::{Board, BoardColumn, BoardQuery, SortKey, board};
 pub use burndown::{Burndown, BurndownDay, BurndownMetric, burndown};
 pub use commits::{LinkOutcome, SyncOutcome, link_commits, sync_commits, unlink_commits};

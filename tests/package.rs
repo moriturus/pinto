@@ -108,10 +108,10 @@ fn package_contains_only_runtime_files() {
     }
 
     // The operation-level recovery helpers, Sprint Goal reporting, Sprint Retro/Review persistence,
-    // and generated Sprint Context are intentional runtime modules; keep the ceiling explicit
-    // without allowing repository-only material into the package.
+    // generated Sprint Context, and action-PBI source-link modules are intentional runtime
+    // modules; keep the ceiling explicit without allowing repository-only material into the package.
     assert!(
-        files.len() <= 143,
+        files.len() <= 145,
         "package file count unexpectedly grew to {}",
         files.len()
     );

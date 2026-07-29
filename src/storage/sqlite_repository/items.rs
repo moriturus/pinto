@@ -2,9 +2,10 @@
 //! [`BacklogItemRepository`] implementation.
 
 use super::{SqliteRepository, column, corrupt, dt_from_str, dt_to_str, open_conn, sqlite_err};
-use crate::backlog::{BacklogItem, ItemId, Status};
+use crate::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
+use crate::sprint::SprintId;
 use crate::storage::issued_ids::{max_number, record};
 use crate::storage::repository::BacklogItemRepository;
 use chrono::{DateTime, Utc};
@@ -30,8 +31,14 @@ impl SqliteRepository {
                 return Err(Error::NotFound(want));
             };
             let scalar = scalar?;
-            let (labels, depends_on, commits) = load_relations(&db, &conn, &key)?;
-            Ok(assemble_item(scalar, labels, depends_on, commits))
+            let relations = load_relations(&db, &conn, &key)?;
+            Ok(assemble_item(
+                scalar,
+                relations.labels,
+                relations.depends_on,
+                relations.commits,
+                relations.source,
+            ))
         })
         .await
         .map_err(Error::task)?
@@ -76,6 +83,13 @@ impl SqliteRepository {
                 ),
                 "commit sha",
             )?;
+            let sources = collect_sources(
+                &db,
+                &conn,
+                &format!(
+                    "SELECT item_id, kind, sprint_id FROM item_action_sources WHERE item_id IN (SELECT id FROM items WHERE archived = {archived}) ORDER BY item_id"
+                ),
+            )?;
 
             let mut items = Vec::with_capacity(scalars.len());
             for scalar in scalars {
@@ -89,7 +103,14 @@ impl SqliteRepository {
                     .collect::<std::result::Result<Vec<_>, _>>()
                     .map_err(|e| corrupt(&db, format!("invalid depends_on id: {e}")))?;
                 let item_commits = commits.remove(&key).unwrap_or_default();
-                items.push(assemble_item(scalar, item_labels, depends_on, item_commits));
+                let source = sources.get(&key).cloned();
+                items.push(assemble_item(
+                    scalar,
+                    item_labels,
+                    depends_on,
+                    item_commits,
+                    source,
+                ));
             }
             Ok::<_, Error>(items)
         })
@@ -184,6 +205,7 @@ fn assemble_item(
     labels: Vec<String>,
     depends_on: Vec<ItemId>,
     commits: Vec<String>,
+    source: Option<ActionSource>,
 ) -> BacklogItem {
     BacklogItem {
         id: scalar.id,
@@ -202,15 +224,20 @@ fn assemble_item(
         created: scalar.created,
         updated: scalar.updated,
         commits,
+        source,
     }
 }
 
+/// Related PBI values loaded from SQLite relation tables.
+struct ItemRelations {
+    labels: Vec<String>,
+    depends_on: Vec<ItemId>,
+    commits: Vec<String>,
+    source: Option<ActionSource>,
+}
+
 /// For one PBI, read labels, dependencies, and related commits from related tables in order.
-fn load_relations(
-    db: &Path,
-    conn: &Connection,
-    id: &str,
-) -> Result<(Vec<String>, Vec<ItemId>, Vec<String>)> {
+fn load_relations(db: &Path, conn: &Connection, id: &str) -> Result<ItemRelations> {
     let labels = relation_values(
         db,
         conn,
@@ -237,7 +264,57 @@ fn load_relations(
         id,
         "commit sha",
     )?;
-    Ok((labels, depends_on, commits))
+    let source = conn
+        .query_row(
+            "SELECT kind, sprint_id FROM item_action_sources WHERE item_id = ?1",
+            [id],
+            |row| {
+                let kind: String = row.get(0)?;
+                let sprint_id: String = row.get(1)?;
+                Ok((kind, sprint_id))
+            },
+        )
+        .optional()
+        .map_err(|e| sqlite_err(db, &e))?
+        .map(|(kind, sprint_id)| source_from_values(db, &kind, &sprint_id))
+        .transpose()?;
+    Ok(ItemRelations {
+        labels,
+        depends_on,
+        commits,
+        source,
+    })
+}
+
+/// Parse one SQLite source-link row into its typed domain value.
+fn source_from_values(db: &Path, kind: &str, sprint_id: &str) -> Result<ActionSource> {
+    let kind = match kind {
+        "retro" => ActionSourceKind::Retro,
+        "review" => ActionSourceKind::Review,
+        other => return Err(corrupt(db, format!("invalid action source kind {other:?}"))),
+    };
+    let sprint_id = sprint_id
+        .parse::<SprintId>()
+        .map_err(|e| corrupt(db, format!("invalid action source Sprint ID: {e}")))?;
+    Ok(ActionSource::new(kind, sprint_id))
+}
+
+/// Read source links for the selected active or archived items in one query.
+fn collect_sources(
+    db: &Path,
+    conn: &Connection,
+    sql: &str,
+) -> Result<HashMap<String, ActionSource>> {
+    let mut stmt = conn.prepare(sql).map_err(|e| sqlite_err(db, &e))?;
+    let mut rows = stmt.query([]).map_err(|e| sqlite_err(db, &e))?;
+    let mut sources = HashMap::new();
+    while let Some(row) = rows.next().map_err(|e| sqlite_err(db, &e))? {
+        let item_id: String = column(db, row, 0, "source item id")?;
+        let kind: String = column(db, row, 1, "action source kind")?;
+        let sprint_id: String = column(db, row, 2, "action source Sprint ID")?;
+        sources.insert(item_id, source_from_values(db, &kind, &sprint_id)?);
+    }
+    Ok(sources)
 }
 
 /// Read and validate the ordered values of one relation table for an item.
@@ -341,6 +418,15 @@ pub(super) fn upsert_item(
         tx.execute(
             "INSERT INTO item_commits (item_id, sha, position) VALUES (?1, ?2, ?3)",
             params![id, sha, position],
+        )
+        .map_err(map)?;
+    }
+    tx.execute("DELETE FROM item_action_sources WHERE item_id = ?1", [&id])
+        .map_err(map)?;
+    if let Some(source) = &item.source {
+        tx.execute(
+            "INSERT INTO item_action_sources (item_id, kind, sprint_id) VALUES (?1, ?2, ?3)",
+            params![id, source.kind.as_str(), source.sprint_id.as_str()],
         )
         .map_err(map)?;
     }

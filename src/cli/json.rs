@@ -8,7 +8,7 @@
 //! is non-destructive. Optional fields always appear and use `null` when unset.
 
 use chrono::{DateTime, Utc};
-use pinto::backlog::{BacklogItem, ItemId, Status};
+use pinto::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
 use pinto::retro::SprintRetro;
@@ -41,9 +41,41 @@ struct ItemJson {
     start_at: Option<String>,
     done_at: Option<String>,
     commits: Vec<String>,
+    #[serde(default)]
+    source: Option<SourceJson>,
     created: String,
     updated: String,
     body: String,
+}
+
+/// JSON representation of the Retro or Review record that produced an action PBI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SourceJson {
+    kind: String,
+    sprint_id: String,
+}
+
+impl SourceJson {
+    fn from_source(source: &ActionSource) -> Self {
+        Self {
+            kind: source.kind.as_str().to_string(),
+            sprint_id: source.sprint_id.to_string(),
+        }
+    }
+
+    fn into_source(self) -> Result<ActionSource, Error> {
+        let kind = match self.kind.as_str() {
+            "retro" => ActionSourceKind::Retro,
+            "review" => ActionSourceKind::Review,
+            other => {
+                return Err(Error::Parse {
+                    path: PathBuf::from(SNAPSHOT_LABEL),
+                    message: format!("invalid action source kind {other:?}"),
+                });
+            }
+        };
+        Ok(ActionSource::new(kind, self.sprint_id.parse()?))
+    }
 }
 
 impl ItemJson {
@@ -62,6 +94,7 @@ impl ItemJson {
             start_at: item.start_at.map(|d| d.to_rfc3339()),
             done_at: item.done_at.map(|d| d.to_rfc3339()),
             commits: item.commits.clone(),
+            source: item.source.as_ref().map(SourceJson::from_source),
             created: item.created.to_rfc3339(),
             updated: item.updated.to_rfc3339(),
             body: item.body.clone(),
@@ -161,16 +194,37 @@ struct RetroDetailJson {
     #[serde(flatten)]
     record: RetroJson,
     context: SprintContextJson,
+    actions: Vec<LinkedActionJson>,
+}
+
+/// Minimal PBI fields shown from a Retro or Review source record.
+#[derive(Debug, Serialize)]
+struct LinkedActionJson {
+    id: String,
+    title: String,
+    status: String,
+}
+
+impl LinkedActionJson {
+    fn from_item(item: &BacklogItem) -> Self {
+        Self {
+            id: item.id.to_string(),
+            title: item.title.clone(),
+            status: item.status.to_string(),
+        }
+    }
 }
 
 /// Format one Sprint Retro detail as a one-element JSON array, matching PBI show output.
 pub(super) fn retro_json(
     retro: &SprintRetro,
     context: &SprintContext,
+    actions: &[BacklogItem],
 ) -> serde_json::Result<String> {
     serde_json::to_string_pretty(&[RetroDetailJson {
         record: RetroJson::from_retro(retro),
         context: SprintContextJson::from_context(context),
+        actions: actions.iter().map(LinkedActionJson::from_item).collect(),
     }])
 }
 
@@ -205,16 +259,19 @@ struct ReviewDetailJson {
     #[serde(flatten)]
     record: ReviewJson,
     context: SprintContextJson,
+    actions: Vec<LinkedActionJson>,
 }
 
 /// Format one Sprint Review detail as a one-element JSON array, matching PBI show output.
 pub(super) fn review_json(
     review: &SprintReview,
     context: &SprintContext,
+    actions: &[BacklogItem],
 ) -> serde_json::Result<String> {
     serde_json::to_string_pretty(&[ReviewDetailJson {
         record: ReviewJson::from_review(review),
         context: SprintContextJson::from_context(context),
+        actions: actions.iter().map(LinkedActionJson::from_item).collect(),
     }])
 }
 
@@ -479,6 +536,7 @@ impl ItemJson {
             start_at: self.start_at.as_deref().map(parse_timestamp).transpose()?,
             done_at: self.done_at.as_deref().map(parse_timestamp).transpose()?,
             commits: self.commits,
+            source: self.source.map(SourceJson::into_source).transpose()?,
             created: parse_timestamp(&self.created)?,
             updated: parse_timestamp(&self.updated)?,
             body: self.body,

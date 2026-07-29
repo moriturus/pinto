@@ -3,7 +3,7 @@
 //! order, NotFound errors, and ID preservation when archiving.
 
 use super::*;
-use crate::backlog::{BacklogItem, ItemId, Status};
+use crate::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use crate::rank::Rank;
 use crate::sprint::{Sprint, SprintId};
 use crate::storage::repository::{BacklogItemRepository, SprintRepository};
@@ -60,6 +60,10 @@ fn full_item() -> BacklogItem {
     it.start_at = Some(ts(2_000));
     it.done_at = Some(ts(3_000));
     it.commits = vec!["abc1234".to_string(), "def5678".to_string()];
+    it.source = Some(ActionSource::new(
+        ActionSourceKind::Retro,
+        SprintId::new("S-1").expect("valid source Sprint ID"),
+    ));
     it.body = "Acceptance\n- one\n- two".to_string();
     it.updated = ts(4_000);
     it
@@ -95,6 +99,15 @@ async fn new_database_records_schema_metadata() {
         .expect("format metadata");
     assert_eq!(version, "2");
     assert_eq!(format, "pinto-sqlite");
+
+    let source_table: String = conn
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'item_action_sources'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("source-link table");
+    assert_eq!(source_table, "item_action_sources");
 }
 
 #[tokio::test]

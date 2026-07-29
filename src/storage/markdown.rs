@@ -1,6 +1,6 @@
 //! Markdown + TOML frontmatter conversion.
 
-use crate::backlog::{BacklogItem, ItemId, Status};
+use crate::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
 use crate::retro::SprintRetro;
@@ -41,8 +41,17 @@ struct Frontmatter {
     done_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     commits: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<SourceFrontmatter>,
     created: DateTime<Utc>,
     updated: DateTime<Utc>,
+}
+
+/// Structured PBI source link stored as a nested TOML table.
+#[derive(Debug, Serialize, Deserialize)]
+struct SourceFrontmatter {
+    kind: String,
+    sprint_id: String,
 }
 
 impl Frontmatter {
@@ -61,6 +70,10 @@ impl Frontmatter {
             start_at: item.start_at,
             done_at: item.done_at,
             commits: item.commits.clone(),
+            source: item.source.as_ref().map(|source| SourceFrontmatter {
+                kind: source.kind.as_str().to_string(),
+                sprint_id: source.sprint_id.to_string(),
+            }),
             created: item.created,
             updated: item.updated,
         }
@@ -79,6 +92,23 @@ impl Frontmatter {
             .iter()
             .map(|d| d.parse::<ItemId>().map_err(to_parse))
             .collect::<Result<Vec<_>>>()?;
+        let source = self
+            .source
+            .map(|source| {
+                let kind = match source.kind.as_str() {
+                    "retro" => ActionSourceKind::Retro,
+                    "review" => ActionSourceKind::Review,
+                    other => {
+                        return Err(Error::parse(
+                            path,
+                            format!("invalid action source kind {other:?}"),
+                        ));
+                    }
+                };
+                let sprint_id = source.sprint_id.parse().map_err(to_parse)?;
+                Ok(ActionSource::new(kind, sprint_id))
+            })
+            .transpose()?;
         // An empty title violates the constructor invariant even if it is present in the file.
         if self.title.trim().is_empty() {
             return Err(Error::parse(path, Error::EmptyTitle.to_string()));
@@ -100,6 +130,7 @@ impl Frontmatter {
             updated: self.updated,
             body,
             commits: self.commits,
+            source,
         })
     }
 }
@@ -636,6 +667,10 @@ mod tests {
         item.start_at = Some(epoch() + Duration::seconds(30));
         item.done_at = Some(epoch() + Duration::seconds(90));
         item.commits = vec!["abc1234".to_string(), "def5678".to_string()];
+        item.source = Some(ActionSource::new(
+            ActionSourceKind::Review,
+            SprintId::new("S-1").expect("valid source Sprint ID"),
+        ));
         item.body = "Acceptance criteria\n- one\n- two".to_string();
         item.updated = epoch() + Duration::seconds(60);
         item
@@ -645,6 +680,9 @@ mod tests {
     fn item_markdown_roundtrips_all_fields() {
         let item = full_item();
         let text = to_markdown(&item).expect("serialize");
+        assert!(text.contains("[source]"));
+        assert!(text.contains("kind = \"review\""));
+        assert!(text.contains("sprint_id = \"S-1\""));
         let parsed = from_markdown(&text, Path::new("T-7.md")).expect("parse");
         assert_eq!(parsed, item);
     }

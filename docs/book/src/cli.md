@@ -322,10 +322,12 @@ pinto sprint add S-1 --status todo --limit 3
 pinto sprint add S-1 --status todo             # omit --limit to assign all matches
 pinto sprint list
 pinto sprint retro new S-1 --body "What went well\nWhat to improve"
+pinto sprint retro action S-1 "Make deployment checks explicit" --points 3 --label follow-up
 pinto sprint retro show S-1 --json
 pinto sprint retro edit S-1 --body "Updated retrospective notes"
 pinto sprint retro list --json
 pinto sprint review new S-1 --body "What was demonstrated\nWhat remains"
+pinto sprint review action S-1 "Document the release" --template follow-up --assignee alice
 pinto sprint review show S-1 --json
 pinto sprint review edit S-1 --body "Updated review notes"
 pinto sprint review list --json
@@ -382,6 +384,16 @@ with that template as the initial body. The direct creation form
 `pinto sprint review <SPRINT-ID>` is also accepted. Review `show` exposes the
 same generated parent-Sprint context without adding a Review state of its own;
 unavailable metrics are shown as unavailable rather than zero.
+
+Use `pinto sprint retro action <SPRINT-ID> <TITLE>` or
+`pinto sprint review action <SPRINT-ID> <TITLE>` to promote one recorded action
+into an ordinary PBI. The command accepts the normal PBI creation options such
+as `--body`, `--template`, `--points`, `--label`, `--assignee`, `--sprint`,
+`--parent`, and `--depends-on`. The PBI stores a machine-readable `source`
+link with the child-record kind and Sprint ID. Retro and Review detail views
+show linked active PBIs and their current normal workflow statuses; use
+`list`, `show`, `edit`, `move`, and `remove` on the PBI to manage progress.
+The source record remains Markdown without a parallel state machine.
 
 Velocity totals, averages, and changes count only PBIs completed by the actual close time.
 Close-time unfinished points and item counts are displayed separately as spillover and never added

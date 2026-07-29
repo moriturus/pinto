@@ -8,15 +8,15 @@ use crate::cli::json::{detail_json, list_json};
 use pinto::automation::{
     AUTOMATION_RESULT_ENV, AUTOMATION_RESULT_PREFIX, AutomationProducerResult,
 };
-use pinto::backlog::ItemId;
+use pinto::backlog::{ActionSource, ItemId};
 use pinto::error::Error;
 use pinto::i18n::{Message, current};
 use pinto::service::{
-    EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, NextFilter, RemoveOutcome,
-    ReorderTarget, SplitBody, SplitRelationship, SplitSpec, add_item_with_outcome, apply_item_edit,
-    archived_item_detail, check_wip, common_dod, display_settings, edit_item, item_detail,
-    item_edit_template, list_items, move_item_with_outcome, next_items, remove_item, reorder_item,
-    restore_item, split_item, template_body,
+    AddItemOutcome, EditOutcome, ItemEdit, ListFilter, MoveOutcome, NewItem, NextFilter,
+    RemoveOutcome, ReorderTarget, SplitBody, SplitRelationship, SplitSpec, add_item_with_outcome,
+    apply_item_edit, archived_item_detail, check_wip, common_dod, display_settings, edit_item,
+    item_detail, item_edit_template, list_items, move_item_with_outcome, next_items, remove_item,
+    reorder_item, restore_item, split_item, template_body,
 };
 use std::io::IsTerminal;
 
@@ -32,44 +32,7 @@ use super::{
 /// `pinto add` — Add a PBI to the backlog.
 pub(super) async fn cmd_add(args: AddArgs) -> anyhow::Result<ExitCode> {
     let dir = std::env::current_dir()?;
-    let parent = args
-        .parent
-        .as_deref()
-        .map(str::parse::<ItemId>)
-        .transpose()?;
-    let depends_on = args
-        .depends_on
-        .iter()
-        .map(|id| id.parse::<ItemId>())
-        .collect::<Result<Vec<_>, _>>()?;
-    let template_body = if let Some(template) = args.template {
-        let template: TemplateName = template.parse()?;
-        Some(template_body(&dir, TemplateKind::Item, &template).await?)
-    } else {
-        None
-    };
-    let body = if args.edit {
-        let initial = template_body.unwrap_or_default();
-        let slug = format!("add-{}", args.title);
-        tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug))
-            .await??
-    } else {
-        match (template_body, args.body) {
-            (Some(template), Some(body)) => combine_template_body(template, body),
-            (Some(template), None) => template,
-            (None, Some(body)) => body,
-            (None, None) => String::new(),
-        }
-    };
-    let new = NewItem {
-        points: args.points,
-        labels: args.labels,
-        sprint: args.sprint,
-        body,
-        parent,
-        depends_on,
-    };
-    let outcome = add_item_with_outcome(&dir, &args.title, new).await?;
+    let outcome = create_pbi_with_options(&dir, &args.title, args.creation, None).await?;
     let item = outcome.item;
     if outcome.cycle_warning {
         eprintln!("{}", current().text(Message::DependencyCycleWarningGeneric));
@@ -87,6 +50,61 @@ pub(super) async fn cmd_add(args: AddArgs) -> anyhow::Result<ExitCode> {
         updated_ids: Vec::new(),
     })?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Create a PBI from the shared creation options, optionally retaining a source action link.
+pub(super) async fn create_pbi_with_options(
+    dir: &Path,
+    title: &str,
+    options: PbiCreationArgs,
+    source: Option<ActionSource>,
+) -> anyhow::Result<AddItemOutcome> {
+    let PbiCreationArgs {
+        points,
+        labels,
+        assignee,
+        sprint,
+        parent,
+        depends_on: raw_dependencies,
+        body: explicit_body,
+        edit,
+        template,
+    } = options;
+    let parent = parent.as_deref().map(str::parse::<ItemId>).transpose()?;
+    let depends_on = raw_dependencies
+        .iter()
+        .map(|id| id.parse::<ItemId>())
+        .collect::<Result<Vec<_>, _>>()?;
+    let template_body = if let Some(template) = template {
+        let template: TemplateName = template.parse()?;
+        Some(template_body(dir, TemplateKind::Item, &template).await?)
+    } else {
+        None
+    };
+    let body = if edit {
+        let initial = template_body.unwrap_or_default();
+        let slug = format!("add-{title}");
+        tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug))
+            .await??
+    } else {
+        match (template_body, explicit_body) {
+            (Some(template), Some(body)) => combine_template_body(template, body),
+            (Some(template), None) => template,
+            (None, Some(body)) => body,
+            (None, None) => String::new(),
+        }
+    };
+    let new = NewItem {
+        points,
+        labels,
+        assignee,
+        sprint,
+        body,
+        parent,
+        depends_on,
+        source,
+    };
+    Ok(add_item_with_outcome(dir, title, new).await?)
 }
 
 /// `pinto split` — Split a source PBI into one or more new PBIs.
@@ -154,7 +172,9 @@ pub(super) async fn cmd_split(args: SplitArgs) -> anyhow::Result<ExitCode> {
 }
 
 /// Emit a private, structured producer result for the parent `automate` process.
-fn emit_automation_producer_result(result: AutomationProducerResult) -> anyhow::Result<()> {
+pub(super) fn emit_automation_producer_result(
+    result: AutomationProducerResult,
+) -> anyhow::Result<()> {
     if std::env::var_os(AUTOMATION_RESULT_ENV).is_some() {
         eprintln!(
             "{AUTOMATION_RESULT_PREFIX}{}",

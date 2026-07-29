@@ -35,6 +35,19 @@ The frontmatter carries structured fields such as the ID, title, status, rank,
 labels, relations, timestamps, and optional Sprint information. The body is
 user-authored Markdown and is preserved when the display locale changes.
 
+An action PBI promoted from a Sprint Retro or Review has one additional
+machine-readable source link:
+
+```toml
+[source]
+kind = "review"
+sprint_id = "S-1"
+```
+
+`kind` is `retro` or `review`, and `sprint_id` identifies the parent Sprint
+and the corresponding child record. The link does not introduce another PBI
+or child-record state; the PBI's normal `status` remains authoritative.
+
 The filename stem is part of the record identity: `tasks/T-1.md` and
 `archive/T-1.md` must both contain `id = "T-1"`. File reads validate active and
 archived items, as well as Sprint filenames, and stop on filename mismatches or
@@ -102,6 +115,8 @@ state, schedule, close-time spillover, and any available capacity, velocity,
 burndown, or Cycle/Lead Time reports. Missing context is displayed as
 unavailable and represented as `null` in `--json`; a closed Sprint's stored
 spillover remains available after unfinished PBIs are rolled over or released.
+The generated detail view also lists active PBIs whose `[source]` link points to
+that child record; their normal PBI statuses are read from the PBI files.
 
 Removing a Sprint protects these one-to-one child records by default. The
 `--delete-records` option is required to remove the matching Retro and Review

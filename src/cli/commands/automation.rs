@@ -298,7 +298,12 @@ fn validate_automation_commands(plan: &AutomationPlan) -> Vec<ValidatedAutomatio
 
 fn item_id_arguments(cli: &Cli) -> Vec<&String> {
     match &cli.command {
-        Command::Add(args) => args.parent.iter().chain(args.depends_on.iter()).collect(),
+        Command::Add(args) => args
+            .creation
+            .parent
+            .iter()
+            .chain(args.creation.depends_on.iter())
+            .collect(),
         Command::Split(args) => vec![&args.source],
         Command::Show(args) => args.ids.iter().collect(),
         Command::Move(args) => args

@@ -265,13 +265,14 @@ pub(crate) fn format_detail(
     let item = &detail.item;
 
     /// Labels used in the detail view to align value columns.
-    const LABELS: [&str; 15] = [
+    const LABELS: [&str; 16] = [
         "Status",
         "Rank",
         "Points",
         "Labels",
         "Assignee",
         "Sprint",
+        "Source",
         "Parent",
         "Children",
         "Depends on",
@@ -336,6 +337,13 @@ pub(crate) fn format_detail(
     out.push_str(&row("Labels", labels));
     out.push_str(&row("Assignee", or_dash(item.assignee.as_deref())));
     out.push_str(&row("Sprint", or_dash(item.sprint.as_deref())));
+    out.push_str(&row(
+        "Source",
+        item.source
+            .as_ref()
+            .map(|source| format!("{}:{}", source.kind.as_str(), source.sprint_id))
+            .unwrap_or_else(|| "-".to_string()),
+    ));
     out.push_str(&row(
         "Acceptance Criteria",
         AcceptanceCriteriaProgress::from_markdown(&item.body).to_string(),

@@ -1,6 +1,6 @@
 //! Product Backlog Item.
 
-use super::{ItemId, Status, Workflow};
+use super::{ActionSource, ItemId, Status, Workflow};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
 use chrono::{DateTime, Utc};
@@ -42,6 +42,8 @@ pub struct BacklogItem {
     /// These are plain-text links and do not require Git to be installed. `link` stores the supplied
     /// string; `scan` discovers SHAs from commit messages containing the item ID.
     pub commits: Vec<String>,
+    /// Optional Retro or Review record that produced this action PBI.
+    pub source: Option<ActionSource>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
     pub body: String,
@@ -79,6 +81,7 @@ impl BacklogItem {
             updated: now,
             body: String::new(),
             commits: Vec::new(),
+            source: None,
         })
     }
 

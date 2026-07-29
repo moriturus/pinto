@@ -42,6 +42,11 @@ pinto export --json
 Do not parse the human-oriented table or board output when `--json` is
 available.
 
+Every item object includes `source`, which is `null` for an ordinary PBI or an
+object such as `{"kind":"review","sprint_id":"S-1"}` for an action PBI
+promoted from a Retro or Review. The source link is included in `list`,
+`show`, `board`, and `export` item objects and is restored by `import`.
+
 `pinto sprint retro show --json` returns a one-element array, and
 `pinto sprint retro list --json` returns an array of Retro objects. A show
 object contains `id`, `body`, `created`, `updated`, and generated `context`;
@@ -52,14 +57,18 @@ fields reuse the existing report shapes and are `null` when the corresponding
 context is unavailable. `context.spillover` is populated only after close, so
 it is not a synthetic zero for a planned or incomplete Sprint. Timestamps are
 RFC 3339 UTC strings. Retro command JSON is intentionally separate from
-`export --json`; board interchange does not include Retros yet.
+`export --json`; board interchange does not include Retros yet. A `show`
+object additionally contains `actions`, an array of `{id, title, status}` for
+active PBIs linked to that Retro.
 
 `pinto sprint review show --json` returns a one-element array, and
 `pinto sprint review list --json` returns an array of Review objects. A show
 object contains the same record fields and generated `context`; list objects
 contain the record fields only. Review command JSON is intentionally separate
-from `export --json`. The Review has no state of its own: `context.sprint.state`
-is the parent Sprint state.
+from `export --json`. A `show` object additionally contains `actions`, an array
+of `{id, title, status}` for active PBIs linked to that Review. The Review has
+no state of its own: `context.sprint.state` is the parent Sprint state, and
+each action's `status` is the ordinary PBI workflow status.
 
 ## Complete board export
 

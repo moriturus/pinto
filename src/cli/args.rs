@@ -685,6 +685,16 @@ pub(super) enum RetroCommand {
         #[arg(long = "edit", short = 'E')]
         edit: bool,
     },
+    /// Promote an action item into a normal PBI.
+    #[command(visible_aliases = ["a", "promote"])]
+    Action {
+        /// ID of the parent Sprint containing the Retro action.
+        sprint_id: String,
+        /// PBI title.
+        title: String,
+        #[command(flatten)]
+        creation: PbiCreationArgs,
+    },
     /// Display a Sprint Retro record.
     #[command(visible_alias = "s")]
     Show {
@@ -756,6 +766,16 @@ pub(super) enum ReviewCommand {
         /// Open the standard editor. This is also the default when no body is supplied.
         #[arg(long = "edit", short = 'E')]
         edit: bool,
+    },
+    /// Promote an action item into a normal PBI.
+    #[command(visible_aliases = ["a", "promote"])]
+    Action {
+        /// ID of the parent Sprint containing the Review action.
+        sprint_id: String,
+        /// PBI title.
+        title: String,
+        #[command(flatten)]
+        creation: PbiCreationArgs,
     },
     /// Display a Sprint Review record.
     #[command(visible_alias = "s")]
@@ -1021,17 +1041,18 @@ pub(super) struct NextArgs {
     pub(super) json: bool,
 }
 
-/// Arguments for the `add` subcommand.
+/// Shared PBI creation options used by `add` and Sprint action promotion.
 #[derive(Debug, Args)]
-pub(super) struct AddArgs {
-    /// PBI title (required).
-    pub(super) title: String,
+pub(super) struct PbiCreationArgs {
     /// Story points.
     #[arg(long, short = 'p')]
     pub(super) points: Option<u32>,
     /// Labels to set. Multiple values can follow one option or be supplied with repeated options.
     #[arg(long = "label", short = 'l', num_args = 1.., value_name = "LABEL")]
     pub(super) labels: Vec<String>,
+    /// Assignee.
+    #[arg(long, short = 'a')]
+    pub(super) assignee: Option<String>,
     /// Assign the PBI to a sprint.
     #[arg(long, short = 'S')]
     pub(super) sprint: Option<String>,
@@ -1050,6 +1071,15 @@ pub(super) struct AddArgs {
     /// Template name (`.pinto/templates/item/<name>.md`) to apply to the body.
     #[arg(long, short = 't')]
     pub(super) template: Option<String>,
+}
+
+/// Arguments for the `add` subcommand.
+#[derive(Debug, Args)]
+pub(super) struct AddArgs {
+    /// PBI title (required).
+    pub(super) title: String,
+    #[command(flatten)]
+    pub(super) creation: PbiCreationArgs,
 }
 
 /// Arguments for the `split` subcommand.
@@ -1127,7 +1157,7 @@ mod add_tests {
             let Command::Add(args) = cli.command else {
                 panic!("expected add command");
             };
-            assert!(args.edit);
+            assert!(args.creation.edit);
         }
     }
 

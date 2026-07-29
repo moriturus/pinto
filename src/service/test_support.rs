@@ -30,10 +30,12 @@ pub(super) async fn add_with(
             .iter()
             .map(std::string::ToString::to_string)
             .collect(),
+        assignee: None,
         sprint: sprint.map(std::string::ToString::to_string),
         body: String::new(),
         parent: None,
         depends_on: Vec::new(),
+        source: None,
     };
     add_item(dir, title, new).await.expect("add succeeds")
 }

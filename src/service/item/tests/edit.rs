@@ -113,10 +113,12 @@ async fn edit_leaves_unspecified_fields_unchanged() {
     let new = NewItem {
         points: Some(3),
         labels: vec!["keep".to_string()],
+        assignee: None,
         sprint: Some("S-1".to_string()),
         body: "original body".to_string(),
         parent: None,
         depends_on: Vec::new(),
+        source: None,
     };
     let added = add_item(dir.path(), "Keep me", new).await.unwrap();
 

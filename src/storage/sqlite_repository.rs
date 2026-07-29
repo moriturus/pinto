@@ -30,6 +30,8 @@
 //! │     └─ (item_id → items.id, depends_on, position)  PK(item_id, depends_on)
 //! ├── item_commits ── Git commits associated with items (multi-valued)
 //! │ └─ (item_id → items.id, sha, position) PK(item_id, sha) (duplicate SHA prohibited)
+//! ├── item_action_sources ── Retro/Review source links for action PBIs
+//! │ └─ (item_id → items.id, kind, sprint_id) PK(item_id)
 //! ├── sprints ── sprint records
 //!       └─ id, title, goal, state, close time, schedule, capacity, spillover, timestamps  PK(id)
 //! └── metadata ── extensible key/value metadata
@@ -152,6 +154,16 @@ const SPRINT_GOAL_OUTCOME_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS sprint_goal_outcomes (
   sprint_id TEXT PRIMARY KEY REFERENCES sprints(id) ON DELETE CASCADE,
   achieved INTEGER NOT NULL CHECK (achieved IN (0, 1))
+);
+"#;
+
+/// Additive source-link storage for action PBIs. It is kept separate from the versioned item
+/// table so existing SQLite boards gain the optional relationship without a schema-version rewrite.
+const ITEM_ACTION_SOURCE_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS item_action_sources (
+  item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('retro', 'review')),
+  sprint_id TEXT NOT NULL CHECK (length(trim(sprint_id)) > 0)
 );
 "#;
 
@@ -375,6 +387,8 @@ fn open_conn(db_path: &Path) -> Result<Connection> {
     }
     ensure_metadata(db_path, &conn, had_existing_tables)?;
     conn.execute_batch(SPRINT_GOAL_OUTCOME_SCHEMA)
+        .map_err(|e| sqlite_err(db_path, &e))?;
+    conn.execute_batch(ITEM_ACTION_SOURCE_SCHEMA)
         .map_err(|e| sqlite_err(db_path, &e))?;
     Ok(conn)
 }

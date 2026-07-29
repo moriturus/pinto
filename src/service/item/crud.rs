@@ -1,6 +1,9 @@
 //! CRUD operations for backlog items: add, list, show, move, and remove.
 
-use crate::backlog::{AcceptanceCriteriaProgress, BacklogItem, ItemId, Status, Workflow};
+use crate::backlog::{
+    AcceptanceCriteriaProgress, ActionSource, ActionSourceKind, BacklogItem, ItemId, Status,
+    Workflow,
+};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
 use crate::service::relations::{validate_dependencies, validate_parent};
@@ -20,6 +23,8 @@ pub struct NewItem {
     pub points: Option<u32>,
     /// Labels assigned to the item.
     pub labels: Vec<String>,
+    /// Assignee assigned to the item.
+    pub assignee: Option<String>,
     /// Sprint ID assigned to the item.
     pub sprint: Option<String>,
     /// Markdown body, including item-specific Acceptance Criteria.
@@ -28,6 +33,8 @@ pub struct NewItem {
     pub parent: Option<ItemId>,
     /// PBIs that must be completed before this item.
     pub depends_on: Vec<ItemId>,
+    /// Optional Retro or Review source for an action PBI.
+    pub source: Option<ActionSource>,
 }
 
 /// Result of adding a PBI, including warning-only dependency-cycle information.
@@ -80,11 +87,23 @@ pub async fn add_item_with_outcome(
     let NewItem {
         points,
         labels,
+        assignee,
         sprint,
         body,
         parent,
         depends_on,
+        source,
     } = new;
+    if let Some(source) = &source {
+        match source.kind {
+            ActionSourceKind::Retro => {
+                crate::storage::SprintRetroRepository::load(&repo, &source.sprint_id).await?;
+            }
+            ActionSourceKind::Review => {
+                crate::storage::SprintReviewRepository::load(&repo, &source.sprint_id).await?;
+            }
+        }
+    }
     let sprint = match sprint {
         Some(raw) => Some(validate_sprint_assignment(&repo, &raw).await?.to_string()),
         None => None,
@@ -104,6 +123,7 @@ pub async fn add_item_with_outcome(
 
     item.points = points;
     item.labels = labels;
+    item.assignee = assignee;
     item.sprint = sprint;
     item.body = body;
     item.parent = parent;
@@ -115,6 +135,7 @@ pub async fn add_item_with_outcome(
             }
             unique
         });
+    item.source = source;
 
     repo.save(&item).await?;
     repo.commit(&format!("pinto: add {}", item.id)).await?;

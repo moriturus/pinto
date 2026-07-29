@@ -10,15 +10,17 @@ use crate::cli::json::{
     burndown_json, review_json, reviews_json, sprint_capacity_json, sprint_goal_report_json,
     sprints_json,
 };
-use pinto::backlog::ItemId;
+use pinto::automation::AutomationProducerResult;
+use pinto::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId};
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::{
     SprintCloseAction, SprintDeletionOptions, assign_sprint_by_status, assign_sprint_raw, burndown,
     close_sprint, create_sprint, create_sprint_retro, create_sprint_review,
     delete_sprint_with_options, display_settings, edit_sprint, edit_sprint_retro,
-    edit_sprint_review, list_sprint_retros, list_sprint_reviews, list_sprints, set_sprint_capacity,
-    show_sprint_retro, show_sprint_review, sprint_capacity, sprint_context, sprint_goal_report,
-    sprint_load_warnings, start_sprint, template_body, unassign_sprint, velocity,
+    edit_sprint_review, linked_action_items, list_sprint_retros, list_sprint_reviews, list_sprints,
+    set_sprint_capacity, show_sprint_retro, show_sprint_review, sprint_capacity, sprint_context,
+    sprint_goal_report, sprint_load_warnings, start_sprint, template_body, unassign_sprint,
+    velocity,
 };
 
 use pinto::retro::SprintRetro;
@@ -135,6 +137,56 @@ async fn edit_review_in_editor(review: &SprintReview) -> anyhow::Result<String> 
     tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug)).await?
 }
 
+/// Create one ordinary PBI linked to a Retro or Review source record.
+async fn create_action_pbi(
+    dir: &Path,
+    kind: ActionSourceKind,
+    sprint_id: SprintId,
+    title: String,
+    creation: PbiCreationArgs,
+) -> anyhow::Result<()> {
+    let source = ActionSource::new(kind, sprint_id);
+    let outcome = super::item::create_pbi_with_options(dir, &title, creation, Some(source)).await?;
+    if outcome.cycle_warning {
+        eprintln!(
+            "{}",
+            pinto::i18n::current().text(Message::DependencyCycleWarningGeneric)
+        );
+    }
+    let id = outcome.item.id.to_string();
+    println!(
+        "{}",
+        pinto::i18n::current().format(
+            Message::Created,
+            [("id", id.as_str()), ("title", outcome.item.title.as_str())],
+        )
+    );
+    super::item::emit_automation_producer_result(AutomationProducerResult {
+        created_ids: vec![id],
+        updated_ids: Vec::new(),
+    })?;
+    Ok(())
+}
+
+/// Render the active action PBIs linked to a Retro or Review.
+fn format_linked_actions(actions: &[BacklogItem], localizer: &Localizer) -> String {
+    let mut out = format!("{}\n", localizer.text(Message::LinkedActionPbis));
+    if actions.is_empty() {
+        out.push_str(&format!(
+            "  {}\n",
+            localizer.text(Message::NoLinkedActionPbis)
+        ));
+    } else {
+        for action in actions {
+            out.push_str(&format!(
+                "  {}  {}  {}\n",
+                action.id, action.status, action.title
+            ));
+        }
+    }
+    out
+}
+
 /// Render one Review for the human-readable detail view.
 fn format_review_detail(review: &SprintReview) -> String {
     if review.body.is_empty() {
@@ -148,11 +200,14 @@ fn format_review_detail(review: &SprintReview) -> String {
 fn format_review_detail_with_context(
     review: &SprintReview,
     context: &pinto::service::SprintContext,
+    actions: &[BacklogItem],
     timezone: pinto::timezone::DisplayTimezone,
+    localizer: &Localizer,
 ) -> String {
     format!(
-        "{}\nMarkdown\n{}",
+        "{}\n{}Markdown\n{}",
         format_sprint_context(context, timezone),
+        format_linked_actions(actions, localizer),
         format_review_detail(review)
     )
 }
@@ -215,6 +270,14 @@ async fn cmd_review(args: ReviewArgs, localizer: &Localizer) -> anyhow::Result<E
                 )
             );
         }
+        Some(ReviewCommand::Action {
+            sprint_id,
+            title,
+            creation,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            create_action_pbi(&dir, ActionSourceKind::Review, sprint_id, title, creation).await?;
+        }
         Some(ReviewCommand::Show {
             sprint_id,
             json,
@@ -224,15 +287,27 @@ async fn cmd_review(args: ReviewArgs, localizer: &Localizer) -> anyhow::Result<E
             let review = show_sprint_review(&dir, &sprint_id).await?;
             if json {
                 let context = sprint_context(&dir, &sprint_id).await?;
-                println!("{}", review_json(&review, &context)?);
+                let actions = linked_action_items(
+                    &dir,
+                    &ActionSource::new(ActionSourceKind::Review, sprint_id.clone()),
+                )
+                .await?;
+                println!("{}", review_json(&review, &context, &actions)?);
             } else if plain {
                 print!("{}", format_review_detail(&review));
             } else {
                 let context = sprint_context(&dir, &sprint_id).await?;
+                let actions = linked_action_items(
+                    &dir,
+                    &ActionSource::new(ActionSourceKind::Review, sprint_id.clone()),
+                )
+                .await?;
                 let timezone = display_settings(&dir).await?.timezone;
                 print!(
                     "{}",
-                    format_review_detail_with_context(&review, &context, timezone)
+                    format_review_detail_with_context(
+                        &review, &context, &actions, timezone, localizer,
+                    )
                 );
             }
         }
@@ -279,11 +354,14 @@ fn format_retro_detail(retro: &SprintRetro) -> String {
 fn format_retro_detail_with_context(
     retro: &SprintRetro,
     context: &pinto::service::SprintContext,
+    actions: &[BacklogItem],
     timezone: pinto::timezone::DisplayTimezone,
+    localizer: &Localizer,
 ) -> String {
     format!(
-        "{}\nMarkdown\n{}",
+        "{}\n{}Markdown\n{}",
         format_sprint_context(context, timezone),
+        format_linked_actions(actions, localizer),
         format_retro_detail(retro)
     )
 }
@@ -346,6 +424,14 @@ async fn cmd_retro(args: RetroArgs, localizer: &Localizer) -> anyhow::Result<Exi
                 )
             );
         }
+        Some(RetroCommand::Action {
+            sprint_id,
+            title,
+            creation,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            create_action_pbi(&dir, ActionSourceKind::Retro, sprint_id, title, creation).await?;
+        }
         Some(RetroCommand::Show {
             sprint_id,
             json,
@@ -355,15 +441,30 @@ async fn cmd_retro(args: RetroArgs, localizer: &Localizer) -> anyhow::Result<Exi
             let retro = show_sprint_retro(&dir, &sprint_id).await?;
             if json {
                 let context = sprint_context(&dir, &sprint_id).await?;
-                println!("{}", crate::cli::json::retro_json(&retro, &context)?);
+                let actions = linked_action_items(
+                    &dir,
+                    &ActionSource::new(ActionSourceKind::Retro, sprint_id.clone()),
+                )
+                .await?;
+                println!(
+                    "{}",
+                    crate::cli::json::retro_json(&retro, &context, &actions)?
+                );
             } else if plain {
                 print!("{}", format_retro_detail(&retro));
             } else {
                 let context = sprint_context(&dir, &sprint_id).await?;
+                let actions = linked_action_items(
+                    &dir,
+                    &ActionSource::new(ActionSourceKind::Retro, sprint_id.clone()),
+                )
+                .await?;
                 let timezone = display_settings(&dir).await?.timezone;
                 print!(
                     "{}",
-                    format_retro_detail_with_context(&retro, &context, timezone)
+                    format_retro_detail_with_context(
+                        &retro, &context, &actions, timezone, localizer,
+                    )
                 );
             }
         }

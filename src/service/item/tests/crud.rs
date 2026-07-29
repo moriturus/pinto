@@ -47,10 +47,12 @@ async fn add_sets_optional_fields() {
     let new = NewItem {
         points: Some(5),
         labels: vec!["backend".to_string(), "urgent".to_string()],
+        assignee: None,
         sprint: Some("S-1".to_string()),
         body: "Acceptance criteria".to_string(),
         parent: None,
         depends_on: Vec::new(),
+        source: None,
     };
     let item = add_item(dir.path(), "Configured", new).await.unwrap();
 

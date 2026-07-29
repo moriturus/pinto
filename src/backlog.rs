@@ -7,6 +7,7 @@ mod acceptance;
 mod graph;
 mod item;
 mod item_id;
+mod source;
 mod status;
 mod workflow;
 
@@ -14,5 +15,6 @@ pub use acceptance::AcceptanceCriteriaProgress;
 pub use graph::{dependency_creates_cycle, parent_creates_cycle};
 pub use item::BacklogItem;
 pub use item_id::ItemId;
+pub use source::{ActionSource, ActionSourceKind};
 pub use status::Status;
 pub use workflow::Workflow;

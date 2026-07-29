@@ -494,6 +494,9 @@ fn sprint_context_demo_exposes_parent_history_without_rewriting_markdown() {
         assert_eq!(record["context"]["velocity"]["points"], 3);
         assert_eq!(record["context"]["cycle_time"]["completed"], 1);
     }
+    assert!(retro[0]["actions"].as_array().is_some_and(Vec::is_empty));
+    assert_eq!(review[0]["actions"][0]["id"], "T-3");
+    assert_eq!(review[0]["actions"][0]["status"], "todo");
     let human = run_pinto(&demo, &["sprint", "retro", "show", "S-1"]);
     assert_success(
         "single/sprint-context",

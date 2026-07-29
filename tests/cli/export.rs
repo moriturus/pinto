@@ -106,6 +106,60 @@ fn export_json_contains_the_complete_board_snapshot_without_mutating_it() {
 }
 
 #[test]
+fn export_import_round_trip_preserves_a_review_action_source_link() {
+    let source = TempDir::new().expect("temp dir");
+    pinto(source.path()).arg("init").assert().success();
+    pinto(source.path())
+        .args(["sprint", "new", "S-1", "Review Sprint"])
+        .assert()
+        .success();
+    pinto(source.path())
+        .args(["sprint", "review", "new", "S-1", "--body", "Follow-up"])
+        .assert()
+        .success();
+    pinto(source.path())
+        .args([
+            "sprint",
+            "review",
+            "action",
+            "S-1",
+            "Document the release",
+            "--points",
+            "2",
+            "--assignee",
+            "alice",
+            "--body",
+            "Add examples",
+        ])
+        .assert()
+        .success();
+
+    let snapshot = json_stdout(pinto(source.path()).args(["export", "--json"]));
+    assert_eq!(
+        snapshot["items"][0]["source"],
+        serde_json::json!({"kind": "review", "sprint_id": "S-1"})
+    );
+    let source_linked =
+        show_json(pinto(source.path()).args(["sprint", "review", "show", "S-1", "--json"]));
+    assert_eq!(source_linked["actions"][0]["id"], "T-1");
+
+    let destination = TempDir::new().expect("temp dir");
+    pinto(destination.path()).arg("init").assert().success();
+    pinto(destination.path())
+        .args(["import", "-"])
+        .write_stdin(snapshot.to_string())
+        .assert()
+        .success();
+
+    let round_tripped = json_stdout(pinto(destination.path()).args(["export", "--json"]));
+    assert_eq!(round_tripped, snapshot);
+    let imported = json_stdout(pinto(destination.path()).args(["list", "--json"]));
+    assert_eq!(imported[0]["source"]["kind"], "review");
+    assert_eq!(imported[0]["source"]["sprint_id"], "S-1");
+    assert_eq!(imported[0]["status"], "todo");
+}
+
+#[test]
 fn import_accepts_an_older_snapshot_without_a_sprint_goal_result() {
     let source = TempDir::new().expect("source temp dir");
     pinto(source.path()).arg("init").assert().success();

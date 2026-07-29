@@ -175,6 +175,51 @@ fn review_template_and_editor_use_the_template_as_initial_content() {
 }
 
 #[test]
+fn review_action_uses_the_item_template_and_links_the_review() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Review Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "review", "new", "S-1", "--body", "## Follow-up"])
+        .assert()
+        .success();
+    let template_dir = dir.path().join(".pinto/templates/item");
+    std::fs::create_dir_all(&template_dir).expect("create item template dir");
+    std::fs::write(template_dir.join("follow-up.md"), "## Details\n").expect("write item template");
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "review",
+            "action",
+            "S-1",
+            "Document the release",
+            "--template",
+            "follow-up",
+            "--body",
+            "Add examples",
+        ])
+        .assert()
+        .success();
+
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(item["body"], "## Details\n\nAdd examples");
+    assert_eq!(item["source"]["kind"], "review");
+    assert_eq!(item["source"]["sprint_id"], "S-1");
+
+    let review = show_json(pinto(dir.path()).args(["sprint", "review", "show", "S-1", "--json"]));
+    assert_eq!(
+        review["actions"],
+        serde_json::json!([
+            {"id": "T-1", "title": "Document the release", "status": "todo"}
+        ])
+    );
+}
+
+#[test]
 fn review_edit_and_mutations_use_one_git_commit_boundary() {
     let dir = TempDir::new().expect("temp dir");
     pinto_isolated_git(dir.path())
