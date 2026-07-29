@@ -13,11 +13,13 @@ use pinto::backlog::ItemId;
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::{
     SprintCloseAction, assign_sprint_by_status, assign_sprint_raw, burndown, close_sprint,
-    create_sprint, delete_sprint, display_settings, edit_sprint, list_sprints, set_sprint_capacity,
+    create_sprint, create_sprint_retro, delete_sprint, display_settings, edit_sprint,
+    edit_sprint_retro, list_sprint_retros, list_sprints, set_sprint_capacity, show_sprint_retro,
     sprint_capacity, sprint_goal_report, sprint_load_warnings, start_sprint, template_body,
     unassign_sprint, velocity,
 };
 
+use pinto::retro::SprintRetro;
 use pinto::sprint::SprintId;
 use pinto::template::{TemplateKind, TemplateName};
 use std::path::Path;
@@ -44,6 +46,158 @@ async fn warn_sprint_load(dir: &Path, id: &SprintId, localizer: &Localizer) -> a
         );
     }
     Ok(())
+}
+
+/// Resolve a Retro creation body from direct text, a plain-text template, and optional editor
+/// input using the same precedence as the item add command.
+async fn retro_creation_body(
+    dir: &Path,
+    sprint_id: &SprintId,
+    body: Option<String>,
+    template: Option<String>,
+    edit: bool,
+) -> anyhow::Result<String> {
+    let template_body = if let Some(template) = template {
+        let template: TemplateName = template.parse()?;
+        Some(template_body(dir, TemplateKind::Retro, &template).await?)
+    } else {
+        None
+    };
+    if edit {
+        let initial = template_body.unwrap_or_default();
+        let slug = format!("retro-{sprint_id}");
+        return tokio::task::spawn_blocking(move || {
+            crate::cli::editor::edit_in_editor(&initial, &slug)
+        })
+        .await?;
+    }
+
+    Ok(match (template_body, body) {
+        (Some(template), Some(body)) => super::item::combine_template_body(template, body),
+        (Some(template), None) => template,
+        (None, Some(body)) => body,
+        (None, None) => String::new(),
+    })
+}
+
+/// Open the standard editor for an existing Retro and return the edited body.
+async fn edit_retro_in_editor(retro: &SprintRetro) -> anyhow::Result<String> {
+    if crate::cli::editor::resolve_editor().is_none() {
+        return Err(pinto::error::Error::EditorNotSet.into());
+    }
+    let initial = retro.body.clone();
+    let slug = format!("retro-{}", retro.id);
+    tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug)).await?
+}
+
+/// Render one Retro for the human-readable detail view.
+fn format_retro_detail(retro: &SprintRetro) -> String {
+    if retro.body.is_empty() {
+        format!("{}\n", retro.id)
+    } else {
+        format!("{}\n{}\n", retro.id, retro.body)
+    }
+}
+
+/// Render the human-readable Retro list.
+fn format_retro_list(retros: &[SprintRetro]) -> String {
+    retros
+        .iter()
+        .map(|retro| {
+            let summary = retro.body.lines().next().unwrap_or("");
+            if summary.is_empty() {
+                format!("{}\n", retro.id)
+            } else {
+                format!("{}  {}\n", retro.id, summary)
+            }
+        })
+        .collect()
+}
+
+/// Execute the sprint retro namespace, including its direct creation shorthand.
+async fn cmd_retro(args: RetroArgs, localizer: &Localizer) -> anyhow::Result<ExitCode> {
+    let dir = std::env::current_dir()?;
+    match args.command {
+        Some(RetroCommand::New {
+            sprint_id,
+            body,
+            template,
+            edit,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let body = retro_creation_body(&dir, &sprint_id, body, template, edit).await?;
+            let retro = create_sprint_retro(&dir, &sprint_id, body).await?;
+            println!(
+                "{}",
+                localizer.format(
+                    Message::CreatedRetro,
+                    [("id", retro.id.to_string().as_str())],
+                )
+            );
+        }
+        Some(RetroCommand::Edit {
+            sprint_id,
+            body,
+            edit: _,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let body = match body {
+                Some(body) => body,
+                None => {
+                    let retro = show_sprint_retro(&dir, &sprint_id).await?;
+                    edit_retro_in_editor(&retro).await?
+                }
+            };
+            let retro = edit_sprint_retro(&dir, &sprint_id, body).await?;
+            println!(
+                "{}",
+                localizer.format(
+                    Message::UpdatedRetro,
+                    [("id", retro.id.to_string().as_str())],
+                )
+            );
+        }
+        Some(RetroCommand::Show {
+            sprint_id,
+            json,
+            plain: _,
+        }) => {
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let retro = show_sprint_retro(&dir, &sprint_id).await?;
+            if json {
+                println!("{}", crate::cli::json::retro_json(&retro)?);
+            } else {
+                print!("{}", format_retro_detail(&retro));
+            }
+        }
+        Some(RetroCommand::List { json }) => {
+            let retros = list_sprint_retros(&dir).await?;
+            if json {
+                println!("{}", crate::cli::json::retros_json(&retros)?);
+            } else if retros.is_empty() {
+                println!("{}", localizer.text(Message::NoRetros));
+            } else {
+                print!("{}", format_retro_list(&retros));
+            }
+        }
+        None => {
+            let sprint_id = args
+                .sprint_id
+                .ok_or(pinto::error::Error::RetroCommandRequired)?;
+            let sprint_id: SprintId = sprint_id.parse()?;
+            let body =
+                retro_creation_body(&dir, &sprint_id, args.body, args.template, args.edit).await?;
+            let retro = create_sprint_retro(&dir, &sprint_id, body).await?;
+            println!(
+                "{}",
+                localizer.format(
+                    Message::CreatedRetro,
+                    [("id", retro.id.to_string().as_str())],
+                )
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// `pinto sprint <sub>` — Sprint creation, editing, deletion, state transition, assignment, and list.
@@ -294,6 +448,7 @@ pub(super) async fn cmd_sprint_with_localizer(
                 print!("{}", format_sprint_capacity(&capacity));
             }
         }
+        SprintCommand::Retro(args) => return cmd_retro(args, localizer).await,
     }
     Ok(ExitCode::SUCCESS)
 }

@@ -14,9 +14,10 @@
 //! **Commit message convention**: `pinto: <verb> <id>` (`add` / `update` / `remove` / `archive`).
 
 use super::file_repository::FileRepository;
-use super::repository::{BacklogItemRepository, SprintRepository};
+use super::repository::{BacklogItemRepository, SprintRepository, SprintRetroRepository};
 use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
+use crate::retro::SprintRetro;
 use crate::sprint::{Sprint, SprintId};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -587,6 +588,24 @@ impl SprintRepository for GitRepository {
 
     async fn delete(&self, id: &SprintId) -> Result<()> {
         SprintRepository::delete(&self.file, id).await
+    }
+}
+
+impl SprintRetroRepository for GitRepository {
+    async fn save(&self, retro: &SprintRetro) -> Result<()> {
+        SprintRetroRepository::save(&self.file, retro).await
+    }
+
+    async fn load(&self, id: &SprintId) -> Result<SprintRetro> {
+        SprintRetroRepository::load(&self.file, id).await
+    }
+
+    async fn list(&self) -> Result<Vec<SprintRetro>> {
+        SprintRetroRepository::list(&self.file).await
+    }
+
+    async fn delete(&self, id: &SprintId) -> Result<()> {
+        SprintRetroRepository::delete(&self.file, id).await
     }
 }
 

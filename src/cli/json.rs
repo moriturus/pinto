@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use pinto::backlog::{BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
+use pinto::retro::SprintRetro;
 use pinto::service::{
     Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail, SprintGoalReport,
 };
@@ -131,6 +132,37 @@ impl SprintJson {
             updated: sprint.updated.to_rfc3339(),
         }
     }
+}
+
+/// JSON representation of a Sprint Retro record.
+#[derive(Debug, Serialize, Deserialize)]
+struct RetroJson {
+    id: String,
+    body: String,
+    created: String,
+    updated: String,
+}
+
+impl RetroJson {
+    fn from_retro(retro: &SprintRetro) -> Self {
+        Self {
+            id: retro.id.to_string(),
+            body: retro.body.clone(),
+            created: retro.created.to_rfc3339(),
+            updated: retro.updated.to_rfc3339(),
+        }
+    }
+}
+
+/// Format one Sprint Retro detail as a one-element JSON array, matching PBI show output.
+pub(super) fn retro_json(retro: &SprintRetro) -> serde_json::Result<String> {
+    serde_json::to_string_pretty(&[RetroJson::from_retro(retro)])
+}
+
+/// Format Sprint Retros as a JSON array.
+pub(super) fn retros_json(retros: &[SprintRetro]) -> serde_json::Result<String> {
+    let dto: Vec<RetroJson> = retros.iter().map(RetroJson::from_retro).collect();
+    serde_json::to_string_pretty(&dto)
 }
 
 #[derive(Debug, Serialize)]

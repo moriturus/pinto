@@ -124,6 +124,18 @@ pub enum Error {
     #[error("sprint already exists: {0} (use `sprint edit`/`remove` to manage it)")]
     SprintExists(SprintId),
 
+    /// A Sprint Retro with the specified Sprint ID cannot be found.
+    #[error("retro not found: {0}")]
+    RetroNotFound(SprintId),
+
+    /// A Sprint already has a Retro record.
+    #[error("retro already exists: {0} (use `sprint retro edit` to update it)")]
+    RetroExists(SprintId),
+
+    /// The `sprint retro` namespace was invoked without an operation or Sprint ID.
+    #[error("sprint retro requires a Sprint ID or a nested operation (use `sprint retro --help`)")]
+    RetroCommandRequired,
+
     /// A PBI cannot be assigned to a Sprint after that Sprint has been closed.
     #[error(
         "cannot assign a PBI to closed sprint {0} (assign it to a planned or active sprint instead; use `sprint unassign {0} <item-id>` to remove an existing assignment)"
@@ -357,6 +369,9 @@ impl Error {
             Self::InvalidSprintTransition { .. } => "invalid-sprint-transition",
             Self::SprintNotFound(_) => "sprint-not-found",
             Self::SprintExists(_) => "sprint-exists",
+            Self::RetroNotFound(_) => "retro-not-found",
+            Self::RetroExists(_) => "retro-exists",
+            Self::RetroCommandRequired => "retro-command-required",
             Self::SprintClosed(_) => "sprint-closed",
             Self::InvalidSprintPeriod { .. } => "invalid-sprint-period",
             Self::InvalidDailyWorkHours(_) => "invalid-daily-work-hours",
@@ -477,6 +492,9 @@ impl Error {
             ),
             Self::SprintNotFound(id) => message!(Message::ErrorSprintNotFound, "id" => id),
             Self::SprintExists(id) => message!(Message::ErrorSprintExists, "id" => id),
+            Self::RetroNotFound(id) => message!(Message::ErrorRetroNotFound, "id" => id),
+            Self::RetroExists(id) => message!(Message::ErrorRetroExists, "id" => id),
+            Self::RetroCommandRequired => localizer.text(Message::ErrorRetroCommandRequired),
             Self::SprintClosed(id) => message!(Message::ErrorSprintClosed, "id" => id),
             Self::InvalidSprintPeriod { start, end } => message!(
                 Message::ErrorInvalidSprintPeriod,
@@ -635,6 +653,9 @@ impl Error {
                 | Error::InvalidSprintTransition { .. }
                 | Error::SprintNotFound(_)
                 | Error::SprintExists(_)
+                | Error::RetroNotFound(_)
+                | Error::RetroExists(_)
+                | Error::RetroCommandRequired
                 | Error::SprintClosed(_)
                 | Error::InvalidSprintPeriod { .. }
                 | Error::InvalidDailyWorkHours(_)
@@ -701,6 +722,9 @@ mod tests {
             },
             Error::SprintNotFound(SprintId::new("S-1").unwrap()),
             Error::SprintExists(SprintId::new("S-1").unwrap()),
+            Error::RetroNotFound(SprintId::new("S-1").unwrap()),
+            Error::RetroExists(SprintId::new("S-1").unwrap()),
+            Error::RetroCommandRequired,
             Error::SprintClosed(SprintId::new("S-1").unwrap()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
@@ -854,6 +878,9 @@ mod tests {
             },
             Error::SprintNotFound(sprint.clone()),
             Error::SprintExists(sprint.clone()),
+            Error::RetroNotFound(sprint.clone()),
+            Error::RetroExists(sprint.clone()),
+            Error::RetroCommandRequired,
             Error::SprintClosed(sprint.clone()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),

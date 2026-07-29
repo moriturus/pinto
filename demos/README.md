@@ -69,6 +69,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`sprint-capacity`](single/sprint-capacity) — sprint capacity calculation
   - [`sprint-load-warning`](single/sprint-load-warning) — non-blocking Sprint capacity and velocity warnings
   - [`sprint-goal`](single/sprint-goal) — explicit boolean Sprint Goal outcomes and achievement rate
+  - [`sprint-retro`](single/sprint-retro) — first-class Sprint Retro records, templates, and JSON output
   - [`cycletime`](single/cycletime) — cycle time and lead time
   - [`burndown`](single/burndown) — sprint burndown
   - [`velocity`](single/velocity) — sprint velocity

@@ -54,6 +54,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::path::{Path, PathBuf};
 
 mod items;
+mod retros;
 mod sprints;
 #[cfg(test)]
 mod tests;

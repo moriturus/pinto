@@ -432,6 +432,24 @@ fn sprint_goal_demo_reports_boolean_outcomes_without_counting_blank_goals() {
 }
 
 #[test]
+fn sprint_retro_demo_contains_a_separate_json_retro_record() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let demo = root.join("demos/single/sprint-retro");
+    let retros = json_output(
+        "single/sprint-retro",
+        &demo,
+        &["sprint", "retro", "list", "--json"],
+    );
+    assert_eq!(retros.as_array().map(Vec::len), Some(1));
+    assert_eq!(retros[0]["id"], "S-1");
+    assert!(retros[0]["body"].as_str().is_some_and(|body| {
+        body.contains("What went well") && body.contains("What to improve")
+    }));
+    let path = demo.join(".pinto/retro/S-1.md");
+    assert!(path.is_file(), "Retro uses the dedicated storage directory");
+}
+
+#[test]
 fn intentional_error_demos_are_registered_and_keep_user_error_contracts() {
     let demos = discovered_demos();
     for name in INTENTIONAL_ERROR_DEMOS {

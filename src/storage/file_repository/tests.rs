@@ -7,8 +7,9 @@ use super::FileRepository;
 use crate::backlog::{BacklogItem, ItemId, Status};
 use crate::error::Error;
 use crate::rank::Rank;
+use crate::retro::SprintRetro;
 use crate::sprint::{Sprint, SprintId};
-use crate::storage::repository::{BacklogItemRepository, SprintRepository};
+use crate::storage::repository::{BacklogItemRepository, SprintRepository, SprintRetroRepository};
 use chrono::{DateTime, TimeZone, Utc};
 use tempfile::TempDir;
 use tokio::fs;
@@ -219,6 +220,55 @@ async fn list_on_uninitialized_dir_is_empty_not_error() {
         .await
         .expect("list must not error on missing dir");
     assert!(items.is_empty());
+}
+
+#[tokio::test]
+async fn retro_roundtrips_in_the_dedicated_directory() {
+    let (_dir, repo) = repo();
+    let retro = SprintRetro::new(
+        SprintId::new("S-1").expect("valid sprint ID"),
+        "notes",
+        ts(1_000),
+    );
+
+    SprintRetroRepository::save(&repo, &retro)
+        .await
+        .expect("save Retro");
+    let loaded = SprintRetroRepository::load(&repo, &retro.id)
+        .await
+        .expect("load Retro");
+
+    assert_eq!(loaded, retro);
+    let path = repo.retro_dir().join("S-1.md");
+    assert!(path.is_file());
+    assert!(!repo.sprints_dir().join("S-1.md").exists());
+    let text = fs::read_to_string(path).await.expect("read Retro");
+    assert!(text.contains("id = \"S-1\""));
+    assert!(text.contains("\n\nnotes\n"));
+}
+
+#[tokio::test]
+async fn retro_list_rejects_filename_frontmatter_id_mismatch() {
+    let (_dir, repo) = repo();
+    let retro = SprintRetro::new(
+        SprintId::new("S-2").expect("valid sprint ID"),
+        "notes",
+        ts(1_000),
+    );
+    SprintRetroRepository::save(&repo, &retro)
+        .await
+        .expect("save Retro");
+    fs::rename(
+        repo.retro_dir().join("S-2.md"),
+        repo.retro_dir().join("S-1.md"),
+    )
+    .await
+    .expect("rename corrupt fixture");
+
+    let err = SprintRetroRepository::list(&repo)
+        .await
+        .expect_err("filename/frontmatter mismatch must fail fast");
+    assert!(err.to_string().contains("filename"), "got {err}");
 }
 
 #[tokio::test]

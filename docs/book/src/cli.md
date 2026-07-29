@@ -321,6 +321,10 @@ pinto sprint add S-1 T-1
 pinto sprint add S-1 --status todo --limit 3
 pinto sprint add S-1 --status todo             # omit --limit to assign all matches
 pinto sprint list
+pinto sprint retro new S-1 --body "What went well\nWhat to improve"
+pinto sprint retro show S-1 --json
+pinto sprint retro edit S-1 --body "Updated retrospective notes"
+pinto sprint retro list --json
 pinto sprint close S-1 --rollover S-2          # move unfinished PBIs to S-2
 # pinto sprint close S-1 --release             # alternative: clear their Sprint assignment
 pinto sprint remove S-1
@@ -348,6 +352,14 @@ deleting them. Assign new PBIs only to `planned` or `active` Sprints; use
 `pinto sprint unassign` to correct an assignment that remains after a Sprint closes. Close changes
 only unfinished PBIs. `--rollover` and `--release` are mutually exclusive, while omitting both
 retains assignments. Completed PBIs remain untouched.
+
+`pinto sprint retro` manages at most one Markdown Retro per Sprint. The record
+is stored as `.pinto/retro/<SPRINT-ID>.md`, independent of the Sprint state, so
+it can be created for a planned, active, or closed Sprint. Use
+`pinto sprint retro new <SPRINT-ID> --template <NAME>` to load
+`.pinto/templates/retro/<NAME>.md`; adding `--edit` opens the standard editor
+with that template as the initial body. The direct creation form
+`pinto sprint retro <SPRINT-ID>` is also accepted.
 
 Velocity totals, averages, and changes count only PBIs completed by the actual close time.
 Close-time unfinished points and item counts are displayed separately as spillover and never added

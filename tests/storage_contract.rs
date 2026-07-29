@@ -4,8 +4,11 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use pinto::backlog::{BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
+use pinto::retro::SprintRetro;
 use pinto::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
-use pinto::storage::{Backend, BacklogItemRepository, SprintRepository, StorageBackend};
+use pinto::storage::{
+    Backend, BacklogItemRepository, SprintRepository, SprintRetroRepository, StorageBackend,
+};
 use tempfile::TempDir;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +27,11 @@ struct ContractSnapshot {
     sprint_loaded_after_update: Sprint,
     sprints_after_delete: Vec<Sprint>,
     sprint_error_codes: Vec<&'static str>,
+    retro_loaded: SprintRetro,
+    retros_before_update: Vec<SprintRetro>,
+    retro_loaded_after_update: SprintRetro,
+    retros_after_delete: Vec<SprintRetro>,
+    retro_error_codes: Vec<&'static str>,
 }
 
 fn timestamp(seconds: i64) -> DateTime<Utc> {
@@ -206,6 +214,52 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
         ),
     ];
 
+    let retro = SprintRetro::new(sprint.id.clone(), "Retro body\n振り返り", timestamp(4_000));
+    let second_retro = SprintRetro::new(second_sprint.id.clone(), "Second Retro", timestamp(4_100));
+    SprintRetroRepository::save(backend, &retro)
+        .await
+        .expect("save first Retro");
+    SprintRetroRepository::save(backend, &second_retro)
+        .await
+        .expect("save second Retro");
+    let retro_loaded = SprintRetroRepository::load(backend, &retro.id)
+        .await
+        .expect("load Retro");
+    let retros_before_update = SprintRetroRepository::list(backend)
+        .await
+        .expect("list Retros");
+    let mut updated_retro = retro.clone();
+    updated_retro.body = "Updated Retro".to_string();
+    updated_retro.updated = timestamp(4_200);
+    SprintRetroRepository::save(backend, &updated_retro)
+        .await
+        .expect("update Retro");
+    let retro_loaded_after_update = SprintRetroRepository::load(backend, &retro.id)
+        .await
+        .expect("load updated Retro");
+    SprintRetroRepository::delete(backend, &second_retro.id)
+        .await
+        .expect("delete Retro");
+    let retros_after_delete = SprintRetroRepository::list(backend)
+        .await
+        .expect("list after Retro delete");
+    let retro_error_codes = vec![
+        error_code(
+            SprintRetroRepository::load(
+                backend,
+                &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
+            )
+            .await,
+        ),
+        error_code(
+            SprintRetroRepository::delete(
+                backend,
+                &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
+            )
+            .await,
+        ),
+    ];
+
     ContractSnapshot {
         item_loaded,
         items_before_update,
@@ -221,11 +275,16 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
         sprint_loaded_after_update,
         sprints_after_delete,
         sprint_error_codes,
+        retro_loaded,
+        retros_before_update,
+        retro_loaded_after_update,
+        retros_after_delete,
+        retro_error_codes,
     }
 }
 
 #[tokio::test]
-async fn all_enabled_backends_share_item_and_sprint_contracts() {
+async fn all_enabled_backends_share_item_sprint_and_retro_contracts() {
     let kinds = backend_kinds();
     let mut snapshots = Vec::with_capacity(kinds.len());
     for kind in kinds {
@@ -252,6 +311,10 @@ async fn all_enabled_backends_share_item_and_sprint_contracts() {
     assert_eq!(
         expected.sprint_error_codes,
         ["sprint-not-found", "sprint-not-found"]
+    );
+    assert_eq!(
+        expected.retro_error_codes,
+        ["retro-not-found", "retro-not-found"]
     );
 }
 

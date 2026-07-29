@@ -55,6 +55,27 @@ a Sprint writes `closed_at` plus `spillover_points`, `spillover_items`, and
 close. These fields preserve retrospective context after unfinished PBIs are rolled over or
 released, while velocity continues to count completed work only.
 
+## Sprint Retro files
+
+A Sprint Retro is stored separately under `.pinto/retro/` as
+`.pinto/retro/<SPRINT-ID>.md`. Its ID is the parent Sprint ID, so the file name
+and the `id` frontmatter field must match. The body is free-form Markdown and
+the frontmatter records `id`, `created`, and `updated`:
+
+```markdown
++++
+id = "S-1"
+created = "2026-07-29T00:00:00Z"
+updated = "2026-07-29T00:00:00Z"
++++
+
+## What went well
+```
+
+The file and Git backends keep this record as plain text. The optional SQLite
+backend also keeps Retro files in this dedicated directory so the format stays
+visible and compatible with the Sprint CLI.
+
 ## Configuration
 
 `.pinto/config.toml` controls the shared workflow and presentation settings. The

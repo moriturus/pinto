@@ -47,6 +47,8 @@ mod next;
 mod rebalance;
 #[path = "cli/recovery.rs"]
 mod recovery;
+#[path = "cli/retro.rs"]
+mod retro;
 #[path = "cli/split.rs"]
 mod split;
 #[path = "cli/sprint.rs"]

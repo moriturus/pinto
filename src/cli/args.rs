@@ -623,6 +623,81 @@ pub(super) enum SprintCommand {
         #[arg(long, short = 'j')]
         json: bool,
     },
+    /// Create, edit, show, or list a Sprint Retro record.
+    #[command(visible_alias = "r")]
+    Retro(RetroArgs),
+}
+
+/// Arguments for the `sprint retro` namespace.
+#[derive(Debug, Args)]
+pub(super) struct RetroArgs {
+    /// A nested operation (`new`, `edit`, `show`, or `list`). When omitted, a Sprint ID creates a
+    /// Retro directly.
+    #[command(subcommand)]
+    pub(super) command: Option<RetroCommand>,
+    /// Sprint ID for the direct creation form (`sprint retro <SPRINT-ID>`).
+    #[arg(value_name = "SPRINT-ID")]
+    pub(super) sprint_id: Option<String>,
+    /// Markdown retrospective body.
+    #[arg(long, short = 'b', conflicts_with = "edit")]
+    pub(super) body: Option<String>,
+    /// The template name (`.pinto/templates/retro/<name>.md`) to apply to the Retro body.
+    #[arg(long, short = 't')]
+    pub(super) template: Option<String>,
+    /// Open the standard editor. On creation, the selected template is the initial body.
+    #[arg(long = "edit", short = 'E', conflicts_with = "body")]
+    pub(super) edit: bool,
+}
+
+/// Operations in the `sprint retro` namespace.
+#[derive(Debug, Subcommand)]
+pub(super) enum RetroCommand {
+    /// Create a Sprint Retro record.
+    #[command(visible_aliases = ["n", "add"])]
+    New {
+        /// ID of the parent Sprint.
+        sprint_id: String,
+        /// Markdown retrospective body.
+        #[arg(long, short = 'b', conflicts_with = "edit")]
+        body: Option<String>,
+        /// The template name (`.pinto/templates/retro/<name>.md`) to apply to the Retro body.
+        #[arg(long, short = 't')]
+        template: Option<String>,
+        /// Open the standard editor with the selected template as the initial body.
+        #[arg(long = "edit", short = 'E', conflicts_with = "body")]
+        edit: bool,
+    },
+    /// Edit a Sprint Retro record.
+    #[command(visible_alias = "e")]
+    Edit {
+        /// ID of the parent Sprint.
+        sprint_id: String,
+        /// Replacement Markdown retrospective body.
+        #[arg(long, short = 'b', conflicts_with = "edit")]
+        body: Option<String>,
+        /// Open the standard editor. This is also the default when no body is supplied.
+        #[arg(long = "edit", short = 'E')]
+        edit: bool,
+    },
+    /// Display a Sprint Retro record.
+    #[command(visible_alias = "s")]
+    Show {
+        /// ID of the parent Sprint.
+        sprint_id: String,
+        /// Output machine-readable JSON instead of human-readable formatting.
+        #[arg(long, short = 'j')]
+        json: bool,
+        /// Show the raw Markdown body without rendering.
+        #[arg(long, short = 'p')]
+        plain: bool,
+    },
+    /// List Sprint Retro records.
+    #[command(visible_alias = "ls")]
+    List {
+        /// Output machine-readable JSON instead of human-readable formatting.
+        #[arg(long, short = 'j')]
+        json: bool,
+    },
 }
 
 /// Arguments for the `dep` subcommand.

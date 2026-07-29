@@ -31,12 +31,20 @@ pinto list --json
 pinto show T-1 T-2 --json
 pinto board --json
 pinto sprint list --json
+pinto sprint retro show S-1 --json
+pinto sprint retro list --json
 pinto sprint goal --json
 pinto export --json
 ```
 
 Do not parse the human-oriented table or board output when `--json` is
 available.
+
+`pinto sprint retro show --json` returns a one-element array, and
+`pinto sprint retro list --json` returns an array of Retro objects. Each object
+contains `id`, `body`, `created`, and `updated`; timestamps are RFC 3339 UTC
+strings. Retro command JSON is intentionally separate from `export --json`;
+board interchange does not include Retros yet.
 
 ## Complete board export
 

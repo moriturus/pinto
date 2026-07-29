@@ -50,6 +50,8 @@ pub enum TemplateKind {
     Item,
     /// Sprint goal body.
     Sprint,
+    /// Sprint retrospective body.
+    Retro,
 }
 
 impl TemplateKind {
@@ -59,6 +61,7 @@ impl TemplateKind {
         match self {
             Self::Item => "item",
             Self::Sprint => "sprint",
+            Self::Retro => "retro",
         }
     }
 }
