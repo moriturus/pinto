@@ -128,9 +128,11 @@ pub async fn delete_sprint(project_dir: &Path, id: &SprintId) -> Result<()> {
 ///
 /// The child records are checked before any write. Without `delete_records`, an existing child
 /// record returns [`Error::SprintRecordsExist`] and leaves the Sprint, PBIs, and child records
-/// unchanged. With the option enabled, only records belonging to `id` are deleted. Git-backed
-/// boards commit all resulting changes once, so the existing undo path can recover the complete
-/// operation.
+/// unchanged. With the option enabled, only records belonging to `id` are deleted. Every PBI that
+/// referenced the Sprint has its assignment cleared, and every action PBI whose Retro/Review
+/// source pointed at the Sprint has that source link cleared, so no PBI is left referencing a
+/// Sprint or child record that no longer exists. Git-backed boards commit all resulting changes
+/// once, so the existing undo path can recover the complete operation.
 ///
 /// # Errors
 ///
@@ -146,7 +148,7 @@ pub async fn delete_sprint_with_options(
     SprintRepository::load(&repo, id).await?;
 
     let mut existing_kinds = Vec::new();
-    for kind in [SprintRecordKind::Retro, SprintRecordKind::Review] {
+    for kind in SprintRecordKind::ALL {
         match SprintRecordRepository::load(&repo, kind, id).await {
             Ok(_) => existing_kinds.push(kind),
             Err(Error::SprintRecordNotFound { .. }) => {}
@@ -165,14 +167,32 @@ pub async fn delete_sprint_with_options(
         });
     }
 
+    // Clear both the Sprint assignment and any Retro/Review action-source link that points at this
+    // Sprint, so deleting a Sprint never leaves a PBI referencing a Sprint or child record that no
+    // longer exists. A single PBI may need both cleared, so decide and save it once.
     let now = Utc::now();
-    let assigned = BacklogItemRepository::list(&repo)
+    let affected = BacklogItemRepository::list(&repo)
         .await?
         .into_iter()
-        .filter(|item| item.sprint.as_deref() == Some(id.as_str()))
+        .filter(|item| {
+            item.sprint.as_deref() == Some(id.as_str())
+                || item
+                    .source
+                    .as_ref()
+                    .is_some_and(|source| source.sprint_id == *id)
+        })
         .collect::<Vec<_>>();
-    for mut item in assigned {
-        item.sprint = None;
+    for mut item in affected {
+        if item.sprint.as_deref() == Some(id.as_str()) {
+            item.sprint = None;
+        }
+        if item
+            .source
+            .as_ref()
+            .is_some_and(|source| source.sprint_id == *id)
+        {
+            item.source = None;
+        }
         item.updated = now;
         BacklogItemRepository::save(&repo, &item).await?;
     }

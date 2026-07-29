@@ -14,6 +14,10 @@ pub enum SprintRecordKind {
 }
 
 impl SprintRecordKind {
+    /// Every record kind, in a stable order. The single source of truth for code that must sweep
+    /// or enumerate all kinds (deletion, board replacement, and interchange).
+    pub const ALL: [SprintRecordKind; 2] = [Self::Retro, Self::Review];
+
     /// Return the stable lowercase value used by persistence, JSON, and CLI commands.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -98,6 +102,14 @@ impl SprintRecord {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn all_lists_every_kind_once() {
+        assert_eq!(
+            SprintRecordKind::ALL,
+            [SprintRecordKind::Retro, SprintRecordKind::Review]
+        );
+    }
 
     #[test]
     fn kind_names_match_persistence_and_cli_contracts() {

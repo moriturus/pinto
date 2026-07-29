@@ -1239,6 +1239,46 @@ fn sprint_delete_unassigns_pbis_and_keeps_their_data() {
 }
 
 #[test]
+fn sprint_delete_with_records_clears_action_pbi_source_links() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Notes"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "action", "S-1", "Follow up"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created T-1"));
+
+    // Deleting the Sprint and its records must not leave the action PBI pointing at a record and
+    // Sprint that no longer exist.
+    pinto(dir.path())
+        .args(["sprint", "remove", "S-1", "--delete-records"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted sprint S-1"));
+
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(item["title"], "Follow up", "the action PBI itself remains");
+    assert!(
+        item.get("source").is_none_or(serde_json::Value::is_null),
+        "the dangling action-source link is cleared"
+    );
+    let markdown =
+        std::fs::read_to_string(dir.path().join(".pinto/tasks/T-1.md")).expect("action PBI file");
+    assert!(
+        !markdown.contains("[source]"),
+        "the source table is removed from the stored PBI"
+    );
+}
+
+#[test]
 fn sprint_delete_protects_each_existing_child_record_before_mutation() {
     for (child_command, child_label) in [("retro", "Retro"), ("review", "Review")] {
         let dir = TempDir::new().expect("temp dir");
