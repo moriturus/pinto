@@ -1,4 +1,7 @@
 //! Sprint Review record commands.
+//!
+//! Generated Sprint context is exercised for both `retro` and `review` by the shared loop in
+//! `retro_and_review_show_generated_sprint_context_separately_from_markdown` in `retro.rs`.
 
 use super::common::*;
 
@@ -177,6 +180,105 @@ fn review_template_and_editor_use_the_template_as_initial_content() {
 }
 
 #[test]
+fn review_action_creates_a_normal_linked_pbi_and_reflects_its_status() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Review Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-2",
+            "Follow-up Sprint",
+            "--goal",
+            "Follow up",
+        ])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["add", "Prerequisite"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "review", "new", "S-1", "--body", "Follow up"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "review",
+            "action",
+            "S-1",
+            "Improve deployment checks",
+            "--points",
+            "3",
+            "--label",
+            "follow-up",
+            "--assignee",
+            "alice",
+            "--sprint",
+            "S-2",
+            "--parent",
+            "T-1",
+            "--depends-on",
+            "T-1",
+            "--body",
+            "Action details",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created T-2"));
+
+    let item = show_json(pinto(dir.path()).args(["show", "T-2", "--json"]));
+    assert_eq!(item["title"], "Improve deployment checks");
+    assert_eq!(item["points"], 3);
+    assert_eq!(item["labels"], serde_json::json!(["follow-up"]));
+    assert_eq!(item["assignee"], "alice");
+    assert_eq!(item["sprint"], "S-2");
+    assert_eq!(item["parent"], "T-1");
+    assert_eq!(item["depends_on"], serde_json::json!(["T-1"]));
+    assert_eq!(item["source"]["kind"], "review");
+    assert_eq!(item["source"]["sprint_id"], "S-1");
+    let markdown =
+        std::fs::read_to_string(dir.path().join(".pinto/tasks/T-2.md")).expect("action PBI file");
+    assert!(markdown.contains("[source]") || markdown.contains("source ="));
+    assert!(markdown.contains("kind = \"review\""));
+    assert!(markdown.contains("sprint_id = \"S-1\""));
+
+    let shown = show_json(pinto(dir.path()).args(["sprint", "review", "show", "S-1", "--json"]));
+    assert_eq!(shown["actions"][0]["id"], "T-2");
+    assert_eq!(shown["actions"][0]["status"], "todo");
+    pinto(dir.path())
+        .args(["sprint", "review", "show", "S-1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Linked action PBIs"))
+        .stdout(predicate::str::contains("T-2"))
+        .stdout(predicate::str::contains("todo"));
+
+    pinto(dir.path())
+        .args(["move", "T-2", "in-progress"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["edit", "T-2", "--title", "Improved deployment checks"])
+        .assert()
+        .success();
+    let updated = show_json(pinto(dir.path()).args(["sprint", "review", "show", "S-1", "--json"]));
+    assert_eq!(updated["actions"][0]["title"], "Improved deployment checks");
+    assert_eq!(updated["actions"][0]["status"], "in-progress");
+
+    pinto(dir.path()).args(["rm", "T-2"]).assert().success();
+    let after_remove =
+        show_json(pinto(dir.path()).args(["sprint", "review", "show", "S-1", "--json"]));
+    assert_eq!(after_remove["actions"], serde_json::json!([]));
+}
+
+#[test]
 fn review_action_uses_the_item_template_and_links_the_review() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
@@ -218,6 +320,29 @@ fn review_action_uses_the_item_template_and_links_the_review() {
         serde_json::json!([
             {"id": "T-1", "title": "Document the release", "status": "todo"}
         ])
+    );
+}
+
+#[test]
+fn review_action_requires_the_source_record() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "review", "action", "S-1", "Missing review"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("review not found"));
+    assert_eq!(
+        json_stdout(pinto(dir.path()).args(["list", "--json"]))
+            .as_array()
+            .expect("list JSON array")
+            .len(),
+        0
     );
 }
 

@@ -362,6 +362,51 @@ fn retro_action_creates_a_normal_linked_pbi_and_reflects_its_status() {
 }
 
 #[test]
+fn retro_action_uses_the_item_template_and_links_the_retro() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Retro Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "## Follow-up"])
+        .assert()
+        .success();
+    let template_dir = dir.path().join(".pinto/templates/item");
+    std::fs::create_dir_all(&template_dir).expect("create item template dir");
+    std::fs::write(template_dir.join("follow-up.md"), "## Details\n").expect("write item template");
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "retro",
+            "action",
+            "S-1",
+            "Document the release",
+            "--template",
+            "follow-up",
+            "--body",
+            "Add examples",
+        ])
+        .assert()
+        .success();
+
+    let item = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert_eq!(item["body"], "## Details\n\nAdd examples");
+    assert_eq!(item["source"]["kind"], "retro");
+    assert_eq!(item["source"]["sprint_id"], "S-1");
+
+    let retro = show_json(pinto(dir.path()).args(["sprint", "retro", "show", "S-1", "--json"]));
+    assert_eq!(
+        retro["actions"],
+        serde_json::json!([
+            {"id": "T-1", "title": "Document the release", "status": "todo"}
+        ])
+    );
+}
+
+#[test]
 fn retro_action_requires_the_source_record() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
