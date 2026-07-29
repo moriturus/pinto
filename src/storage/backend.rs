@@ -46,14 +46,22 @@ impl Backend {
         }
     }
 
-    /// Replace all active PBIs and Sprints in one operation-specific persistence boundary.
+    /// Replace all active board records in one operation-specific persistence boundary.
     pub(crate) async fn replace_board(
         &self,
         items: &[BacklogItem],
         sprints: &[Sprint],
+        retros: &[SprintRetro],
+        reviews: &[SprintReview],
     ) -> Result<()> {
         match self {
             Backend::File(repository) => {
+                for retro in SprintRetroRepository::list(repository).await? {
+                    SprintRetroRepository::delete(repository, &retro.id).await?;
+                }
+                for review in SprintReviewRepository::list(repository).await? {
+                    SprintReviewRepository::delete(repository, &review.id).await?;
+                }
                 for item in BacklogItemRepository::list(repository).await? {
                     BacklogItemRepository::delete(repository, &item.id).await?;
                 }
@@ -64,9 +72,21 @@ impl Backend {
                 for sprint in sprints {
                     SprintRepository::save(repository, sprint).await?;
                 }
+                for retro in retros {
+                    SprintRetroRepository::save(repository, retro).await?;
+                }
+                for review in reviews {
+                    SprintReviewRepository::save(repository, review).await?;
+                }
                 Ok(())
             }
             Backend::Git(repository) => {
+                for retro in SprintRetroRepository::list(repository).await? {
+                    SprintRetroRepository::delete(repository, &retro.id).await?;
+                }
+                for review in SprintReviewRepository::list(repository).await? {
+                    SprintReviewRepository::delete(repository, &review.id).await?;
+                }
                 for item in BacklogItemRepository::list(repository).await? {
                     BacklogItemRepository::delete(repository, &item.id).await?;
                 }
@@ -77,10 +97,20 @@ impl Backend {
                 for sprint in sprints {
                     SprintRepository::save(repository, sprint).await?;
                 }
+                for retro in retros {
+                    SprintRetroRepository::save(repository, retro).await?;
+                }
+                for review in reviews {
+                    SprintReviewRepository::save(repository, review).await?;
+                }
                 Ok(())
             }
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => repository.replace_board(items, sprints).await,
+            Backend::Sqlite(repository) => {
+                repository
+                    .replace_board(items, sprints, retros, reviews)
+                    .await
+            }
         }
     }
 

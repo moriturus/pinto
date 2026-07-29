@@ -53,6 +53,7 @@ fn review_can_be_created_for_each_parent_sprint_state_and_is_listed_as_json() {
     let reviews = value.as_array().expect("review list --json is an array");
     assert_eq!(reviews.len(), 3);
     assert_eq!(reviews[0]["id"], "S-1");
+    assert_eq!(reviews[0]["sprint_id"], "S-1");
     assert_eq!(reviews[0]["body"], "Planned notes");
     assert_eq!(reviews[1]["id"], "S-2");
     assert_eq!(reviews[2]["id"], "S-3");
@@ -61,6 +62,7 @@ fn review_can_be_created_for_each_parent_sprint_state_and_is_listed_as_json() {
 
     let shown = show_json(pinto(dir.path()).args(["sprint", "review", "show", "S-2", "--json"]));
     assert_eq!(shown["id"], "S-2");
+    assert_eq!(shown["sprint_id"], "S-2");
     assert_eq!(shown["body"], "Active notes");
     pinto(dir.path())
         .args(["sprint", "review", "show", "S-1", "--plain"])

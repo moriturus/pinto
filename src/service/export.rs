@@ -3,9 +3,13 @@
 use super::{apply_effective_points, hierarchical, lock_board, open_board};
 use crate::backlog::{BacklogItem, Status};
 use crate::error::{Error, Result};
+use crate::retro::SprintRetro;
+use crate::review::SprintReview;
 use crate::service::dod::read_common_dod;
 use crate::sprint::Sprint;
-use crate::storage::{BacklogItemRepository, SprintRepository};
+use crate::storage::{
+    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
+};
 use std::path::Path;
 
 /// A complete read-only snapshot of all board data exposed by `export --json`.
@@ -19,13 +23,18 @@ pub struct BoardSnapshot {
     pub items: Vec<BacklogItem>,
     /// Sprints in the same creation order as `sprint list --json`.
     pub sprints: Vec<Sprint>,
+    /// Sprint Retros in the same creation order as `sprint retro list --json`.
+    pub retros: Vec<SprintRetro>,
+    /// Sprint Reviews in the same creation order as `sprint review list --json`.
+    pub reviews: Vec<SprintReview>,
     /// Effective validated board configuration.
     pub config: serde_json::Value,
     /// Common Definition of Done, or `None` when it is unset or empty.
     pub dod: Option<String>,
 }
 
-/// Load one read-only snapshot containing the board PBIs, Sprints, configuration, and common DoD.
+/// Load one read-only snapshot containing the board PBIs, Sprints, child records, configuration,
+/// and common DoD.
 ///
 /// Configuration and all repositories are opened once, so the export uses one validated backend
 /// selection. The board write lock is acquired before configuration and storage are opened and is
@@ -34,16 +43,18 @@ pub struct BoardSnapshot {
 ///
 /// # Errors
 ///
-/// Returns [`Error::NotInitialized`], lock and persistence errors while reading PBIs, Sprints, or
+/// Returns [`Error::NotInitialized`], lock and persistence errors while reading board records or
 /// the common DoD, or [`Error::Parse`] if the effective configuration cannot be serialized. The
 /// snapshot is read-only and the lock guard prevents a concurrent writer from changing it; no
 /// durable partial changes remain and retrying after a transient read failure is safe.
 pub async fn export_snapshot(project_dir: &Path) -> Result<BoardSnapshot> {
     let _lock = lock_board(project_dir).await?;
     let (board_dir, repo, config) = open_board(project_dir).await?;
-    let (mut items, sprints, dod) = tokio::try_join!(
+    let (mut items, sprints, retros, reviews, dod) = tokio::try_join!(
         BacklogItemRepository::list(&repo),
         SprintRepository::list(&repo),
+        SprintRetroRepository::list(&repo),
+        SprintReviewRepository::list(&repo),
         read_common_dod(&board_dir),
     )?;
 
@@ -61,6 +72,8 @@ pub async fn export_snapshot(project_dir: &Path) -> Result<BoardSnapshot> {
     Ok(BoardSnapshot {
         items,
         sprints,
+        retros,
+        reviews,
         config,
         dod,
     })

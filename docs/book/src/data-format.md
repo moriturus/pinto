@@ -109,6 +109,13 @@ updated = "2026-07-29T00:00:00Z"
 The file, Git, and optional SQLite backends keep Review data separate from both
 the Sprint goal and Sprint Retro records.
 
+The machine-readable `show` and `list` representations expose `sprint_id` as
+the explicit parent-Sprint reference for both child-record types. It currently
+matches the stable `id`, which is also the Sprint ID and filename stem. Complete
+`export --json` snapshots place these records in their `retros` and `reviews`
+collections; importing a snapshot restores the same IDs, parent links, times,
+and Markdown bodies.
+
 Retro and Review `show` views generate parent-Sprint context at read time. The
 context is not written into either Markdown body: it includes the parent goal,
 state, schedule, close-time spillover, and any available capacity, velocity,

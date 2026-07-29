@@ -138,6 +138,7 @@ fn retro_can_be_created_for_each_sprint_state_and_is_listed_as_json() {
     let retros = value.as_array().expect("retro list --json is an array");
     assert_eq!(retros.len(), 3);
     assert_eq!(retros[0]["id"], "S-1");
+    assert_eq!(retros[0]["sprint_id"], "S-1");
     assert_eq!(retros[0]["body"], "Planned notes");
     assert_eq!(retros[1]["id"], "S-2");
     assert_eq!(retros[2]["id"], "S-3");
@@ -146,6 +147,7 @@ fn retro_can_be_created_for_each_sprint_state_and_is_listed_as_json() {
 
     let shown = show_json(pinto(dir.path()).args(["sprint", "retro", "show", "S-2", "--json"]));
     assert_eq!(shown["id"], "S-2");
+    assert_eq!(shown["sprint_id"], "S-2");
     assert_eq!(shown["body"], "Active notes");
     pinto(dir.path())
         .args(["sprint", "retro", "show", "S-1", "--plain"])

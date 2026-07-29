@@ -52,6 +52,14 @@ fn export_json_contains_the_complete_board_snapshot_without_mutating_it() {
         .assert()
         .success();
     pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Retro notes"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "review", "new", "S-1", "--body", "Review notes"])
+        .assert()
+        .success();
+    pinto(dir.path())
         .args(["sprint", "edit", "S-1", "--goal-achieved", "true"])
         .assert()
         .success();
@@ -62,11 +70,16 @@ fn export_json_contains_the_complete_board_snapshot_without_mutating_it() {
 
     let before = json_stdout(pinto(dir.path()).args(["list", "--json"]));
     let before_sprints = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    let before_retros = json_stdout(pinto(dir.path()).args(["sprint", "retro", "list", "--json"]));
+    let before_reviews =
+        json_stdout(pinto(dir.path()).args(["sprint", "review", "list", "--json"]));
     let before_files = board_file_bytes(&dir.path().join(".pinto"));
     let exported = json_stdout(pinto(dir.path()).args(["export", "--json"]));
 
     assert_eq!(exported["items"], before);
     assert_eq!(exported["sprints"], before_sprints);
+    assert_eq!(exported["retros"], before_retros);
+    assert_eq!(exported["reviews"], before_reviews);
     assert_eq!(
         exported["config"]["columns"],
         serde_json::json!(["todo", "in-progress", "review", "done"])
@@ -114,6 +127,10 @@ fn export_import_round_trip_preserves_a_review_action_source_link() {
         .assert()
         .success();
     pinto(source.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Retrospective"])
+        .assert()
+        .success();
+    pinto(source.path())
         .args(["sprint", "review", "new", "S-1", "--body", "Follow-up"])
         .assert()
         .success();
@@ -135,6 +152,10 @@ fn export_import_round_trip_preserves_a_review_action_source_link() {
         .success();
 
     let snapshot = json_stdout(pinto(source.path()).args(["export", "--json"]));
+    assert_eq!(snapshot["retros"][0]["id"], "S-1");
+    assert_eq!(snapshot["retros"][0]["sprint_id"], "S-1");
+    assert_eq!(snapshot["reviews"][0]["id"], "S-1");
+    assert_eq!(snapshot["reviews"][0]["sprint_id"], "S-1");
     assert_eq!(
         snapshot["items"][0]["source"],
         serde_json::json!({"kind": "review", "sprint_id": "S-1"})
@@ -157,6 +178,114 @@ fn export_import_round_trip_preserves_a_review_action_source_link() {
     assert_eq!(imported[0]["source"]["kind"], "review");
     assert_eq!(imported[0]["source"]["sprint_id"], "S-1");
     assert_eq!(imported[0]["status"], "todo");
+    assert_eq!(
+        json_stdout(pinto(destination.path()).args(["sprint", "retro", "list", "--json"]))[0]["body"],
+        "Retrospective"
+    );
+    assert_eq!(
+        json_stdout(pinto(destination.path()).args(["sprint", "review", "list", "--json"]))[0]["body"],
+        "Follow-up"
+    );
+}
+
+#[test]
+fn import_force_removes_child_records_absent_from_the_snapshot() {
+    let source = TempDir::new().expect("source temp dir");
+    pinto(source.path()).arg("init").assert().success();
+    pinto(source.path())
+        .args(["sprint", "new", "S-1", "Snapshot Sprint"])
+        .assert()
+        .success();
+    let snapshot = json_stdout(pinto(source.path()).args(["export", "--json"]));
+
+    let destination = TempDir::new().expect("destination temp dir");
+    pinto(destination.path()).arg("init").assert().success();
+    pinto(destination.path())
+        .args(["sprint", "new", "S-1", "Destination Sprint"])
+        .assert()
+        .success();
+    pinto(destination.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "stale retro"])
+        .assert()
+        .success();
+    pinto(destination.path())
+        .args(["sprint", "review", "new", "S-1", "--body", "stale review"])
+        .assert()
+        .success();
+
+    pinto(destination.path())
+        .args(["import", "--force", "-"])
+        .write_stdin(snapshot.to_string())
+        .assert()
+        .success();
+
+    assert_eq!(
+        json_stdout(pinto(destination.path()).args(["sprint", "retro", "list", "--json"])),
+        serde_json::json!([])
+    );
+    assert_eq!(
+        json_stdout(pinto(destination.path()).args(["sprint", "review", "list", "--json"])),
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn import_restores_child_records_in_file_and_git_backends() {
+    for backend in ["file", "git"] {
+        import_child_snapshot_into_backend(backend);
+    }
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn import_restores_child_records_in_the_sqlite_backend() {
+    import_child_snapshot_into_backend("sqlite");
+}
+
+fn import_child_snapshot_into_backend(backend: &str) {
+    let source = TempDir::new().expect("source temp dir");
+    pinto(source.path()).arg("init").assert().success();
+    pinto(source.path())
+        .args(["sprint", "new", "S-1", "Interchange Sprint"])
+        .assert()
+        .success();
+    pinto(source.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "retro body"])
+        .assert()
+        .success();
+    pinto(source.path())
+        .args(["sprint", "review", "new", "S-1", "--body", "review body"])
+        .assert()
+        .success();
+    let mut snapshot = json_stdout(pinto(source.path()).args(["export", "--json"]));
+    snapshot["config"]["storage"]["backend"] = serde_json::Value::String(backend.to_string());
+
+    let destination = TempDir::new().expect("destination temp dir");
+    pinto(destination.path()).arg("init").assert().success();
+    let mut import = if backend == "git" {
+        pinto_isolated_git(destination.path())
+    } else {
+        pinto(destination.path())
+    };
+    import
+        .args(["import", "-"])
+        .write_stdin(snapshot.to_string())
+        .assert()
+        .success();
+
+    assert_child_records_match(destination.path());
+}
+
+fn assert_child_records_match(dir: &Path) {
+    let retro = json_stdout(pinto(dir).args(["sprint", "retro", "list", "--json"]));
+    assert_eq!(retro[0]["id"], "S-1");
+    assert_eq!(retro[0]["sprint_id"], "S-1");
+    assert_eq!(retro[0]["body"], "retro body");
+
+    let review = json_stdout(pinto(dir).args(["sprint", "review", "list", "--json"]));
+    assert_eq!(review[0]["id"], "S-1");
+    assert_eq!(review[0]["sprint_id"], "S-1");
+    assert_eq!(review[0]["body"], "review body");
 }
 
 #[test]
@@ -189,6 +318,14 @@ fn import_accepts_an_older_snapshot_without_a_sprint_goal_result() {
             .expect("sprint object")
             .remove("goal_achieved");
     }
+    old_snapshot
+        .as_object_mut()
+        .expect("snapshot object")
+        .remove("retros");
+    old_snapshot
+        .as_object_mut()
+        .expect("snapshot object")
+        .remove("reviews");
 
     let target = TempDir::new().expect("target temp dir");
     pinto(target.path()).arg("init").assert().success();
@@ -216,6 +353,8 @@ fn export_json_uses_empty_arrays_and_null_for_optional_dod() {
 
     assert_eq!(exported["items"], serde_json::json!([]));
     assert_eq!(exported["sprints"], serde_json::json!([]));
+    assert_eq!(exported["retros"], serde_json::json!([]));
+    assert_eq!(exported["reviews"], serde_json::json!([]));
     assert!(exported["dod"].is_null());
     assert!(exported["config"].is_object());
 }

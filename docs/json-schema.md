@@ -49,33 +49,36 @@ promoted from a Retro or Review. The source link is included in `list`,
 
 `pinto sprint retro show --json` returns a one-element array, and
 `pinto sprint retro list --json` returns an array of Retro objects. A show
-object contains `id`, `body`, `created`, `updated`, and generated `context`;
-list objects contain the record fields only. The `context.sprint` object
+object contains `id`, `sprint_id`, `body`, `created`, `updated`, and generated
+`context`; list objects contain the record fields only. `sprint_id` is the
+explicit parent Sprint reference and currently matches the child record's
+stable `id`. The `context.sprint` object
 contains the parent Sprint goal, state, planned `start`/`end`, and `closed_at`.
 The sibling `capacity`, `velocity`, `burndown`, `cycle_time`, and `spillover`
 fields reuse the existing report shapes and are `null` when the corresponding
 context is unavailable. `context.spillover` is populated only after close, so
 it is not a synthetic zero for a planned or incomplete Sprint. Timestamps are
-RFC 3339 UTC strings. Retro command JSON is intentionally separate from
-`export --json`; board interchange does not include Retros yet. A `show`
-object additionally contains `actions`, an array of `{id, title, status}` for
-active PBIs linked to that Retro.
+RFC 3339 UTC strings. A `show` object additionally contains `actions`, an array
+of `{id, title, status}` for active PBIs linked to that Retro.
 
 `pinto sprint review show --json` returns a one-element array, and
 `pinto sprint review list --json` returns an array of Review objects. A show
 object contains the same record fields and generated `context`; list objects
-contain the record fields only. Review command JSON is intentionally separate
-from `export --json`. A `show` object additionally contains `actions`, an array
-of `{id, title, status}` for active PBIs linked to that Review. The Review has
-no state of its own: `context.sprint.state` is the parent Sprint state, and
-each action's `status` is the ordinary PBI workflow status.
+contain the record fields only. `sprint_id` is the explicit parent Sprint
+reference and currently matches the child record's stable `id`. A `show` object
+additionally contains `actions`, an array of `{id, title, status}` for active
+PBIs linked to that Review. The Review has no state of its own:
+`context.sprint.state` is the parent Sprint state, and each action's `status` is
+the ordinary PBI workflow status.
 
 ## Complete board export
 
-`pinto export --json` returns one read-only object with four fields:
+`pinto export --json` returns one read-only object with six fields:
 
 - `items` — the active PBIs, using the same objects and hierarchical priority order as `list --json`.
 - `sprints` — all Sprints, using the same objects and creation order as `sprint list --json`.
+- `retros` — all Sprint Retros, using the same record fields and creation order as `sprint retro list --json`.
+- `reviews` — all Sprint Reviews, using the same record fields and creation order as `sprint review list --json`.
 - `config` — the effective validated board configuration, including defaults for omitted settings.
 - `dod` — the shared Definition of Done as Markdown, or `null` when it is unset.
 
@@ -91,21 +94,24 @@ behavior of `list --json`.
 
 `pinto import <SOURCE>` is the inverse of `export --json`. It reads an export
 document (from a file path, or from standard input when `SOURCE` is `-`) and
-rebuilds the board's PBIs, Sprints, configuration, and shared DoD. The board
-must already be initialized (`pinto init`).
+rebuilds the board's PBIs, Sprints, Sprint Retros, Sprint Reviews, configuration,
+and shared DoD. The board must already be initialized (`pinto init`).
 
 - **Fail-fast on a populated board.** Importing into a board that already holds
   active PBIs or Sprints is refused unless `--force` is given. With `--force`
-  the snapshot replaces the existing data: active PBIs and Sprints absent from
-  the snapshot are removed, and `config.toml` and the shared DoD are overwritten
-  to match. The whole operation runs under the board write lock.
+  the snapshot replaces the existing data: active PBIs, Sprints, Retros, and
+  Reviews absent from the snapshot are removed, and `config.toml` and the shared
+  DoD are overwritten to match. The whole operation runs under the board write
+  lock.
 - **Round-trip contract.** `export` → `import` → `export` reproduces the same
   JSON document. Equivalence is defined against this contract, not byte-identical
   storage files.
 - **Persistence impact.** Import reuses the existing plain-text persistence.
   Items and Sprints are written to the backend selected by the snapshot's
   `config`, and their IDs are recorded in `issued_ids` so a later `add` never
-  reuses a restored ID. No new on-disk format or schema is introduced.
+  reuses a restored ID. Retro and Review records remain in their dedicated
+  Markdown directories for File, Git, and SQLite. No new on-disk format or
+  schema is introduced.
 - **Compatibility impact.** Import consumes the stable `export --json` schema
   documented here. Because added keys are non-destructive, a snapshot from an
   older pinto imports into a newer one; capacity inputs (daily hours, holidays,

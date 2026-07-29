@@ -77,6 +77,70 @@ fn migrate_to_git_switches_the_backend() {
         .stdout(predicate::str::contains("now git"));
 }
 
+#[test]
+fn supported_backend_migrations_preserve_sprint_child_records() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Child record Sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "retro"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "review", "new", "S-1", "--body", "review"])
+        .assert()
+        .success();
+
+    pinto_isolated_git(dir.path())
+        .args(["migrate", "--to", "git"])
+        .assert()
+        .success();
+    assert_child_records_survive(dir.path());
+
+    pinto_isolated_git(dir.path())
+        .args(["migrate", "--to", "file"])
+        .assert()
+        .success();
+    assert_child_records_survive(dir.path());
+
+    #[cfg(feature = "sqlite")]
+    {
+        pinto(dir.path())
+            .args(["migrate", "--to", "sqlite"])
+            .assert()
+            .success();
+        assert_child_records_survive(dir.path());
+
+        pinto(dir.path())
+            .args(["migrate", "--to", "file"])
+            .assert()
+            .success();
+        assert_child_records_survive(dir.path());
+    }
+}
+
+fn assert_child_records_survive(dir: &Path) {
+    assert_eq!(
+        json_stdout(pinto(dir).args(["sprint", "retro", "list", "--json"]))[0]["sprint_id"],
+        "S-1"
+    );
+    assert_eq!(
+        json_stdout(pinto(dir).args(["sprint", "retro", "list", "--json"]))[0]["body"],
+        "retro"
+    );
+    assert_eq!(
+        json_stdout(pinto(dir).args(["sprint", "review", "list", "--json"]))[0]["sprint_id"],
+        "S-1"
+    );
+    assert_eq!(
+        json_stdout(pinto(dir).args(["sprint", "review", "list", "--json"]))[0]["body"],
+        "review"
+    );
+}
+
 #[cfg(feature = "sqlite")]
 #[test]
 fn migrate_to_sqlite_switches_backend_and_persists() {

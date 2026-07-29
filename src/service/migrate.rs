@@ -1,7 +1,10 @@
 //! Migrate board data between the file, Git, and SQLite backends.
 //!
 //! Copy active backlog items and sprints from the configured source backend to the target backend,
-//! then switch the backend setting. Shared serialization preserves the data without loss.
+//! then switch the backend setting. Sprint Retro and Review records are deliberately not copied
+//! through a backend-specific path: every supported backend keeps them in the shared
+//! `.pinto/retro/` and `.pinto/review/` Markdown directories, so the same one-per-Sprint files
+//! remain visible after the switch.
 //!
 //! **The source is non-destructive**: migration never deletes source data; it only changes which
 //! backend the configuration points to. To switch back, migrate in the opposite direction.

@@ -173,6 +173,7 @@ impl SprintJson {
 #[derive(Debug, Serialize, Deserialize)]
 struct RetroJson {
     id: String,
+    sprint_id: String,
     body: String,
     created: String,
     updated: String,
@@ -182,10 +183,28 @@ impl RetroJson {
     fn from_retro(retro: &SprintRetro) -> Self {
         Self {
             id: retro.id.to_string(),
+            sprint_id: retro.id.to_string(),
             body: retro.body.clone(),
             created: retro.created.to_rfc3339(),
             updated: retro.updated.to_rfc3339(),
         }
+    }
+
+    fn into_retro(self) -> Result<SprintRetro, Error> {
+        let id = SprintId::from_str(&self.id)?;
+        let sprint_id = SprintId::from_str(&self.sprint_id)?;
+        if id != sprint_id {
+            return Err(Error::Parse {
+                path: PathBuf::from(SNAPSHOT_LABEL),
+                message: format!("Retro ID `{id}` does not match parent Sprint ID `{sprint_id}`"),
+            });
+        }
+        Ok(SprintRetro {
+            id,
+            body: self.body,
+            created: parse_timestamp(&self.created)?,
+            updated: parse_timestamp(&self.updated)?,
+        })
     }
 }
 
@@ -238,6 +257,7 @@ pub(super) fn retros_json(retros: &[SprintRetro]) -> serde_json::Result<String> 
 #[derive(Debug, Serialize, Deserialize)]
 struct ReviewJson {
     id: String,
+    sprint_id: String,
     body: String,
     created: String,
     updated: String,
@@ -247,10 +267,28 @@ impl ReviewJson {
     fn from_review(review: &SprintReview) -> Self {
         Self {
             id: review.id.to_string(),
+            sprint_id: review.id.to_string(),
             body: review.body.clone(),
             created: review.created.to_rfc3339(),
             updated: review.updated.to_rfc3339(),
         }
+    }
+
+    fn into_review(self) -> Result<SprintReview, Error> {
+        let id = SprintId::from_str(&self.id)?;
+        let sprint_id = SprintId::from_str(&self.sprint_id)?;
+        if id != sprint_id {
+            return Err(Error::Parse {
+                path: PathBuf::from(SNAPSHOT_LABEL),
+                message: format!("Review ID `{id}` does not match parent Sprint ID `{sprint_id}`"),
+            });
+        }
+        Ok(SprintReview {
+            id,
+            body: self.body,
+            created: parse_timestamp(&self.created)?,
+            updated: parse_timestamp(&self.updated)?,
+        })
     }
 }
 
@@ -466,6 +504,10 @@ pub(super) fn sprints_json(sprints: &[Sprint]) -> serde_json::Result<String> {
 struct ExportJson {
     items: Vec<ItemJson>,
     sprints: Vec<SprintJson>,
+    #[serde(default)]
+    retros: Vec<RetroJson>,
+    #[serde(default)]
+    reviews: Vec<ReviewJson>,
     config: serde_json::Value,
     dod: Option<String>,
 }
@@ -478,6 +520,12 @@ pub(super) fn export_json(snapshot: &BoardSnapshot) -> serde_json::Result<String
             .sprints
             .iter()
             .map(SprintJson::from_sprint)
+            .collect(),
+        retros: snapshot.retros.iter().map(RetroJson::from_retro).collect(),
+        reviews: snapshot
+            .reviews
+            .iter()
+            .map(ReviewJson::from_review)
             .collect(),
         config: snapshot.config.clone(),
         dod: snapshot.dod.clone(),
@@ -492,9 +540,11 @@ const SNAPSHOT_LABEL: &str = "<export snapshot>";
 ///
 /// This is the inverse of [`export_json`]: the string fields of the JSON contract are converted
 /// back into their domain types (`ItemId`, `Rank`, `Status`, `SprintId`, `SprintState`, and
-/// RFC3339 `DateTime<Utc>`). The `config` object is kept as raw JSON and validated by the import
-/// service; `dod` is passed through unchanged. Sprint capacity settings are absent from the export
-/// contract, so imported sprints carry no capacity (see `docs/json-schema.md`).
+/// RFC3339 `DateTime<Utc>`), including the Retro and Review child records. The `config` object is
+/// kept as raw JSON and validated by the import service; `dod` is passed through unchanged. The
+/// child collections default to empty when they are absent from an older snapshot. Sprint
+/// capacity settings are absent from the export contract, so imported sprints carry no capacity
+/// (see `docs/json-schema.md`).
 pub(super) fn parse_export(json: &str) -> Result<BoardSnapshot, Error> {
     let dto: ExportJson = serde_json::from_str(json).map_err(snapshot_parse_error)?;
     let items = dto
@@ -507,9 +557,21 @@ pub(super) fn parse_export(json: &str) -> Result<BoardSnapshot, Error> {
         .into_iter()
         .map(SprintJson::into_sprint)
         .collect::<Result<Vec<_>, _>>()?;
+    let retros = dto
+        .retros
+        .into_iter()
+        .map(RetroJson::into_retro)
+        .collect::<Result<Vec<_>, _>>()?;
+    let reviews = dto
+        .reviews
+        .into_iter()
+        .map(ReviewJson::into_review)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(BoardSnapshot {
         items,
         sprints,
+        retros,
+        reviews,
         config: dto.config,
         dod: dto.dod,
     })

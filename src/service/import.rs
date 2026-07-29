@@ -1,17 +1,17 @@
 //! Restore a complete board from an `export --json` snapshot.
 //!
 //! Import is the inverse of [`crate::service::export_snapshot`]. It rebuilds a board's PBIs,
-//! Sprints, configuration, and common Definition of Done from a [`BoardSnapshot`], the same
-//! structure the export produces. The CLI parses the JSON contract back into that structure, so
-//! this service is agnostic to the wire format.
+//! Sprints, Sprint child records, configuration, and common Definition of Done from a
+//! [`BoardSnapshot`], the same structure the export produces. The CLI parses the JSON contract
+//! back into that structure, so this service is agnostic to the wire format.
 //!
 //! **Fail fast on a populated board**: importing into a board that already holds active PBIs or
 //! Sprints returns [`ImportOutcome::Refused`] unless the caller opts into replacement. Replacement
-//! mirrors the snapshot: existing active PBIs and Sprints are removed before the snapshot is
-//! written, so the resulting board reflects the snapshot exactly.
+//! mirrors the snapshot: existing active PBIs, Sprints, and child records are removed before the
+//! snapshot is written, so the resulting board reflects the snapshot exactly.
 //!
 //! **Serialized like migration**: the whole operation runs under the board write lock, and the
-//! configuration is switched only after the item and sprint writes succeed.
+//! configuration is switched only after all record writes succeed.
 
 use super::export::BoardSnapshot;
 use super::{open_board_locked, restore_board_after_failure};
@@ -50,8 +50,8 @@ pub enum ImportOutcome {
 ///
 /// Return [`Error::NotInitialized`] when the board is uninitialized. When the board already holds
 /// active PBIs or Sprints and `force` is false, return [`ImportOutcome::Refused`] without changing
-/// anything. Otherwise mirror the snapshot: remove existing active PBIs and Sprints, write the
-/// snapshot's items and Sprints, overwrite `config.toml`, and set or clear the common DoD.
+/// anything. Otherwise mirror the snapshot: remove existing active PBIs, Sprints, and child
+/// records, write all snapshot records, overwrite `config.toml`, and set or clear the common DoD.
 ///
 /// # Errors
 ///
@@ -92,7 +92,12 @@ pub async fn import_board(
 
     let recovery = BoardRecoveryPoint::capture(&board_dir).await?;
     if let Err(error) = target
-        .replace_board(&snapshot.items, &snapshot.sprints)
+        .replace_board(
+            &snapshot.items,
+            &snapshot.sprints,
+            &snapshot.retros,
+            &snapshot.reviews,
+        )
         .await
     {
         return restore_board_after_failure(recovery, "forced board import", error).await;

@@ -1,12 +1,18 @@
 # import (single feature: restore a board from a snapshot)
 
 `import` is the inverse of `export --json`. It rebuilds a board's PBIs,
-Sprints, configuration, and shared Definition of Done from an export snapshot,
+Sprints, Sprint Retros, Sprint Reviews, configuration, and shared Definition of
+Done from an export snapshot,
 so a board can be restored from a backup or migrated in from another tool
 without hand-written automation plans.
 
 This demo ships `snapshot.json`, an `export --json` document, and a `.pinto`
 board that was materialized by importing it.
+
+The checked-in snapshot intentionally omits the newer `retros` and `reviews`
+collections, so this fixture also demonstrates that older snapshots still
+import successfully. Use `demos/single/export` for a snapshot containing both
+Sprint child-record types.
 
 ## Restore into a fresh board
 
@@ -25,8 +31,9 @@ cat snapshot.json | cargo run --manifest-path ../../../Cargo.toml -- import -
 
 ## Round-trip guarantee
 
-`export --json` followed by `import` reproduces an equivalent board. Re-exporting
-the imported board yields the same JSON document that was imported:
+`export --json` followed by `import` reproduces an equivalent board, including
+child-record IDs, parent Sprint references, timestamps, and Markdown bodies.
+Re-exporting the imported board yields the same JSON document that was imported:
 
 ```bash
 cargo run --manifest-path ../../../Cargo.toml -- export --json
