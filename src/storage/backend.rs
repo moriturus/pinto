@@ -9,17 +9,14 @@
 
 use super::file_repository::FileRepository;
 use super::git_repository::GitRepository;
-use super::repository::{
-    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
-};
+use super::repository::{BacklogItemRepository, SprintRecordRepository, SprintRepository};
 #[cfg(feature = "sqlite")]
 use super::sqlite_repository::SqliteRepository;
 use crate::backlog::{BacklogItem, ItemId};
 use crate::config::StorageBackend;
 use crate::error::{Error, Result};
-use crate::retro::SprintRetro;
-use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId};
+use crate::sprint_record::{SprintRecord, SprintRecordKind};
 use std::path::PathBuf;
 
 /// Persistence backend selected in configuration.
@@ -51,16 +48,14 @@ impl Backend {
         &self,
         items: &[BacklogItem],
         sprints: &[Sprint],
-        retros: &[SprintRetro],
-        reviews: &[SprintReview],
+        records: &[SprintRecord],
     ) -> Result<()> {
         match self {
             Backend::File(repository) => {
-                for retro in SprintRetroRepository::list(repository).await? {
-                    SprintRetroRepository::delete(repository, &retro.id).await?;
-                }
-                for review in SprintReviewRepository::list(repository).await? {
-                    SprintReviewRepository::delete(repository, &review.id).await?;
+                for kind in record_kinds() {
+                    for record in SprintRecordRepository::list(repository, kind).await? {
+                        SprintRecordRepository::delete(repository, kind, &record.id).await?;
+                    }
                 }
                 for item in BacklogItemRepository::list(repository).await? {
                     BacklogItemRepository::delete(repository, &item.id).await?;
@@ -72,20 +67,16 @@ impl Backend {
                 for sprint in sprints {
                     SprintRepository::save(repository, sprint).await?;
                 }
-                for retro in retros {
-                    SprintRetroRepository::save(repository, retro).await?;
-                }
-                for review in reviews {
-                    SprintReviewRepository::save(repository, review).await?;
+                for record in records {
+                    SprintRecordRepository::save(repository, record).await?;
                 }
                 Ok(())
             }
             Backend::Git(repository) => {
-                for retro in SprintRetroRepository::list(repository).await? {
-                    SprintRetroRepository::delete(repository, &retro.id).await?;
-                }
-                for review in SprintReviewRepository::list(repository).await? {
-                    SprintReviewRepository::delete(repository, &review.id).await?;
+                for kind in record_kinds() {
+                    for record in SprintRecordRepository::list(repository, kind).await? {
+                        SprintRecordRepository::delete(repository, kind, &record.id).await?;
+                    }
                 }
                 for item in BacklogItemRepository::list(repository).await? {
                     BacklogItemRepository::delete(repository, &item.id).await?;
@@ -97,20 +88,13 @@ impl Backend {
                 for sprint in sprints {
                     SprintRepository::save(repository, sprint).await?;
                 }
-                for retro in retros {
-                    SprintRetroRepository::save(repository, retro).await?;
-                }
-                for review in reviews {
-                    SprintReviewRepository::save(repository, review).await?;
+                for record in records {
+                    SprintRecordRepository::save(repository, record).await?;
                 }
                 Ok(())
             }
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => {
-                repository
-                    .replace_board(items, sprints, retros, reviews)
-                    .await
-            }
+            Backend::Sqlite(repository) => repository.replace_board(items, sprints, records).await,
         }
     }
 
@@ -299,80 +283,48 @@ impl SprintRepository for Backend {
     }
 }
 
-impl SprintRetroRepository for Backend {
-    async fn save(&self, retro: &SprintRetro) -> Result<()> {
+impl SprintRecordRepository for Backend {
+    async fn save(&self, record: &SprintRecord) -> Result<()> {
         match self {
-            Backend::File(repository) => SprintRetroRepository::save(repository, retro).await,
-            Backend::Git(repository) => SprintRetroRepository::save(repository, retro).await,
+            Backend::File(repository) => SprintRecordRepository::save(repository, record).await,
+            Backend::Git(repository) => SprintRecordRepository::save(repository, record).await,
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintRetroRepository::save(repository, retro).await,
+            Backend::Sqlite(repository) => SprintRecordRepository::save(repository, record).await,
         }
     }
 
-    async fn load(&self, id: &SprintId) -> Result<SprintRetro> {
+    async fn load(&self, kind: SprintRecordKind, id: &SprintId) -> Result<SprintRecord> {
         match self {
-            Backend::File(repository) => SprintRetroRepository::load(repository, id).await,
-            Backend::Git(repository) => SprintRetroRepository::load(repository, id).await,
+            Backend::File(repository) => SprintRecordRepository::load(repository, kind, id).await,
+            Backend::Git(repository) => SprintRecordRepository::load(repository, kind, id).await,
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintRetroRepository::load(repository, id).await,
+            Backend::Sqlite(repository) => SprintRecordRepository::load(repository, kind, id).await,
         }
     }
 
-    async fn list(&self) -> Result<Vec<SprintRetro>> {
+    async fn list(&self, kind: SprintRecordKind) -> Result<Vec<SprintRecord>> {
         match self {
-            Backend::File(repository) => SprintRetroRepository::list(repository).await,
-            Backend::Git(repository) => SprintRetroRepository::list(repository).await,
+            Backend::File(repository) => SprintRecordRepository::list(repository, kind).await,
+            Backend::Git(repository) => SprintRecordRepository::list(repository, kind).await,
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintRetroRepository::list(repository).await,
+            Backend::Sqlite(repository) => SprintRecordRepository::list(repository, kind).await,
         }
     }
 
-    async fn delete(&self, id: &SprintId) -> Result<()> {
+    async fn delete(&self, kind: SprintRecordKind, id: &SprintId) -> Result<()> {
         match self {
-            Backend::File(repository) => SprintRetroRepository::delete(repository, id).await,
-            Backend::Git(repository) => SprintRetroRepository::delete(repository, id).await,
+            Backend::File(repository) => SprintRecordRepository::delete(repository, kind, id).await,
+            Backend::Git(repository) => SprintRecordRepository::delete(repository, kind, id).await,
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintRetroRepository::delete(repository, id).await,
+            Backend::Sqlite(repository) => {
+                SprintRecordRepository::delete(repository, kind, id).await
+            }
         }
     }
 }
 
-impl SprintReviewRepository for Backend {
-    async fn save(&self, review: &SprintReview) -> Result<()> {
-        match self {
-            Backend::File(repository) => SprintReviewRepository::save(repository, review).await,
-            Backend::Git(repository) => SprintReviewRepository::save(repository, review).await,
-            #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintReviewRepository::save(repository, review).await,
-        }
-    }
-
-    async fn load(&self, id: &SprintId) -> Result<SprintReview> {
-        match self {
-            Backend::File(repository) => SprintReviewRepository::load(repository, id).await,
-            Backend::Git(repository) => SprintReviewRepository::load(repository, id).await,
-            #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintReviewRepository::load(repository, id).await,
-        }
-    }
-
-    async fn list(&self) -> Result<Vec<SprintReview>> {
-        match self {
-            Backend::File(repository) => SprintReviewRepository::list(repository).await,
-            Backend::Git(repository) => SprintReviewRepository::list(repository).await,
-            #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintReviewRepository::list(repository).await,
-        }
-    }
-
-    async fn delete(&self, id: &SprintId) -> Result<()> {
-        match self {
-            Backend::File(repository) => SprintReviewRepository::delete(repository, id).await,
-            Backend::Git(repository) => SprintReviewRepository::delete(repository, id).await,
-            #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => SprintReviewRepository::delete(repository, id).await,
-        }
-    }
+fn record_kinds() -> [SprintRecordKind; 2] {
+    [SprintRecordKind::Retro, SprintRecordKind::Review]
 }
 
 #[cfg(test)]

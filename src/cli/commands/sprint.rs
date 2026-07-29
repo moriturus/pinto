@@ -7,25 +7,23 @@ use crate::cli::format::sprint::{
     format_sprints_with_timezone, format_velocity,
 };
 use crate::cli::json::{
-    burndown_json, review_json, reviews_json, sprint_capacity_json, sprint_goal_report_json,
-    sprints_json,
+    burndown_json, sprint_capacity_json, sprint_goal_report_json, sprint_record_json,
+    sprint_records_json, sprints_json,
 };
 use pinto::automation::AutomationProducerResult;
-use pinto::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId};
+use pinto::backlog::{ActionSource, BacklogItem, ItemId};
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::{
     SprintCloseAction, SprintDeletionOptions, assign_sprint_by_status, assign_sprint_raw, burndown,
-    close_sprint, create_sprint, create_sprint_retro, create_sprint_review,
-    delete_sprint_with_options, display_settings, edit_sprint, edit_sprint_retro,
-    edit_sprint_review, linked_action_items, list_sprint_retros, list_sprint_reviews, list_sprints,
-    set_sprint_capacity, show_sprint_retro, show_sprint_review, sprint_capacity, sprint_context,
+    close_sprint, create_sprint, create_sprint_record, delete_sprint_with_options,
+    display_settings, edit_sprint, edit_sprint_record, linked_action_items, list_sprint_records,
+    list_sprints, set_sprint_capacity, show_sprint_record, sprint_capacity, sprint_context,
     sprint_goal_report, sprint_load_warnings, start_sprint, template_body, unassign_sprint,
     velocity,
 };
 
-use pinto::retro::SprintRetro;
-use pinto::review::SprintReview;
 use pinto::sprint::SprintId;
+use pinto::sprint_record::{SprintRecord, SprintRecordKind};
 use pinto::template::{TemplateKind, TemplateName};
 use std::path::Path;
 use std::process::ExitCode;
@@ -53,24 +51,29 @@ async fn warn_sprint_load(dir: &Path, id: &SprintId, localizer: &Localizer) -> a
     Ok(())
 }
 
-/// Resolve a Retro creation body from direct text, a plain-text template, and optional editor
-/// input using the same precedence as the item add command.
-async fn retro_creation_body(
+/// Resolve a Sprint child-record creation body from direct text, a plain-text template, and
+/// optional editor input using the same precedence as the item add command.
+async fn record_creation_body(
     dir: &Path,
     sprint_id: &SprintId,
+    kind: SprintRecordKind,
     body: Option<String>,
     template: Option<String>,
     edit: bool,
 ) -> anyhow::Result<String> {
     let template_body = if let Some(template) = template {
         let template: TemplateName = template.parse()?;
-        Some(template_body(dir, TemplateKind::Retro, &template).await?)
+        let template_kind = match kind {
+            SprintRecordKind::Retro => TemplateKind::Retro,
+            SprintRecordKind::Review => TemplateKind::Review,
+        };
+        Some(template_body(dir, template_kind, &template).await?)
     } else {
         None
     };
     if edit {
         let initial = template_body.unwrap_or_default();
-        let slug = format!("retro-{sprint_id}");
+        let slug = format!("{}-{sprint_id}", kind.as_str());
         return tokio::task::spawn_blocking(move || {
             crate::cli::editor::edit_in_editor(&initial, &slug)
         })
@@ -85,62 +88,20 @@ async fn retro_creation_body(
     })
 }
 
-/// Open the standard editor for an existing Retro and return the edited body.
-async fn edit_retro_in_editor(retro: &SprintRetro) -> anyhow::Result<String> {
+/// Open the standard editor for an existing Sprint child record and return the edited body.
+async fn edit_record_in_editor(record: &SprintRecord) -> anyhow::Result<String> {
     if crate::cli::editor::resolve_editor().is_none() {
         return Err(pinto::error::Error::EditorNotSet.into());
     }
-    let initial = retro.body.clone();
-    let slug = format!("retro-{}", retro.id);
-    tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug)).await?
-}
-
-/// Resolve a Review creation body from direct text, a plain-text template, and optional editor
-/// input using the same precedence as the item add command.
-async fn review_creation_body(
-    dir: &Path,
-    sprint_id: &SprintId,
-    body: Option<String>,
-    template: Option<String>,
-    edit: bool,
-) -> anyhow::Result<String> {
-    let template_body = if let Some(template) = template {
-        let template: TemplateName = template.parse()?;
-        Some(template_body(dir, TemplateKind::Review, &template).await?)
-    } else {
-        None
-    };
-    if edit {
-        let initial = template_body.unwrap_or_default();
-        let slug = format!("review-{sprint_id}");
-        return tokio::task::spawn_blocking(move || {
-            crate::cli::editor::edit_in_editor(&initial, &slug)
-        })
-        .await?;
-    }
-
-    Ok(match (template_body, body) {
-        (Some(template), Some(body)) => super::item::combine_template_body(template, body),
-        (Some(template), None) => template,
-        (None, Some(body)) => body,
-        (None, None) => String::new(),
-    })
-}
-
-/// Open the standard editor for an existing Review and return the edited body.
-async fn edit_review_in_editor(review: &SprintReview) -> anyhow::Result<String> {
-    if crate::cli::editor::resolve_editor().is_none() {
-        return Err(pinto::error::Error::EditorNotSet.into());
-    }
-    let initial = review.body.clone();
-    let slug = format!("review-{}", review.id);
+    let initial = record.body.clone();
+    let slug = format!("{}-{}", record.kind.as_str(), record.id);
     tokio::task::spawn_blocking(move || crate::cli::editor::edit_in_editor(&initial, &slug)).await?
 }
 
 /// Create one ordinary PBI linked to a Retro or Review source record.
 async fn create_action_pbi(
     dir: &Path,
-    kind: ActionSourceKind,
+    kind: SprintRecordKind,
     sprint_id: SprintId,
     title: String,
     creation: PbiCreationArgs,
@@ -187,18 +148,18 @@ fn format_linked_actions(actions: &[BacklogItem], localizer: &Localizer) -> Stri
     out
 }
 
-/// Render one Review for the human-readable detail view.
-fn format_review_detail(review: &SprintReview) -> String {
-    if review.body.is_empty() {
-        format!("{}\n", review.id)
+/// Render one Sprint child record for the human-readable detail view.
+fn format_record_detail(record: &SprintRecord) -> String {
+    if record.body.is_empty() {
+        format!("{}\n", record.id)
     } else {
-        format!("{}\n{}\n", review.id, review.body)
+        format!("{}\n{}\n", record.id, record.body)
     }
 }
 
-/// Render a Review with generated parent-Sprint context followed by authored Markdown.
-fn format_review_detail_with_context(
-    review: &SprintReview,
+/// Render a Sprint child record with generated parent-Sprint context followed by authored Markdown.
+fn format_record_detail_with_context(
+    record: &SprintRecord,
     context: &pinto::service::SprintContext,
     actions: &[BacklogItem],
     timezone: pinto::timezone::DisplayTimezone,
@@ -208,47 +169,55 @@ fn format_review_detail_with_context(
         "{}\n{}Markdown\n{}",
         format_sprint_context(context, timezone),
         format_linked_actions(actions, localizer),
-        format_review_detail(review)
+        format_record_detail(record)
     )
 }
 
-/// Render the human-readable Review list.
-fn format_review_list(reviews: &[SprintReview]) -> String {
-    reviews
+/// Render the human-readable Sprint child-record list.
+fn format_record_list(records: &[SprintRecord]) -> String {
+    records
         .iter()
-        .map(|review| {
-            let summary = review.body.lines().next().unwrap_or("");
+        .map(|record| {
+            let summary = record.body.lines().next().unwrap_or("");
             if summary.is_empty() {
-                format!("{}\n", review.id)
+                format!("{}\n", record.id)
             } else {
-                format!("{}  {}\n", review.id, summary)
+                format!("{}  {}\n", record.id, summary)
             }
         })
         .collect()
 }
 
-/// Execute the sprint review namespace, including its direct creation shorthand.
-async fn cmd_review(args: ReviewArgs, localizer: &Localizer) -> anyhow::Result<ExitCode> {
+/// Execute a Sprint child-record namespace, including its direct creation shorthand.
+async fn cmd_sprint_record(
+    args: SprintRecordArgs,
+    kind: SprintRecordKind,
+    localizer: &Localizer,
+) -> anyhow::Result<ExitCode> {
     let dir = std::env::current_dir()?;
     match args.command {
-        Some(ReviewCommand::New {
+        Some(SprintRecordCommand::New {
             sprint_id,
             body,
             template,
             edit,
         }) => {
             let sprint_id: SprintId = sprint_id.parse()?;
-            let body = review_creation_body(&dir, &sprint_id, body, template, edit).await?;
-            let review = create_sprint_review(&dir, &sprint_id, body).await?;
+            let body = record_creation_body(&dir, &sprint_id, kind, body, template, edit).await?;
+            let record = create_sprint_record(&dir, kind, &sprint_id, body).await?;
             println!(
                 "{}",
                 localizer.format(
-                    Message::CreatedReview,
-                    [("id", review.id.to_string().as_str())],
+                    Message::CreatedSprintRecord,
+                    [
+                        ("id", record.id.to_string().as_str()),
+                        ("kind", kind.as_str()),
+                        ("label", kind.display_name()),
+                    ],
                 )
             );
         }
-        Some(ReviewCommand::Edit {
+        Some(SprintRecordCommand::Edit {
             sprint_id,
             body,
             edit: _,
@@ -257,240 +226,89 @@ async fn cmd_review(args: ReviewArgs, localizer: &Localizer) -> anyhow::Result<E
             let body = match body {
                 Some(body) => body,
                 None => {
-                    let review = show_sprint_review(&dir, &sprint_id).await?;
-                    edit_review_in_editor(&review).await?
+                    let record = show_sprint_record(&dir, kind, &sprint_id).await?;
+                    edit_record_in_editor(&record).await?
                 }
             };
-            let review = edit_sprint_review(&dir, &sprint_id, body).await?;
+            let record = edit_sprint_record(&dir, kind, &sprint_id, body).await?;
             println!(
                 "{}",
                 localizer.format(
-                    Message::UpdatedReview,
-                    [("id", review.id.to_string().as_str())],
+                    Message::UpdatedSprintRecord,
+                    [
+                        ("id", record.id.to_string().as_str()),
+                        ("kind", kind.as_str()),
+                        ("label", kind.display_name()),
+                    ],
                 )
             );
         }
-        Some(ReviewCommand::Action {
+        Some(SprintRecordCommand::Action {
             sprint_id,
             title,
             creation,
         }) => {
             let sprint_id: SprintId = sprint_id.parse()?;
-            create_action_pbi(&dir, ActionSourceKind::Review, sprint_id, title, creation).await?;
+            create_action_pbi(&dir, kind, sprint_id, title, creation).await?;
         }
-        Some(ReviewCommand::Show {
+        Some(SprintRecordCommand::Show {
             sprint_id,
             json,
             plain,
         }) => {
             let sprint_id: SprintId = sprint_id.parse()?;
-            let review = show_sprint_review(&dir, &sprint_id).await?;
+            let record = show_sprint_record(&dir, kind, &sprint_id).await?;
             if json {
                 let context = sprint_context(&dir, &sprint_id).await?;
-                let actions = linked_action_items(
-                    &dir,
-                    &ActionSource::new(ActionSourceKind::Review, sprint_id.clone()),
-                )
-                .await?;
-                println!("{}", review_json(&review, &context, &actions)?);
+                let actions =
+                    linked_action_items(&dir, &ActionSource::new(kind, sprint_id.clone())).await?;
+                println!("{}", sprint_record_json(&record, &context, &actions)?);
             } else if plain {
-                print!("{}", format_review_detail(&review));
+                print!("{}", format_record_detail(&record));
             } else {
                 let context = sprint_context(&dir, &sprint_id).await?;
-                let actions = linked_action_items(
-                    &dir,
-                    &ActionSource::new(ActionSourceKind::Review, sprint_id.clone()),
-                )
-                .await?;
+                let actions =
+                    linked_action_items(&dir, &ActionSource::new(kind, sprint_id.clone())).await?;
                 let timezone = display_settings(&dir).await?.timezone;
                 print!(
                     "{}",
-                    format_review_detail_with_context(
-                        &review, &context, &actions, timezone, localizer,
+                    format_record_detail_with_context(
+                        &record, &context, &actions, timezone, localizer,
                     )
                 );
             }
         }
-        Some(ReviewCommand::List { json }) => {
-            let reviews = list_sprint_reviews(&dir).await?;
+        Some(SprintRecordCommand::List { json }) => {
+            let records = list_sprint_records(&dir, kind).await?;
             if json {
-                println!("{}", reviews_json(&reviews)?);
-            } else if reviews.is_empty() {
-                println!("{}", localizer.text(Message::NoReviews));
-            } else {
-                print!("{}", format_review_list(&reviews));
-            }
-        }
-        None => {
-            let sprint_id = args
-                .sprint_id
-                .ok_or(pinto::error::Error::ReviewCommandRequired)?;
-            let sprint_id: SprintId = sprint_id.parse()?;
-            let body =
-                review_creation_body(&dir, &sprint_id, args.body, args.template, args.edit).await?;
-            let review = create_sprint_review(&dir, &sprint_id, body).await?;
-            println!(
-                "{}",
-                localizer.format(
-                    Message::CreatedReview,
-                    [("id", review.id.to_string().as_str())],
-                )
-            );
-        }
-    }
-    Ok(ExitCode::SUCCESS)
-}
-
-/// Render one Retro for the human-readable detail view.
-fn format_retro_detail(retro: &SprintRetro) -> String {
-    if retro.body.is_empty() {
-        format!("{}\n", retro.id)
-    } else {
-        format!("{}\n{}\n", retro.id, retro.body)
-    }
-}
-
-/// Render a Retro with generated parent-Sprint context followed by authored Markdown.
-fn format_retro_detail_with_context(
-    retro: &SprintRetro,
-    context: &pinto::service::SprintContext,
-    actions: &[BacklogItem],
-    timezone: pinto::timezone::DisplayTimezone,
-    localizer: &Localizer,
-) -> String {
-    format!(
-        "{}\n{}Markdown\n{}",
-        format_sprint_context(context, timezone),
-        format_linked_actions(actions, localizer),
-        format_retro_detail(retro)
-    )
-}
-
-/// Render the human-readable Retro list.
-fn format_retro_list(retros: &[SprintRetro]) -> String {
-    retros
-        .iter()
-        .map(|retro| {
-            let summary = retro.body.lines().next().unwrap_or("");
-            if summary.is_empty() {
-                format!("{}\n", retro.id)
-            } else {
-                format!("{}  {}\n", retro.id, summary)
-            }
-        })
-        .collect()
-}
-
-/// Execute the sprint retro namespace, including its direct creation shorthand.
-async fn cmd_retro(args: RetroArgs, localizer: &Localizer) -> anyhow::Result<ExitCode> {
-    let dir = std::env::current_dir()?;
-    match args.command {
-        Some(RetroCommand::New {
-            sprint_id,
-            body,
-            template,
-            edit,
-        }) => {
-            let sprint_id: SprintId = sprint_id.parse()?;
-            let body = retro_creation_body(&dir, &sprint_id, body, template, edit).await?;
-            let retro = create_sprint_retro(&dir, &sprint_id, body).await?;
-            println!(
-                "{}",
-                localizer.format(
-                    Message::CreatedRetro,
-                    [("id", retro.id.to_string().as_str())],
-                )
-            );
-        }
-        Some(RetroCommand::Edit {
-            sprint_id,
-            body,
-            edit: _,
-        }) => {
-            let sprint_id: SprintId = sprint_id.parse()?;
-            let body = match body {
-                Some(body) => body,
-                None => {
-                    let retro = show_sprint_retro(&dir, &sprint_id).await?;
-                    edit_retro_in_editor(&retro).await?
-                }
-            };
-            let retro = edit_sprint_retro(&dir, &sprint_id, body).await?;
-            println!(
-                "{}",
-                localizer.format(
-                    Message::UpdatedRetro,
-                    [("id", retro.id.to_string().as_str())],
-                )
-            );
-        }
-        Some(RetroCommand::Action {
-            sprint_id,
-            title,
-            creation,
-        }) => {
-            let sprint_id: SprintId = sprint_id.parse()?;
-            create_action_pbi(&dir, ActionSourceKind::Retro, sprint_id, title, creation).await?;
-        }
-        Some(RetroCommand::Show {
-            sprint_id,
-            json,
-            plain,
-        }) => {
-            let sprint_id: SprintId = sprint_id.parse()?;
-            let retro = show_sprint_retro(&dir, &sprint_id).await?;
-            if json {
-                let context = sprint_context(&dir, &sprint_id).await?;
-                let actions = linked_action_items(
-                    &dir,
-                    &ActionSource::new(ActionSourceKind::Retro, sprint_id.clone()),
-                )
-                .await?;
+                println!("{}", sprint_records_json(&records)?);
+            } else if records.is_empty() {
                 println!(
                     "{}",
-                    crate::cli::json::retro_json(&retro, &context, &actions)?
+                    localizer.format(Message::NoSprintRecords, [("plural", kind.plural_name())],)
                 );
-            } else if plain {
-                print!("{}", format_retro_detail(&retro));
             } else {
-                let context = sprint_context(&dir, &sprint_id).await?;
-                let actions = linked_action_items(
-                    &dir,
-                    &ActionSource::new(ActionSourceKind::Retro, sprint_id.clone()),
-                )
-                .await?;
-                let timezone = display_settings(&dir).await?.timezone;
-                print!(
-                    "{}",
-                    format_retro_detail_with_context(
-                        &retro, &context, &actions, timezone, localizer,
-                    )
-                );
-            }
-        }
-        Some(RetroCommand::List { json }) => {
-            let retros = list_sprint_retros(&dir).await?;
-            if json {
-                println!("{}", crate::cli::json::retros_json(&retros)?);
-            } else if retros.is_empty() {
-                println!("{}", localizer.text(Message::NoRetros));
-            } else {
-                print!("{}", format_retro_list(&retros));
+                print!("{}", format_record_list(&records));
             }
         }
         None => {
             let sprint_id = args
                 .sprint_id
-                .ok_or(pinto::error::Error::RetroCommandRequired)?;
+                .ok_or(pinto::error::Error::SprintRecordCommandRequired(kind))?;
             let sprint_id: SprintId = sprint_id.parse()?;
             let body =
-                retro_creation_body(&dir, &sprint_id, args.body, args.template, args.edit).await?;
-            let retro = create_sprint_retro(&dir, &sprint_id, body).await?;
+                record_creation_body(&dir, &sprint_id, kind, args.body, args.template, args.edit)
+                    .await?;
+            let record = create_sprint_record(&dir, kind, &sprint_id, body).await?;
             println!(
                 "{}",
                 localizer.format(
-                    Message::CreatedRetro,
-                    [("id", retro.id.to_string().as_str())],
+                    Message::CreatedSprintRecord,
+                    [
+                        ("id", record.id.to_string().as_str()),
+                        ("kind", kind.as_str()),
+                        ("label", kind.display_name()),
+                    ],
                 )
             );
         }
@@ -746,8 +564,12 @@ pub(super) async fn cmd_sprint_with_localizer(
                 print!("{}", format_sprint_capacity(&capacity));
             }
         }
-        SprintCommand::Retro(args) => return cmd_retro(args, localizer).await,
-        SprintCommand::Review(args) => return cmd_review(args, localizer).await,
+        SprintCommand::Retro(args) => {
+            return cmd_sprint_record(args, SprintRecordKind::Retro, localizer).await;
+        }
+        SprintCommand::Review(args) => {
+            return cmd_sprint_record(args, SprintRecordKind::Review, localizer).await;
+        }
     }
     Ok(ExitCode::SUCCESS)
 }

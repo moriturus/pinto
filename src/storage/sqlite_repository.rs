@@ -49,20 +49,17 @@
 
 use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
-use crate::retro::SprintRetro;
-use crate::review::SprintReview;
 use crate::sprint::Sprint;
+use crate::sprint_record::SprintRecord;
 use crate::storage::{
-    FileRepository, SprintRetroRepository, SprintReviewRepository, WriteFailureInjector,
-    record_issued_ids,
+    FileRepository, SprintRecordRepository, WriteFailureInjector, record_issued_ids,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::path::{Path, PathBuf};
 
 mod items;
-mod retros;
-mod reviews;
+mod records;
 mod sprints;
 #[cfg(test)]
 mod tests;
@@ -191,14 +188,12 @@ impl SqliteRepository {
         &self,
         items: &[BacklogItem],
         sprints: &[Sprint],
-        retros: &[SprintRetro],
-        reviews: &[SprintReview],
+        records: &[SprintRecord],
     ) -> Result<()> {
         let db = self.db_path();
         let items = items.to_vec();
         let sprints = sprints.to_vec();
-        let retros = retros.to_vec();
-        let reviews = reviews.to_vec();
+        let records = records.to_vec();
         let issued_items = items.clone();
         let failure = self.failure.clone();
         let old_ids = tokio::task::spawn_blocking(move || {
@@ -244,28 +239,23 @@ impl SqliteRepository {
             .collect::<Result<Vec<_>>>()?;
         issued.extend(issued_items.iter().map(|item| item.id.clone()));
         record_issued_ids(&self.root, &issued).await?;
-        replace_child_records(&self.root, &retros, &reviews).await
+        replace_child_records(&self.root, &records).await
     }
 }
 
 /// Replace child records that remain plain Markdown even when items and Sprints use SQLite.
-async fn replace_child_records(
-    root: &Path,
-    retros: &[SprintRetro],
-    reviews: &[SprintReview],
-) -> Result<()> {
+async fn replace_child_records(root: &Path, records: &[SprintRecord]) -> Result<()> {
     let repository = FileRepository::new(root.to_path_buf());
-    for retro in SprintRetroRepository::list(&repository).await? {
-        SprintRetroRepository::delete(&repository, &retro.id).await?;
+    for kind in [
+        crate::sprint_record::SprintRecordKind::Retro,
+        crate::sprint_record::SprintRecordKind::Review,
+    ] {
+        for record in SprintRecordRepository::list(&repository, kind).await? {
+            SprintRecordRepository::delete(&repository, kind, &record.id).await?;
+        }
     }
-    for review in SprintReviewRepository::list(&repository).await? {
-        SprintReviewRepository::delete(&repository, &review.id).await?;
-    }
-    for retro in retros {
-        SprintRetroRepository::save(&repository, retro).await?;
-    }
-    for review in reviews {
-        SprintReviewRepository::save(&repository, review).await?;
+    for record in records {
+        SprintRecordRepository::save(&repository, record).await?;
     }
     Ok(())
 }

@@ -89,15 +89,16 @@ pub async fn import_board(
     // this is the current backend; otherwise the configuration switch below points future reads at
     // the restored data (like `migrate`).
     let target = Backend::open_for_write(&board_dir, config.storage.backend).await?;
+    let records = snapshot
+        .retros
+        .iter()
+        .chain(snapshot.reviews.iter())
+        .cloned()
+        .collect::<Vec<_>>();
 
     let recovery = BoardRecoveryPoint::capture(&board_dir).await?;
     if let Err(error) = target
-        .replace_board(
-            &snapshot.items,
-            &snapshot.sprints,
-            &snapshot.retros,
-            &snapshot.reviews,
-        )
+        .replace_board(&snapshot.items, &snapshot.sprints, &records)
         .await
     {
         return restore_board_after_failure(recovery, "forced board import", error).await;

@@ -7,12 +7,9 @@ use super::FileRepository;
 use crate::backlog::{BacklogItem, ItemId, Status};
 use crate::error::Error;
 use crate::rank::Rank;
-use crate::retro::SprintRetro;
-use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId};
-use crate::storage::repository::{
-    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
-};
+use crate::sprint_record::{SprintRecord, SprintRecordKind};
+use crate::storage::repository::{BacklogItemRepository, SprintRecordRepository, SprintRepository};
 use chrono::{DateTime, TimeZone, Utc};
 use tempfile::TempDir;
 use tokio::fs;
@@ -228,21 +225,22 @@ async fn list_on_uninitialized_dir_is_empty_not_error() {
 #[tokio::test]
 async fn retro_roundtrips_in_the_dedicated_directory() {
     let (_dir, repo) = repo();
-    let retro = SprintRetro::new(
+    let retro = SprintRecord::new(
+        SprintRecordKind::Retro,
         SprintId::new("S-1").expect("valid sprint ID"),
         "notes",
         ts(1_000),
     );
 
-    SprintRetroRepository::save(&repo, &retro)
+    SprintRecordRepository::save(&repo, &retro)
         .await
         .expect("save Retro");
-    let loaded = SprintRetroRepository::load(&repo, &retro.id)
+    let loaded = SprintRecordRepository::load(&repo, SprintRecordKind::Retro, &retro.id)
         .await
         .expect("load Retro");
 
     assert_eq!(loaded, retro);
-    let path = repo.retro_dir().join("S-1.md");
+    let path = repo.record_dir(SprintRecordKind::Retro).join("S-1.md");
     assert!(path.is_file());
     assert!(!repo.sprints_dir().join("S-1.md").exists());
     let text = fs::read_to_string(path).await.expect("read Retro");
@@ -253,22 +251,23 @@ async fn retro_roundtrips_in_the_dedicated_directory() {
 #[tokio::test]
 async fn retro_list_rejects_filename_frontmatter_id_mismatch() {
     let (_dir, repo) = repo();
-    let retro = SprintRetro::new(
+    let retro = SprintRecord::new(
+        SprintRecordKind::Retro,
         SprintId::new("S-2").expect("valid sprint ID"),
         "notes",
         ts(1_000),
     );
-    SprintRetroRepository::save(&repo, &retro)
+    SprintRecordRepository::save(&repo, &retro)
         .await
         .expect("save Retro");
     fs::rename(
-        repo.retro_dir().join("S-2.md"),
-        repo.retro_dir().join("S-1.md"),
+        repo.record_dir(SprintRecordKind::Retro).join("S-2.md"),
+        repo.record_dir(SprintRecordKind::Retro).join("S-1.md"),
     )
     .await
     .expect("rename corrupt fixture");
 
-    let err = SprintRetroRepository::list(&repo)
+    let err = SprintRecordRepository::list(&repo, SprintRecordKind::Retro)
         .await
         .expect_err("filename/frontmatter mismatch must fail fast");
     assert!(err.to_string().contains("filename"), "got {err}");
@@ -277,21 +276,22 @@ async fn retro_list_rejects_filename_frontmatter_id_mismatch() {
 #[tokio::test]
 async fn review_roundtrips_in_the_dedicated_directory() {
     let (_dir, repo) = repo();
-    let review = SprintReview::new(
+    let review = SprintRecord::new(
+        SprintRecordKind::Review,
         SprintId::new("S-1").expect("valid sprint ID"),
         "notes",
         ts(1_000),
     );
 
-    SprintReviewRepository::save(&repo, &review)
+    SprintRecordRepository::save(&repo, &review)
         .await
         .expect("save Review");
-    let loaded = SprintReviewRepository::load(&repo, &review.id)
+    let loaded = SprintRecordRepository::load(&repo, SprintRecordKind::Review, &review.id)
         .await
         .expect("load Review");
 
     assert_eq!(loaded, review);
-    let path = repo.review_dir().join("S-1.md");
+    let path = repo.record_dir(SprintRecordKind::Review).join("S-1.md");
     assert!(path.is_file());
     assert!(!repo.sprints_dir().join("S-1.md").exists());
     let text = fs::read_to_string(path).await.expect("read Review");
@@ -302,22 +302,23 @@ async fn review_roundtrips_in_the_dedicated_directory() {
 #[tokio::test]
 async fn review_list_rejects_filename_frontmatter_id_mismatch() {
     let (_dir, repo) = repo();
-    let review = SprintReview::new(
+    let review = SprintRecord::new(
+        SprintRecordKind::Review,
         SprintId::new("S-2").expect("valid sprint ID"),
         "notes",
         ts(1_000),
     );
-    SprintReviewRepository::save(&repo, &review)
+    SprintRecordRepository::save(&repo, &review)
         .await
         .expect("save Review");
     fs::rename(
-        repo.review_dir().join("S-2.md"),
-        repo.review_dir().join("S-1.md"),
+        repo.record_dir(SprintRecordKind::Review).join("S-2.md"),
+        repo.record_dir(SprintRecordKind::Review).join("S-1.md"),
     )
     .await
     .expect("rename corrupt fixture");
 
-    let err = SprintReviewRepository::list(&repo)
+    let err = SprintRecordRepository::list(&repo, SprintRecordKind::Review)
         .await
         .expect_err("filename/frontmatter mismatch must fail fast");
     assert!(err.to_string().contains("filename"), "got {err}");

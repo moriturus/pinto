@@ -6,6 +6,7 @@
 use crate::backlog::ItemId;
 use crate::i18n::{Localizer, Message};
 use crate::sprint::{SprintId, SprintState};
+use crate::sprint_record::SprintRecordKind;
 use crate::template::TemplateName;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -130,31 +131,23 @@ pub enum Error {
     )]
     SprintRecordsExist { id: SprintId, records: String },
 
-    /// A Sprint Retro with the specified Sprint ID cannot be found.
-    #[error("retro not found: {0}")]
-    RetroNotFound(SprintId),
+    /// A Sprint child record with the specified kind and ID cannot be found.
+    #[error("{kind} not found: {id}")]
+    SprintRecordNotFound {
+        kind: SprintRecordKind,
+        id: SprintId,
+    },
 
-    /// A Sprint already has a Retro record.
-    #[error("retro already exists: {0} (use `sprint retro edit` to update it)")]
-    RetroExists(SprintId),
+    /// A Sprint already has a child record of the requested kind.
+    #[error("{kind} already exists: {id} (use `sprint {kind} edit` to update it)")]
+    SprintRecordExists {
+        kind: SprintRecordKind,
+        id: SprintId,
+    },
 
-    /// The `sprint retro` namespace was invoked without an operation or Sprint ID.
-    #[error("sprint retro requires a Sprint ID or a nested operation (use `sprint retro --help`)")]
-    RetroCommandRequired,
-
-    /// A Sprint Review with the specified Sprint ID cannot be found.
-    #[error("review not found: {0}")]
-    ReviewNotFound(SprintId),
-
-    /// A Sprint already has a Review record.
-    #[error("review already exists: {0} (use `sprint review edit` to update it)")]
-    ReviewExists(SprintId),
-
-    /// The `sprint review` namespace was invoked without an operation or Sprint ID.
-    #[error(
-        "sprint review requires a Sprint ID or a nested operation (use `sprint review --help`)"
-    )]
-    ReviewCommandRequired,
+    /// A Sprint child-record namespace was invoked without an operation or Sprint ID.
+    #[error("sprint {0} requires a Sprint ID or a nested operation (use `sprint {0} --help`)")]
+    SprintRecordCommandRequired(SprintRecordKind),
 
     /// A PBI cannot be assigned to a Sprint after that Sprint has been closed.
     #[error(
@@ -390,12 +383,18 @@ impl Error {
             Self::SprintNotFound(_) => "sprint-not-found",
             Self::SprintExists(_) => "sprint-exists",
             Self::SprintRecordsExist { .. } => "sprint-records-exist",
-            Self::RetroNotFound(_) => "retro-not-found",
-            Self::RetroExists(_) => "retro-exists",
-            Self::RetroCommandRequired => "retro-command-required",
-            Self::ReviewNotFound(_) => "review-not-found",
-            Self::ReviewExists(_) => "review-exists",
-            Self::ReviewCommandRequired => "review-command-required",
+            Self::SprintRecordNotFound { kind, .. } => match kind {
+                SprintRecordKind::Retro => "retro-not-found",
+                SprintRecordKind::Review => "review-not-found",
+            },
+            Self::SprintRecordExists { kind, .. } => match kind {
+                SprintRecordKind::Retro => "retro-exists",
+                SprintRecordKind::Review => "review-exists",
+            },
+            Self::SprintRecordCommandRequired(kind) => match kind {
+                SprintRecordKind::Retro => "retro-command-required",
+                SprintRecordKind::Review => "review-command-required",
+            },
             Self::SprintClosed(_) => "sprint-closed",
             Self::InvalidSprintPeriod { .. } => "invalid-sprint-period",
             Self::InvalidDailyWorkHours(_) => "invalid-daily-work-hours",
@@ -521,12 +520,23 @@ impl Error {
                 "id" => id,
                 "records" => records,
             ),
-            Self::RetroNotFound(id) => message!(Message::ErrorRetroNotFound, "id" => id),
-            Self::RetroExists(id) => message!(Message::ErrorRetroExists, "id" => id),
-            Self::RetroCommandRequired => localizer.text(Message::ErrorRetroCommandRequired),
-            Self::ReviewNotFound(id) => message!(Message::ErrorReviewNotFound, "id" => id),
-            Self::ReviewExists(id) => message!(Message::ErrorReviewExists, "id" => id),
-            Self::ReviewCommandRequired => localizer.text(Message::ErrorReviewCommandRequired),
+            Self::SprintRecordNotFound { kind, id } => message!(
+                Message::ErrorSprintRecordNotFound,
+                "kind" => kind.as_str(),
+                "label" => kind.display_name(),
+                "id" => id,
+            ),
+            Self::SprintRecordExists { kind, id } => message!(
+                Message::ErrorSprintRecordExists,
+                "kind" => kind.as_str(),
+                "label" => kind.display_name(),
+                "id" => id,
+            ),
+            Self::SprintRecordCommandRequired(kind) => message!(
+                Message::ErrorSprintRecordCommandRequired,
+                "kind" => kind.as_str(),
+                "label" => kind.display_name(),
+            ),
             Self::SprintClosed(id) => message!(Message::ErrorSprintClosed, "id" => id),
             Self::InvalidSprintPeriod { start, end } => message!(
                 Message::ErrorInvalidSprintPeriod,
@@ -686,12 +696,9 @@ impl Error {
                 | Error::SprintNotFound(_)
                 | Error::SprintExists(_)
                 | Error::SprintRecordsExist { .. }
-                | Error::RetroNotFound(_)
-                | Error::RetroExists(_)
-                | Error::RetroCommandRequired
-                | Error::ReviewNotFound(_)
-                | Error::ReviewExists(_)
-                | Error::ReviewCommandRequired
+                | Error::SprintRecordNotFound { .. }
+                | Error::SprintRecordExists { .. }
+                | Error::SprintRecordCommandRequired(_)
                 | Error::SprintClosed(_)
                 | Error::InvalidSprintPeriod { .. }
                 | Error::InvalidDailyWorkHours(_)
@@ -762,12 +769,24 @@ mod tests {
                 id: SprintId::new("S-1").unwrap(),
                 records: "Retro, Review".into(),
             },
-            Error::RetroNotFound(SprintId::new("S-1").unwrap()),
-            Error::RetroExists(SprintId::new("S-1").unwrap()),
-            Error::RetroCommandRequired,
-            Error::ReviewNotFound(SprintId::new("S-1").unwrap()),
-            Error::ReviewExists(SprintId::new("S-1").unwrap()),
-            Error::ReviewCommandRequired,
+            Error::SprintRecordNotFound {
+                kind: SprintRecordKind::Retro,
+                id: SprintId::new("S-1").unwrap(),
+            },
+            Error::SprintRecordExists {
+                kind: SprintRecordKind::Retro,
+                id: SprintId::new("S-1").unwrap(),
+            },
+            Error::SprintRecordCommandRequired(SprintRecordKind::Retro),
+            Error::SprintRecordNotFound {
+                kind: SprintRecordKind::Review,
+                id: SprintId::new("S-1").unwrap(),
+            },
+            Error::SprintRecordExists {
+                kind: SprintRecordKind::Review,
+                id: SprintId::new("S-1").unwrap(),
+            },
+            Error::SprintRecordCommandRequired(SprintRecordKind::Review),
             Error::SprintClosed(SprintId::new("S-1").unwrap()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
@@ -925,12 +944,24 @@ mod tests {
                 id: sprint.clone(),
                 records: "Retro".into(),
             },
-            Error::RetroNotFound(sprint.clone()),
-            Error::RetroExists(sprint.clone()),
-            Error::RetroCommandRequired,
-            Error::ReviewNotFound(sprint.clone()),
-            Error::ReviewExists(sprint.clone()),
-            Error::ReviewCommandRequired,
+            Error::SprintRecordNotFound {
+                kind: SprintRecordKind::Retro,
+                id: sprint.clone(),
+            },
+            Error::SprintRecordExists {
+                kind: SprintRecordKind::Retro,
+                id: sprint.clone(),
+            },
+            Error::SprintRecordCommandRequired(SprintRecordKind::Retro),
+            Error::SprintRecordNotFound {
+                kind: SprintRecordKind::Review,
+                id: sprint.clone(),
+            },
+            Error::SprintRecordExists {
+                kind: SprintRecordKind::Review,
+                id: sprint.clone(),
+            },
+            Error::SprintRecordCommandRequired(SprintRecordKind::Review),
             Error::SprintClosed(sprint.clone()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),

@@ -11,13 +11,12 @@ use chrono::{DateTime, Utc};
 use pinto::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
-use pinto::retro::SprintRetro;
-use pinto::review::SprintReview;
 use pinto::service::{
     Board, BoardSnapshot, Burndown, CycleTimeReport, DurationSummary, ItemDetail, SprintContext,
     SprintGoalReport,
 };
 use pinto::sprint::{Sprint, SprintCapacity, SprintId, SprintSpillover, SprintState};
+use pinto::sprint_record::{SprintRecord, SprintRecordKind};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -169,9 +168,9 @@ impl SprintJson {
     }
 }
 
-/// JSON representation of a Sprint Retro record.
+/// JSON representation of a Sprint child record.
 #[derive(Debug, Serialize, Deserialize)]
-struct RetroJson {
+struct SprintRecordJson {
     id: String,
     sprint_id: String,
     body: String,
@@ -179,41 +178,37 @@ struct RetroJson {
     updated: String,
 }
 
-impl RetroJson {
-    fn from_retro(retro: &SprintRetro) -> Self {
+impl SprintRecordJson {
+    fn from_record(record: &SprintRecord) -> Self {
         Self {
-            id: retro.id.to_string(),
-            sprint_id: retro.id.to_string(),
-            body: retro.body.clone(),
-            created: retro.created.to_rfc3339(),
-            updated: retro.updated.to_rfc3339(),
+            id: record.id.to_string(),
+            sprint_id: record.id.to_string(),
+            body: record.body.clone(),
+            created: record.created.to_rfc3339(),
+            updated: record.updated.to_rfc3339(),
         }
     }
 
-    fn into_retro(self) -> Result<SprintRetro, Error> {
+    fn into_record(self, kind: SprintRecordKind) -> Result<SprintRecord, Error> {
         let id = SprintId::from_str(&self.id)?;
         let sprint_id = SprintId::from_str(&self.sprint_id)?;
         if id != sprint_id {
             return Err(Error::Parse {
                 path: PathBuf::from(SNAPSHOT_LABEL),
-                message: format!("Retro ID `{id}` does not match parent Sprint ID `{sprint_id}`"),
+                message: format!(
+                    "{} ID `{id}` does not match parent Sprint ID `{sprint_id}`",
+                    kind.display_name()
+                ),
             });
         }
-        Ok(SprintRetro {
+        Ok(SprintRecord {
+            kind,
             id,
             body: self.body,
             created: parse_timestamp(&self.created)?,
             updated: parse_timestamp(&self.updated)?,
         })
     }
-}
-
-#[derive(Debug, Serialize)]
-struct RetroDetailJson {
-    #[serde(flatten)]
-    record: RetroJson,
-    context: SprintContextJson,
-    actions: Vec<LinkedActionJson>,
 }
 
 /// Minimal PBI fields shown from a Retro or Review source record.
@@ -234,89 +229,31 @@ impl LinkedActionJson {
     }
 }
 
-/// Format one Sprint Retro detail as a one-element JSON array, matching PBI show output.
-pub(super) fn retro_json(
-    retro: &SprintRetro,
+/// Format one Sprint child-record detail as a one-element JSON array, matching PBI show output.
+pub(super) fn sprint_record_json(
+    record: &SprintRecord,
     context: &SprintContext,
     actions: &[BacklogItem],
 ) -> serde_json::Result<String> {
-    serde_json::to_string_pretty(&[RetroDetailJson {
-        record: RetroJson::from_retro(retro),
+    serde_json::to_string_pretty(&[SprintRecordDetailJson {
+        record: SprintRecordJson::from_record(record),
         context: SprintContextJson::from_context(context),
         actions: actions.iter().map(LinkedActionJson::from_item).collect(),
     }])
 }
 
-/// Format Sprint Retros as a JSON array.
-pub(super) fn retros_json(retros: &[SprintRetro]) -> serde_json::Result<String> {
-    let dto: Vec<RetroJson> = retros.iter().map(RetroJson::from_retro).collect();
+/// Format Sprint child records as a JSON array.
+pub(super) fn sprint_records_json(records: &[SprintRecord]) -> serde_json::Result<String> {
+    let dto: Vec<SprintRecordJson> = records.iter().map(SprintRecordJson::from_record).collect();
     serde_json::to_string_pretty(&dto)
-}
-
-/// JSON representation of a Sprint Review record.
-#[derive(Debug, Serialize, Deserialize)]
-struct ReviewJson {
-    id: String,
-    sprint_id: String,
-    body: String,
-    created: String,
-    updated: String,
-}
-
-impl ReviewJson {
-    fn from_review(review: &SprintReview) -> Self {
-        Self {
-            id: review.id.to_string(),
-            sprint_id: review.id.to_string(),
-            body: review.body.clone(),
-            created: review.created.to_rfc3339(),
-            updated: review.updated.to_rfc3339(),
-        }
-    }
-
-    fn into_review(self) -> Result<SprintReview, Error> {
-        let id = SprintId::from_str(&self.id)?;
-        let sprint_id = SprintId::from_str(&self.sprint_id)?;
-        if id != sprint_id {
-            return Err(Error::Parse {
-                path: PathBuf::from(SNAPSHOT_LABEL),
-                message: format!("Review ID `{id}` does not match parent Sprint ID `{sprint_id}`"),
-            });
-        }
-        Ok(SprintReview {
-            id,
-            body: self.body,
-            created: parse_timestamp(&self.created)?,
-            updated: parse_timestamp(&self.updated)?,
-        })
-    }
 }
 
 #[derive(Debug, Serialize)]
-struct ReviewDetailJson {
+struct SprintRecordDetailJson {
     #[serde(flatten)]
-    record: ReviewJson,
+    record: SprintRecordJson,
     context: SprintContextJson,
     actions: Vec<LinkedActionJson>,
-}
-
-/// Format one Sprint Review detail as a one-element JSON array, matching PBI show output.
-pub(super) fn review_json(
-    review: &SprintReview,
-    context: &SprintContext,
-    actions: &[BacklogItem],
-) -> serde_json::Result<String> {
-    serde_json::to_string_pretty(&[ReviewDetailJson {
-        record: ReviewJson::from_review(review),
-        context: SprintContextJson::from_context(context),
-        actions: actions.iter().map(LinkedActionJson::from_item).collect(),
-    }])
-}
-
-/// Format Sprint Reviews as a JSON array.
-pub(super) fn reviews_json(reviews: &[SprintReview]) -> serde_json::Result<String> {
-    let dto: Vec<ReviewJson> = reviews.iter().map(ReviewJson::from_review).collect();
-    serde_json::to_string_pretty(&dto)
 }
 
 #[derive(Debug, Serialize)]
@@ -505,9 +442,9 @@ struct ExportJson {
     items: Vec<ItemJson>,
     sprints: Vec<SprintJson>,
     #[serde(default)]
-    retros: Vec<RetroJson>,
+    retros: Vec<SprintRecordJson>,
     #[serde(default)]
-    reviews: Vec<ReviewJson>,
+    reviews: Vec<SprintRecordJson>,
     config: serde_json::Value,
     dod: Option<String>,
 }
@@ -521,11 +458,15 @@ pub(super) fn export_json(snapshot: &BoardSnapshot) -> serde_json::Result<String
             .iter()
             .map(SprintJson::from_sprint)
             .collect(),
-        retros: snapshot.retros.iter().map(RetroJson::from_retro).collect(),
+        retros: snapshot
+            .retros
+            .iter()
+            .map(SprintRecordJson::from_record)
+            .collect(),
         reviews: snapshot
             .reviews
             .iter()
-            .map(ReviewJson::from_review)
+            .map(SprintRecordJson::from_record)
             .collect(),
         config: snapshot.config.clone(),
         dod: snapshot.dod.clone(),
@@ -560,12 +501,12 @@ pub(super) fn parse_export(json: &str) -> Result<BoardSnapshot, Error> {
     let retros = dto
         .retros
         .into_iter()
-        .map(RetroJson::into_retro)
+        .map(|record| record.into_record(SprintRecordKind::Retro))
         .collect::<Result<Vec<_>, _>>()?;
     let reviews = dto
         .reviews
         .into_iter()
-        .map(ReviewJson::into_review)
+        .map(|record| record.into_record(SprintRecordKind::Review))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(BoardSnapshot {
         items,

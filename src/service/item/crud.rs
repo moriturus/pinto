@@ -1,8 +1,7 @@
 //! CRUD operations for backlog items: add, list, show, move, and remove.
 
 use crate::backlog::{
-    AcceptanceCriteriaProgress, ActionSource, ActionSourceKind, BacklogItem, ItemId, Status,
-    Workflow,
+    AcceptanceCriteriaProgress, ActionSource, BacklogItem, ItemId, Status, Workflow,
 };
 use crate::error::{Error, Result};
 use crate::rank::Rank;
@@ -95,14 +94,7 @@ pub async fn add_item_with_outcome(
         source,
     } = new;
     if let Some(source) = &source {
-        match source.kind {
-            ActionSourceKind::Retro => {
-                crate::storage::SprintRetroRepository::load(&repo, &source.sprint_id).await?;
-            }
-            ActionSourceKind::Review => {
-                crate::storage::SprintReviewRepository::load(&repo, &source.sprint_id).await?;
-            }
-        }
+        crate::storage::SprintRecordRepository::load(&repo, source.kind, &source.sprint_id).await?;
     }
     let sprint = match sprint {
         Some(raw) => Some(validate_sprint_assignment(&repo, &raw).await?.to_string()),

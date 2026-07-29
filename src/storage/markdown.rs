@@ -3,9 +3,8 @@
 use crate::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
-use crate::retro::SprintRetro;
-use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
+use crate::sprint_record::{SprintRecord, SprintRecordKind};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -313,30 +312,37 @@ pub(super) fn sprint_from_markdown(text: &str, path: &Path) -> Result<Sprint> {
     fm.into_sprint(goal.to_string(), path)
 }
 
-/// Retro frontmatter fields. The Sprint ID is both the record identity and the filename stem;
-/// the retrospective content remains the Markdown body.
+/// Sprint child-record frontmatter fields. The Sprint ID is both the record identity and the
+/// filename stem; the record content remains the Markdown body. The kind is selected by the
+/// dedicated on-disk directory and is intentionally not stored in existing files.
 #[derive(Debug, Serialize, Deserialize)]
-struct RetroFrontmatter {
+struct RecordFrontmatter {
     id: String,
     created: DateTime<Utc>,
     updated: DateTime<Utc>,
 }
 
-impl RetroFrontmatter {
-    fn from_retro(retro: &SprintRetro) -> Self {
+impl RecordFrontmatter {
+    fn from_record(record: &SprintRecord) -> Self {
         Self {
-            id: retro.id.to_string(),
-            created: retro.created,
-            updated: retro.updated,
+            id: record.id.to_string(),
+            created: record.created,
+            updated: record.updated,
         }
     }
 
-    fn into_retro(self, body: String, path: &Path) -> Result<SprintRetro> {
+    fn into_record(
+        self,
+        kind: SprintRecordKind,
+        body: String,
+        path: &Path,
+    ) -> Result<SprintRecord> {
         let id = self
             .id
             .parse::<SprintId>()
             .map_err(|error| Error::parse(path, error.to_string()))?;
-        Ok(SprintRetro {
+        Ok(SprintRecord {
+            kind,
             id,
             body,
             created: self.created,
@@ -345,80 +351,30 @@ impl RetroFrontmatter {
     }
 }
 
-/// Format a Sprint Retro into `+++` frontmatter plus Markdown body.
-pub(super) fn retro_to_markdown(retro: &SprintRetro) -> Result<String> {
-    let frontmatter = RetroFrontmatter::from_retro(retro);
+/// Format a Sprint child record into `+++` frontmatter plus Markdown body.
+pub(super) fn record_to_markdown(record: &SprintRecord) -> Result<String> {
+    let frontmatter = RecordFrontmatter::from_record(record);
     let toml = toml::to_string(&frontmatter).map_err(|error| {
         Error::parse(
-            &PathBuf::from(format!("{}.md", retro.id)),
+            &PathBuf::from(format!("{}.md", record.id)),
             error.to_string(),
         )
     })?;
-    Ok(assemble_markdown(&toml, &retro.body))
+    Ok(assemble_markdown(&toml, &record.body))
 }
 
-/// Parse a Sprint Retro Markdown document.
-pub(super) fn retro_from_markdown(text: &str, path: &Path) -> Result<SprintRetro> {
+/// Parse a Sprint child-record Markdown document from its kind-specific directory.
+pub(super) fn record_from_markdown(
+    text: &str,
+    path: &Path,
+    kind: SprintRecordKind,
+) -> Result<SprintRecord> {
     let (front, body) = split_frontmatter(text).ok_or_else(|| Error::MissingFrontmatter {
         path: path.to_path_buf(),
     })?;
-    let frontmatter: RetroFrontmatter =
+    let frontmatter: RecordFrontmatter =
         toml::from_str(front).map_err(|error| Error::parse(path, error.to_string()))?;
-    frontmatter.into_retro(body.to_string(), path)
-}
-
-/// Review frontmatter fields. The Sprint ID is both the record identity and the filename stem;
-/// the Review content remains the Markdown body.
-#[derive(Debug, Serialize, Deserialize)]
-struct ReviewFrontmatter {
-    id: String,
-    created: DateTime<Utc>,
-    updated: DateTime<Utc>,
-}
-
-impl ReviewFrontmatter {
-    fn from_review(review: &SprintReview) -> Self {
-        Self {
-            id: review.id.to_string(),
-            created: review.created,
-            updated: review.updated,
-        }
-    }
-
-    fn into_review(self, body: String, path: &Path) -> Result<SprintReview> {
-        let id = self
-            .id
-            .parse::<SprintId>()
-            .map_err(|error| Error::parse(path, error.to_string()))?;
-        Ok(SprintReview {
-            id,
-            body,
-            created: self.created,
-            updated: self.updated,
-        })
-    }
-}
-
-/// Format a Sprint Review into `+++` frontmatter plus Markdown body.
-pub(super) fn review_to_markdown(review: &SprintReview) -> Result<String> {
-    let frontmatter = ReviewFrontmatter::from_review(review);
-    let toml = toml::to_string(&frontmatter).map_err(|error| {
-        Error::parse(
-            &PathBuf::from(format!("{}.md", review.id)),
-            error.to_string(),
-        )
-    })?;
-    Ok(assemble_markdown(&toml, &review.body))
-}
-
-/// Parse a Sprint Review Markdown document.
-pub(super) fn review_from_markdown(text: &str, path: &Path) -> Result<SprintReview> {
-    let (front, body) = split_frontmatter(text).ok_or_else(|| Error::MissingFrontmatter {
-        path: path.to_path_buf(),
-    })?;
-    let frontmatter: ReviewFrontmatter =
-        toml::from_str(front).map_err(|error| Error::parse(path, error.to_string()))?;
-    frontmatter.into_review(body.to_string(), path)
+    frontmatter.into_record(kind, body.to_string(), path)
 }
 
 /// Split a document whose first line starts with `+++` into (frontmatter, body).

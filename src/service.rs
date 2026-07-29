@@ -22,9 +22,8 @@ mod migrate;
 mod next;
 mod order;
 mod points;
+mod record;
 mod relations;
-mod retro;
-mod review;
 mod search;
 mod settings;
 mod sprint;
@@ -65,9 +64,8 @@ pub use migrate::{MigrateOutcome, migrate_storage};
 pub use next::{NextFilter, next_items};
 pub use order::{Forest, build_forest, hierarchical, hierarchical_order};
 pub(crate) use points::apply_effective_points;
-pub use retro::{create_sprint_retro, edit_sprint_retro, list_sprint_retros, show_sprint_retro};
-pub use review::{
-    create_sprint_review, edit_sprint_review, list_sprint_reviews, show_sprint_review,
+pub use record::{
+    create_sprint_record, edit_sprint_record, list_sprint_records, show_sprint_record,
 };
 pub use search::{SearchFilter, SearchMode};
 pub use settings::{DisplaySettings, TuiSettings, display_settings, tui_settings};

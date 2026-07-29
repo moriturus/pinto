@@ -3,24 +3,7 @@
 use crate::sprint::SprintId;
 
 /// The child record that produced an action PBI.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ActionSourceKind {
-    /// Sprint Retro record.
-    Retro,
-    /// Sprint Review record.
-    Review,
-}
-
-impl ActionSourceKind {
-    /// Return the stable lowercase value used by persistence and JSON output.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Retro => "retro",
-            Self::Review => "review",
-        }
-    }
-}
+pub use crate::sprint_record::SprintRecordKind as ActionSourceKind;
 
 /// A machine-readable link from an action PBI to its source child record.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -4,12 +4,10 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use pinto::backlog::{ActionSource, ActionSourceKind, BacklogItem, ItemId, Status};
 use pinto::error::Error;
 use pinto::rank::Rank;
-use pinto::retro::SprintRetro;
-use pinto::review::SprintReview;
 use pinto::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
+use pinto::sprint_record::{SprintRecord, SprintRecordKind};
 use pinto::storage::{
-    Backend, BacklogItemRepository, SprintRepository, SprintRetroRepository,
-    SprintReviewRepository, StorageBackend,
+    Backend, BacklogItemRepository, SprintRecordRepository, SprintRepository, StorageBackend,
 };
 use tempfile::TempDir;
 
@@ -29,15 +27,15 @@ struct ContractSnapshot {
     sprint_loaded_after_update: Sprint,
     sprints_after_delete: Vec<Sprint>,
     sprint_error_codes: Vec<&'static str>,
-    retro_loaded: SprintRetro,
-    retros_before_update: Vec<SprintRetro>,
-    retro_loaded_after_update: SprintRetro,
-    retros_after_delete: Vec<SprintRetro>,
+    retro_loaded: SprintRecord,
+    retros_before_update: Vec<SprintRecord>,
+    retro_loaded_after_update: SprintRecord,
+    retros_after_delete: Vec<SprintRecord>,
     retro_error_codes: Vec<&'static str>,
-    review_loaded: SprintReview,
-    reviews_before_update: Vec<SprintReview>,
-    review_loaded_after_update: SprintReview,
-    reviews_after_delete: Vec<SprintReview>,
+    review_loaded: SprintRecord,
+    reviews_before_update: Vec<SprintRecord>,
+    review_loaded_after_update: SprintRecord,
+    reviews_after_delete: Vec<SprintRecord>,
     review_error_codes: Vec<&'static str>,
 }
 
@@ -225,93 +223,118 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
         ),
     ];
 
-    let retro = SprintRetro::new(sprint.id.clone(), "Retro body\n振り返り", timestamp(4_000));
-    let second_retro = SprintRetro::new(second_sprint.id.clone(), "Second Retro", timestamp(4_100));
-    SprintRetroRepository::save(backend, &retro)
+    let retro = SprintRecord::new(
+        SprintRecordKind::Retro,
+        sprint.id.clone(),
+        "Retro body\n振り返り",
+        timestamp(4_000),
+    );
+    let second_retro = SprintRecord::new(
+        SprintRecordKind::Retro,
+        second_sprint.id.clone(),
+        "Second Retro",
+        timestamp(4_100),
+    );
+    SprintRecordRepository::save(backend, &retro)
         .await
         .expect("save first Retro");
-    SprintRetroRepository::save(backend, &second_retro)
+    SprintRecordRepository::save(backend, &second_retro)
         .await
         .expect("save second Retro");
-    let retro_loaded = SprintRetroRepository::load(backend, &retro.id)
+    let retro_loaded = SprintRecordRepository::load(backend, SprintRecordKind::Retro, &retro.id)
         .await
         .expect("load Retro");
-    let retros_before_update = SprintRetroRepository::list(backend)
+    let retros_before_update = SprintRecordRepository::list(backend, SprintRecordKind::Retro)
         .await
         .expect("list Retros");
     let mut updated_retro = retro.clone();
     updated_retro.body = "Updated Retro".to_string();
     updated_retro.updated = timestamp(4_200);
-    SprintRetroRepository::save(backend, &updated_retro)
+    SprintRecordRepository::save(backend, &updated_retro)
         .await
         .expect("update Retro");
-    let retro_loaded_after_update = SprintRetroRepository::load(backend, &retro.id)
-        .await
-        .expect("load updated Retro");
-    SprintRetroRepository::delete(backend, &second_retro.id)
+    let retro_loaded_after_update =
+        SprintRecordRepository::load(backend, SprintRecordKind::Retro, &retro.id)
+            .await
+            .expect("load updated Retro");
+    SprintRecordRepository::delete(backend, SprintRecordKind::Retro, &second_retro.id)
         .await
         .expect("delete Retro");
-    let retros_after_delete = SprintRetroRepository::list(backend)
+    let retros_after_delete = SprintRecordRepository::list(backend, SprintRecordKind::Retro)
         .await
         .expect("list after Retro delete");
     let retro_error_codes = vec![
         error_code(
-            SprintRetroRepository::load(
+            SprintRecordRepository::load(
                 backend,
+                SprintRecordKind::Retro,
                 &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
             )
             .await,
         ),
         error_code(
-            SprintRetroRepository::delete(
+            SprintRecordRepository::delete(
                 backend,
+                SprintRecordKind::Retro,
                 &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
             )
             .await,
         ),
     ];
 
-    let review = SprintReview::new(sprint.id.clone(), "Review body\nデモ", timestamp(5_000));
-    let second_review =
-        SprintReview::new(second_sprint.id.clone(), "Second Review", timestamp(5_100));
-    SprintReviewRepository::save(backend, &review)
+    let review = SprintRecord::new(
+        SprintRecordKind::Review,
+        sprint.id.clone(),
+        "Review body\nデモ",
+        timestamp(5_000),
+    );
+    let second_review = SprintRecord::new(
+        SprintRecordKind::Review,
+        second_sprint.id.clone(),
+        "Second Review",
+        timestamp(5_100),
+    );
+    SprintRecordRepository::save(backend, &review)
         .await
         .expect("save first Review");
-    SprintReviewRepository::save(backend, &second_review)
+    SprintRecordRepository::save(backend, &second_review)
         .await
         .expect("save second Review");
-    let review_loaded = SprintReviewRepository::load(backend, &review.id)
+    let review_loaded = SprintRecordRepository::load(backend, SprintRecordKind::Review, &review.id)
         .await
         .expect("load Review");
-    let reviews_before_update = SprintReviewRepository::list(backend)
+    let reviews_before_update = SprintRecordRepository::list(backend, SprintRecordKind::Review)
         .await
         .expect("list Reviews");
     let mut updated_review = review.clone();
     updated_review.body = "Updated Review".to_string();
     updated_review.updated = timestamp(5_200);
-    SprintReviewRepository::save(backend, &updated_review)
+    SprintRecordRepository::save(backend, &updated_review)
         .await
         .expect("update Review");
-    let review_loaded_after_update = SprintReviewRepository::load(backend, &review.id)
-        .await
-        .expect("load updated Review");
-    SprintReviewRepository::delete(backend, &second_review.id)
+    let review_loaded_after_update =
+        SprintRecordRepository::load(backend, SprintRecordKind::Review, &review.id)
+            .await
+            .expect("load updated Review");
+    SprintRecordRepository::delete(backend, SprintRecordKind::Review, &second_review.id)
         .await
         .expect("delete Review");
-    let reviews_after_delete = SprintReviewRepository::list(backend)
+    let reviews_after_delete = SprintRecordRepository::list(backend, SprintRecordKind::Review)
         .await
         .expect("list after Review delete");
     let review_error_codes = vec![
         error_code(
-            SprintReviewRepository::load(
+            SprintRecordRepository::load(
                 backend,
+                SprintRecordKind::Review,
                 &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
             )
             .await,
         ),
         error_code(
-            SprintReviewRepository::delete(
+            SprintRecordRepository::delete(
                 backend,
+                SprintRecordKind::Review,
                 &SprintId::new("missing-sprint").expect("valid missing Sprint ID"),
             )
             .await,

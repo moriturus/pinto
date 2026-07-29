@@ -3,13 +3,10 @@
 use super::{apply_effective_points, hierarchical, lock_board, open_board};
 use crate::backlog::{BacklogItem, Status};
 use crate::error::{Error, Result};
-use crate::retro::SprintRetro;
-use crate::review::SprintReview;
 use crate::service::dod::read_common_dod;
 use crate::sprint::Sprint;
-use crate::storage::{
-    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
-};
+use crate::sprint_record::{SprintRecord, SprintRecordKind};
+use crate::storage::{BacklogItemRepository, SprintRecordRepository, SprintRepository};
 use std::path::Path;
 
 /// A complete read-only snapshot of all board data exposed by `export --json`.
@@ -24,9 +21,9 @@ pub struct BoardSnapshot {
     /// Sprints in the same creation order as `sprint list --json`.
     pub sprints: Vec<Sprint>,
     /// Sprint Retros in the same creation order as `sprint retro list --json`.
-    pub retros: Vec<SprintRetro>,
+    pub retros: Vec<SprintRecord>,
     /// Sprint Reviews in the same creation order as `sprint review list --json`.
-    pub reviews: Vec<SprintReview>,
+    pub reviews: Vec<SprintRecord>,
     /// Effective validated board configuration.
     pub config: serde_json::Value,
     /// Common Definition of Done, or `None` when it is unset or empty.
@@ -53,8 +50,8 @@ pub async fn export_snapshot(project_dir: &Path) -> Result<BoardSnapshot> {
     let (mut items, sprints, retros, reviews, dod) = tokio::try_join!(
         BacklogItemRepository::list(&repo),
         SprintRepository::list(&repo),
-        SprintRetroRepository::list(&repo),
-        SprintReviewRepository::list(&repo),
+        SprintRecordRepository::list(&repo, SprintRecordKind::Retro),
+        SprintRecordRepository::list(&repo, SprintRecordKind::Review),
         read_common_dod(&board_dir),
     )?;
 

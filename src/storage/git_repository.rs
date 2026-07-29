@@ -14,14 +14,11 @@
 //! **Commit message convention**: `pinto: <verb> <id>` (`add` / `update` / `remove` / `archive`).
 
 use super::file_repository::FileRepository;
-use super::repository::{
-    BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
-};
+use super::repository::{BacklogItemRepository, SprintRecordRepository, SprintRepository};
 use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
-use crate::retro::SprintRetro;
-use crate::review::SprintReview;
 use crate::sprint::{Sprint, SprintId};
+use crate::sprint_record::{SprintRecord, SprintRecordKind};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -594,39 +591,21 @@ impl SprintRepository for GitRepository {
     }
 }
 
-impl SprintRetroRepository for GitRepository {
-    async fn save(&self, retro: &SprintRetro) -> Result<()> {
-        SprintRetroRepository::save(&self.file, retro).await
+impl SprintRecordRepository for GitRepository {
+    async fn save(&self, record: &SprintRecord) -> Result<()> {
+        SprintRecordRepository::save(&self.file, record).await
     }
 
-    async fn load(&self, id: &SprintId) -> Result<SprintRetro> {
-        SprintRetroRepository::load(&self.file, id).await
+    async fn load(&self, kind: SprintRecordKind, id: &SprintId) -> Result<SprintRecord> {
+        SprintRecordRepository::load(&self.file, kind, id).await
     }
 
-    async fn list(&self) -> Result<Vec<SprintRetro>> {
-        SprintRetroRepository::list(&self.file).await
+    async fn list(&self, kind: SprintRecordKind) -> Result<Vec<SprintRecord>> {
+        SprintRecordRepository::list(&self.file, kind).await
     }
 
-    async fn delete(&self, id: &SprintId) -> Result<()> {
-        SprintRetroRepository::delete(&self.file, id).await
-    }
-}
-
-impl SprintReviewRepository for GitRepository {
-    async fn save(&self, review: &SprintReview) -> Result<()> {
-        SprintReviewRepository::save(&self.file, review).await
-    }
-
-    async fn load(&self, id: &SprintId) -> Result<SprintReview> {
-        SprintReviewRepository::load(&self.file, id).await
-    }
-
-    async fn list(&self) -> Result<Vec<SprintReview>> {
-        SprintReviewRepository::list(&self.file).await
-    }
-
-    async fn delete(&self, id: &SprintId) -> Result<()> {
-        SprintReviewRepository::delete(&self.file, id).await
+    async fn delete(&self, kind: SprintRecordKind, id: &SprintId) -> Result<()> {
+        SprintRecordRepository::delete(&self.file, kind, id).await
     }
 }
 

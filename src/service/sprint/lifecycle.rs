@@ -5,9 +5,8 @@ use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
 use crate::service::open_board_locked;
 use crate::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
-use crate::storage::{
-    Backend, BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
-};
+use crate::sprint_record::SprintRecordKind;
+use crate::storage::{Backend, BacklogItemRepository, SprintRecordRepository, SprintRepository};
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use std::path::Path;
@@ -146,20 +145,18 @@ pub async fn delete_sprint_with_options(
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     SprintRepository::load(&repo, id).await?;
 
-    let has_retro = match SprintRetroRepository::load(&repo, id).await {
-        Ok(_) => true,
-        Err(Error::RetroNotFound(_)) => false,
-        Err(error) => return Err(error),
-    };
-    let has_review = match SprintReviewRepository::load(&repo, id).await {
-        Ok(_) => true,
-        Err(Error::ReviewNotFound(_)) => false,
-        Err(error) => return Err(error),
-    };
-    if !options.delete_records && (has_retro || has_review) {
-        let records = [has_retro.then_some("Retro"), has_review.then_some("Review")]
-            .into_iter()
-            .flatten()
+    let mut existing_kinds = Vec::new();
+    for kind in [SprintRecordKind::Retro, SprintRecordKind::Review] {
+        match SprintRecordRepository::load(&repo, kind, id).await {
+            Ok(_) => existing_kinds.push(kind),
+            Err(Error::SprintRecordNotFound { .. }) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    if !options.delete_records && !existing_kinds.is_empty() {
+        let records = existing_kinds
+            .iter()
+            .map(|kind| kind.display_name())
             .collect::<Vec<_>>()
             .join(", ");
         return Err(Error::SprintRecordsExist {
@@ -181,11 +178,8 @@ pub async fn delete_sprint_with_options(
     }
 
     if options.delete_records {
-        if has_retro {
-            SprintRetroRepository::delete(&repo, id).await?;
-        }
-        if has_review {
-            SprintReviewRepository::delete(&repo, id).await?;
+        for kind in existing_kinds {
+            SprintRecordRepository::delete(&repo, kind, id).await?;
         }
     }
     SprintRepository::delete(&repo, id).await?;

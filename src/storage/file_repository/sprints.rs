@@ -1,7 +1,7 @@
 //! Sprint persistence for [`FileRepository`]: the [`SprintRepository`]
 //! implementation and the sprint record reading/validation helpers it relies on.
 
-use super::{FileRepository, SprintRecord};
+use super::{FileRepository, SprintFileRecord};
 use crate::error::Error;
 use crate::error::Result;
 use crate::sprint::{Sprint, SprintId};
@@ -64,7 +64,7 @@ impl SprintRepository for FileRepository {
 
 impl FileRepository {
     /// Read and validate every sprint file, retaining paths for collision diagnostics.
-    async fn read_sprint_records(&self) -> Result<Vec<SprintRecord>> {
+    async fn read_sprint_records(&self) -> Result<Vec<SprintFileRecord>> {
         let dir = self.sprints_dir();
         let Some(paths) = self.markdown_paths(&dir).await? else {
             return Ok(Vec::new());
@@ -96,7 +96,7 @@ impl FileRepository {
     }
 
     /// Reject two sprint files that resolve to the same logical sprint ID.
-    fn ensure_unique_sprint_ids(records: &[SprintRecord]) -> Result<()> {
+    fn ensure_unique_sprint_ids(records: &[SprintFileRecord]) -> Result<()> {
         let mut seen = HashMap::new();
         for (path, sprint) in records {
             if let Some(previous) = seen.insert(sprint.id.clone(), path.clone()) {
