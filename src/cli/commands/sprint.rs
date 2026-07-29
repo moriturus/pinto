@@ -217,11 +217,7 @@ async fn cmd_sprint_record(
                 )
             );
         }
-        Some(SprintRecordCommand::Edit {
-            sprint_id,
-            body,
-            edit: _,
-        }) => {
+        Some(SprintRecordCommand::Edit { sprint_id, body }) => {
             let sprint_id: SprintId = sprint_id.parse()?;
             let body = match body {
                 Some(body) => body,

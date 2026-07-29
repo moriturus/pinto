@@ -673,17 +673,14 @@ pub(super) enum SprintRecordCommand {
         #[arg(long = "edit", short = 'E', conflicts_with = "body")]
         edit: bool,
     },
-    /// Edit a Sprint child record.
+    /// Edit a Sprint child record. The standard editor opens when `--body` is omitted.
     #[command(visible_alias = "e")]
     Edit {
         /// ID of the parent Sprint.
         sprint_id: String,
-        /// Replacement Markdown record body.
-        #[arg(long, short = 'b', conflicts_with = "edit")]
+        /// Replacement Markdown record body. When omitted, the standard editor opens.
+        #[arg(long, short = 'b')]
         body: Option<String>,
-        /// Open the standard editor. This is also the default when no body is supplied.
-        #[arg(long = "edit", short = 'E')]
-        edit: bool,
     },
     /// Promote an action item into a normal PBI.
     #[command(visible_aliases = ["a", "promote"])]
