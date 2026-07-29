@@ -348,7 +348,9 @@ to select a different number of Sprints and `--json` for the machine-readable fi
 `goal_achieved`, `evaluated_sprints`, `achieved_sprints`, and `achievement_rate`. The rate is
 `null` (human output: `n/a`) when no Sprint Goal has been evaluated.
 
-Removing a Sprint releases its assigned PBIs. If a matching Sprint Retro or Review exists,
+Removing a Sprint releases its assigned PBIs and clears the `source` link of any action PBI that
+was promoted from the removed Sprint's Retro or Review, so no PBI keeps a reference to a Sprint or
+record that no longer exists. If a matching Sprint Retro or Review exists,
 `pinto sprint remove` and its `rm` alias refuse before mutation; pass `--delete-records` to
 explicitly delete those matching records in the same operation. Unrelated records remain.
 
