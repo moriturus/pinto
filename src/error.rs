@@ -124,6 +124,12 @@ pub enum Error {
     #[error("sprint already exists: {0} (use `sprint edit`/`remove` to manage it)")]
     SprintExists(SprintId),
 
+    /// A Sprint has child records that would become orphaned by removal.
+    #[error(
+        "cannot remove sprint {id}: existing child records ({records}) would be orphaned; rerun with `sprint remove {id} --delete-records` to delete them"
+    )]
+    SprintRecordsExist { id: SprintId, records: String },
+
     /// A Sprint Retro with the specified Sprint ID cannot be found.
     #[error("retro not found: {0}")]
     RetroNotFound(SprintId),
@@ -383,6 +389,7 @@ impl Error {
             Self::InvalidSprintTransition { .. } => "invalid-sprint-transition",
             Self::SprintNotFound(_) => "sprint-not-found",
             Self::SprintExists(_) => "sprint-exists",
+            Self::SprintRecordsExist { .. } => "sprint-records-exist",
             Self::RetroNotFound(_) => "retro-not-found",
             Self::RetroExists(_) => "retro-exists",
             Self::RetroCommandRequired => "retro-command-required",
@@ -509,6 +516,11 @@ impl Error {
             ),
             Self::SprintNotFound(id) => message!(Message::ErrorSprintNotFound, "id" => id),
             Self::SprintExists(id) => message!(Message::ErrorSprintExists, "id" => id),
+            Self::SprintRecordsExist { id, records } => message!(
+                Message::ErrorSprintRecordsExist,
+                "id" => id,
+                "records" => records,
+            ),
             Self::RetroNotFound(id) => message!(Message::ErrorRetroNotFound, "id" => id),
             Self::RetroExists(id) => message!(Message::ErrorRetroExists, "id" => id),
             Self::RetroCommandRequired => localizer.text(Message::ErrorRetroCommandRequired),
@@ -673,6 +685,7 @@ impl Error {
                 | Error::InvalidSprintTransition { .. }
                 | Error::SprintNotFound(_)
                 | Error::SprintExists(_)
+                | Error::SprintRecordsExist { .. }
                 | Error::RetroNotFound(_)
                 | Error::RetroExists(_)
                 | Error::RetroCommandRequired
@@ -745,6 +758,10 @@ mod tests {
             },
             Error::SprintNotFound(SprintId::new("S-1").unwrap()),
             Error::SprintExists(SprintId::new("S-1").unwrap()),
+            Error::SprintRecordsExist {
+                id: SprintId::new("S-1").unwrap(),
+                records: "Retro, Review".into(),
+            },
             Error::RetroNotFound(SprintId::new("S-1").unwrap()),
             Error::RetroExists(SprintId::new("S-1").unwrap()),
             Error::RetroCommandRequired,
@@ -904,6 +921,10 @@ mod tests {
             },
             Error::SprintNotFound(sprint.clone()),
             Error::SprintExists(sprint.clone()),
+            Error::SprintRecordsExist {
+                id: sprint.clone(),
+                records: "Retro".into(),
+            },
             Error::RetroNotFound(sprint.clone()),
             Error::RetroExists(sprint.clone()),
             Error::RetroCommandRequired,

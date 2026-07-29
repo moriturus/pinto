@@ -473,6 +473,52 @@ fn sprint_review_demo_contains_a_separate_json_review_record() {
 }
 
 #[test]
+fn sprint_delete_protection_demo_covers_the_protected_and_explicit_paths() {
+    let demo = discovered_demos()
+        .into_iter()
+        .find(|demo| demo.name == "single/sprint-delete-protection")
+        .expect("sprint-delete-protection demo is present");
+    let temp = tempdir().expect("create Sprint deletion demo workspace");
+    let board = copy_demo(&demo, &temp);
+    let before = snapshot_tree(&board.join(".pinto"));
+    let protected_args = ["sprint", "remove", "S-1"];
+    assert_user_error(
+        &demo.name,
+        &protected_args,
+        &run_pinto(&board, &protected_args),
+        "child records",
+    );
+    assert_eq!(
+        before,
+        snapshot_tree(&board.join(".pinto")),
+        "protected demo deletion must not mutate the board"
+    );
+
+    let explicit_args = ["sprint", "rm", "S-1", "--delete-records"];
+    assert_success(
+        &demo.name,
+        &explicit_args,
+        &run_pinto(&board, &explicit_args),
+    );
+    assert_eq!(
+        json_output(&demo.name, &board, &["sprint", "list", "--json"])[0]["id"],
+        "S-2"
+    );
+    assert_eq!(
+        json_output(&demo.name, &board, &["sprint", "retro", "list", "--json"])
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        json_output(&demo.name, &board, &["sprint", "review", "list", "--json"])
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+}
+
+#[test]
 fn intentional_error_demos_are_registered_and_keep_user_error_contracts() {
     let demos = discovered_demos();
     for name in INTENTIONAL_ERROR_DEMOS {

@@ -63,6 +63,7 @@ cargo run --manifest-path ../../../Cargo.toml -- <args>       # for example: ...
   - [`labels`](single/labels) — labels and label filters
   - [`sprint-lifecycle`](single/sprint-lifecycle) — sprint close rollover and spillover reporting
   - [`sprint-edit-delete`](single/sprint-edit-delete) — edit a goal-less Sprint, start it, and delete a Sprint while retaining PBIs
+  - [`sprint-delete-protection`](single/sprint-delete-protection) — protect Sprint deletion when a Retro or Review exists, with explicit child-record removal
   - [`sprint-closed-assignment`](single/sprint-closed-assignment) — reject new assignments to closed Sprints while preserving the rm correction path
   - [`sprint-assignment-validation`](single/sprint-assignment-validation) — validate Sprint IDs and existence consistently across add/edit/sprint add
   - [`sprint-bulk-assignment`](single/sprint-bulk-assignment) — assign ranked PBIs by status with an optional count limit

@@ -14,7 +14,7 @@ pub use capacity::{list_sprints, set_sprint_capacity, sprint_capacity, sprint_lo
 pub(crate) use lifecycle::validate_sprint_assignment;
 pub use lifecycle::{
     assign_sprint, assign_sprint_by_status, assign_sprint_raw, close_sprint, create_sprint,
-    delete_sprint, edit_sprint, start_sprint, unassign_sprint,
+    delete_sprint, delete_sprint_with_options, edit_sprint, start_sprint, unassign_sprint,
 };
 
 // Referenced by the test module below via `use super::*`.
@@ -71,6 +71,13 @@ pub enum SprintCloseAction {
     Rollover(SprintId),
     /// Clear the sprint assignment from unfinished PBIs.
     Release,
+}
+
+/// Options controlling the destructive part of Sprint removal.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SprintDeletionOptions {
+    /// Delete the Sprint's matching Retro and Review records with the Sprint.
+    pub delete_records: bool,
 }
 
 #[cfg(test)]

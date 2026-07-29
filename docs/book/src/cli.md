@@ -331,7 +331,8 @@ pinto sprint review edit S-1 --body "Updated review notes"
 pinto sprint review list --json
 pinto sprint close S-1 --rollover S-2          # move unfinished PBIs to S-2
 # pinto sprint close S-1 --release             # alternative: clear their Sprint assignment
-pinto sprint remove S-1
+pinto sprint remove S-1                         # refuses if Retro/Review records exist
+pinto sprint rm S-1 --delete-records             # explicitly delete matching records too
 ```
 
 Reports include `pinto sprint burndown`, `pinto sprint velocity`,
@@ -343,6 +344,10 @@ recorded outcome is shown as unevaluated and is excluded from the denominator. U
 to select a different number of Sprints and `--json` for the machine-readable fields
 `goal_achieved`, `evaluated_sprints`, `achieved_sprints`, and `achievement_rate`. The rate is
 `null` (human output: `n/a`) when no Sprint Goal has been evaluated.
+
+Removing a Sprint releases its assigned PBIs. If a matching Sprint Retro or Review exists,
+`pinto sprint remove` and its `rm` alias refuse before mutation; pass `--delete-records` to
+explicitly delete those matching records in the same operation. Unrelated records remain.
 
 After a successful `pinto sprint start` or `pinto sprint add`, pinto prints a non-blocking warning
 to stderr when the Sprint's estimated assigned points exceed either its configured capacity-hours

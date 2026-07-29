@@ -530,6 +530,9 @@ pub(super) enum SprintCommand {
     Remove {
         /// ID of the sprint to remove.
         id: String,
+        /// Also delete the matching Sprint Retro and Review records.
+        #[arg(long, short = 'd')]
+        delete_records: bool,
     },
     /// Start a sprint (`planned` → `active`).
     #[command(visible_alias = "s")]

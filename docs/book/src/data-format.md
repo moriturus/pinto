@@ -96,6 +96,10 @@ updated = "2026-07-29T00:00:00Z"
 The file, Git, and optional SQLite backends keep Review data separate from both
 the Sprint goal and Sprint Retro records.
 
+Removing a Sprint protects these one-to-one child records by default. The
+`--delete-records` option is required to remove the matching Retro and Review
+files with the Sprint; records for other Sprints are unaffected.
+
 ## Configuration
 
 `.pinto/config.toml` controls the shared workflow and presentation settings. The

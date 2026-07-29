@@ -427,7 +427,10 @@ fn cli_options_have_short_forms() {
             &["sprint", "close", "--help"],
             &["-r, --rollover <TARGET>", "-u, --release"],
         ),
-        (&["sprint", "remove", "--help"], &["Remove a sprint"]),
+        (
+            &["sprint", "remove", "--help"],
+            &["Remove a sprint", "--delete-records"],
+        ),
         (
             &["sprint", "unassign", "--help"],
             &["Unassign a PBI from its sprint"],

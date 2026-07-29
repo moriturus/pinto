@@ -5,10 +5,14 @@ use crate::backlog::{BacklogItem, ItemId};
 use crate::error::{Error, Result};
 use crate::service::open_board_locked;
 use crate::sprint::{Sprint, SprintId, SprintSpillover, SprintState};
-use crate::storage::{Backend, BacklogItemRepository, SprintRepository};
+use crate::storage::{
+    Backend, BacklogItemRepository, SprintRepository, SprintRetroRepository, SprintReviewRepository,
+};
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use std::path::Path;
+
+use super::SprintDeletionOptions;
 
 /// Create a sprint on the board in `project_dir` and return the saved [`Sprint`].
 ///
@@ -102,20 +106,67 @@ pub async fn edit_sprint(
     Ok(sprint)
 }
 
-/// Delete a sprint and clear its assignment from every PBI that references it.
+/// Delete a Sprint and clear its assignment from every PBI that references it.
 ///
+/// Existing matching Retro and Review records are protected by default; use
+/// [`delete_sprint_with_options`] with [`SprintDeletionOptions::delete_records`] to remove them.
 /// The PBIs remain in the backlog. All reads and writes happen while the board lock is held, and
-/// Git-backed boards commit the sprint deletion and assignment changes as one service operation.
+/// Git-backed boards commit the Sprint deletion and assignment changes as one service operation.
 ///
 /// # Errors
 ///
-/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`], persistence errors, or a Git
-/// commit error. Assignment clears and sprint deletion are performed as several durable writes;
-/// a failure can leave a partially cleared board. Retrying is not blindly safe after the sprint
-/// itself has been deleted, so inspect the sprint and assigned PBIs first.
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`],
+/// [`Error::SprintRecordsExist`], persistence errors, or a Git commit error. Assignment clears
+/// and Sprint deletion are performed as several durable writes; a failure can leave a partially
+/// cleared board. Retrying is not blindly safe after the Sprint itself has been deleted, so
+/// inspect the Sprint and assigned PBIs first.
 pub async fn delete_sprint(project_dir: &Path, id: &SprintId) -> Result<()> {
+    delete_sprint_with_options(project_dir, id, SprintDeletionOptions::default()).await
+}
+
+/// Delete a Sprint and clear its assignment from every PBI that references it, optionally deleting
+/// the matching Retro and Review records as part of the same mutation.
+///
+/// The child records are checked before any write. Without `delete_records`, an existing child
+/// record returns [`Error::SprintRecordsExist`] and leaves the Sprint, PBIs, and child records
+/// unchanged. With the option enabled, only records belonging to `id` are deleted. Git-backed
+/// boards commit all resulting changes once, so the existing undo path can recover the complete
+/// operation.
+///
+/// # Errors
+///
+/// Returns [`Error::NotInitialized`], [`Error::SprintNotFound`],
+/// [`Error::SprintRecordsExist`], persistence errors, or a Git commit error. Writes before a
+/// later persistence or commit failure may remain durable; inspect the board before retrying.
+pub async fn delete_sprint_with_options(
+    project_dir: &Path,
+    id: &SprintId,
+    options: SprintDeletionOptions,
+) -> Result<()> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     SprintRepository::load(&repo, id).await?;
+
+    let has_retro = match SprintRetroRepository::load(&repo, id).await {
+        Ok(_) => true,
+        Err(Error::RetroNotFound(_)) => false,
+        Err(error) => return Err(error),
+    };
+    let has_review = match SprintReviewRepository::load(&repo, id).await {
+        Ok(_) => true,
+        Err(Error::ReviewNotFound(_)) => false,
+        Err(error) => return Err(error),
+    };
+    if !options.delete_records && (has_retro || has_review) {
+        let records = [has_retro.then_some("Retro"), has_review.then_some("Review")]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(Error::SprintRecordsExist {
+            id: id.clone(),
+            records,
+        });
+    }
 
     let now = Utc::now();
     let assigned = BacklogItemRepository::list(&repo)
@@ -129,6 +180,14 @@ pub async fn delete_sprint(project_dir: &Path, id: &SprintId) -> Result<()> {
         BacklogItemRepository::save(&repo, &item).await?;
     }
 
+    if options.delete_records {
+        if has_retro {
+            SprintRetroRepository::delete(&repo, id).await?;
+        }
+        if has_review {
+            SprintReviewRepository::delete(&repo, id).await?;
+        }
+    }
     SprintRepository::delete(&repo, id).await?;
     repo.commit(&format!("pinto: delete {id}")).await?;
     Ok(())

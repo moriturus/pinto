@@ -13,12 +13,12 @@ use crate::cli::json::{
 use pinto::backlog::ItemId;
 use pinto::i18n::{Localizer, Message, current};
 use pinto::service::{
-    SprintCloseAction, assign_sprint_by_status, assign_sprint_raw, burndown, close_sprint,
-    create_sprint, create_sprint_retro, create_sprint_review, delete_sprint, display_settings,
-    edit_sprint, edit_sprint_retro, edit_sprint_review, list_sprint_retros, list_sprint_reviews,
-    list_sprints, set_sprint_capacity, show_sprint_retro, show_sprint_review, sprint_capacity,
-    sprint_goal_report, sprint_load_warnings, start_sprint, template_body, unassign_sprint,
-    velocity,
+    SprintCloseAction, SprintDeletionOptions, assign_sprint_by_status, assign_sprint_raw, burndown,
+    close_sprint, create_sprint, create_sprint_retro, create_sprint_review,
+    delete_sprint_with_options, display_settings, edit_sprint, edit_sprint_retro,
+    edit_sprint_review, list_sprint_retros, list_sprint_reviews, list_sprints, set_sprint_capacity,
+    show_sprint_retro, show_sprint_review, sprint_capacity, sprint_goal_report,
+    sprint_load_warnings, start_sprint, template_body, unassign_sprint, velocity,
 };
 
 use pinto::retro::SprintRetro;
@@ -438,9 +438,9 @@ pub(super) async fn cmd_sprint_with_localizer(
                 )
             );
         }
-        SprintCommand::Remove { id } => {
+        SprintCommand::Remove { id, delete_records } => {
             let id: SprintId = id.parse()?;
-            delete_sprint(&dir, &id).await?;
+            delete_sprint_with_options(&dir, &id, SprintDeletionOptions { delete_records }).await?;
             println!(
                 "{}",
                 localizer.format(Message::DeletedSprint, [("id", id.to_string().as_str())])

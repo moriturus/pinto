@@ -1224,6 +1224,180 @@ fn sprint_delete_unassigns_pbis_and_keeps_their_data() {
 }
 
 #[test]
+fn sprint_delete_protects_each_existing_child_record_before_mutation() {
+    for (child_command, child_label) in [("retro", "Retro"), ("review", "Review")] {
+        let dir = TempDir::new().expect("temp dir");
+        pinto(dir.path()).arg("init").assert().success();
+        pinto(dir.path())
+            .args(["sprint", "new", "S-1", "Sprint"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["add", "Assigned task"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["sprint", "add", "S-1", "T-1"])
+            .assert()
+            .success();
+        pinto(dir.path())
+            .args(["sprint", child_command, "new", "S-1", "--body", "Notes"])
+            .assert()
+            .success();
+
+        pinto(dir.path())
+            .args(["sprint", "remove", "S-1"])
+            .assert()
+            .failure()
+            .code(1)
+            .stderr(predicate::str::contains(child_label))
+            .stderr(predicate::str::contains("--delete-records"));
+
+        assert_eq!(
+            json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]))
+                .as_array()
+                .map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            show_json(pinto(dir.path()).args(["show", "T-1", "--json"]))["sprint"],
+            "S-1"
+        );
+        pinto(dir.path())
+            .args(["sprint", child_command, "show", "S-1", "--json"])
+            .assert()
+            .success();
+    }
+}
+
+#[test]
+fn sprint_delete_protection_message_follows_the_selected_locale() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "本文"])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .env("LC_ALL", "ja_JP.UTF-8")
+        .env("LANG", "ja_JP.UTF-8")
+        .args(["sprint", "remove", "S-1"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("既存の子レコード"))
+        .stderr(predicate::str::contains("--delete-records"));
+}
+
+#[test]
+fn sprint_rm_delete_records_is_one_git_mutation_and_undoes_together() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto_isolated_git(dir.path())
+        .args(["migrate", "--to", "git"])
+        .assert()
+        .success();
+
+    for (id, title) in [("S-1", "Target"), ("S-2", "Unrelated")] {
+        pinto_isolated_git(dir.path())
+            .args(["sprint", "new", id, title])
+            .assert()
+            .success();
+        pinto_isolated_git(dir.path())
+            .args(["sprint", "retro", "new", id, "--body", "Retro notes"])
+            .assert()
+            .success();
+        pinto_isolated_git(dir.path())
+            .args(["sprint", "review", "new", id, "--body", "Review notes"])
+            .assert()
+            .success();
+    }
+    pinto_isolated_git(dir.path())
+        .args(["add", "Assigned task"])
+        .assert()
+        .success();
+    pinto_isolated_git(dir.path())
+        .args(["sprint", "add", "S-1", "T-1"])
+        .assert()
+        .success();
+
+    let before_protected = git_log_field(dir.path(), "%s").first().cloned();
+    pinto_isolated_git(dir.path())
+        .args(["sprint", "remove", "S-1"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Retro"))
+        .stderr(predicate::str::contains("Review"))
+        .stderr(predicate::str::contains("--delete-records"));
+    assert_eq!(
+        git_log_field(dir.path(), "%s").first().cloned(),
+        before_protected,
+        "protected deletion must not create a Git commit"
+    );
+
+    pinto_isolated_git(dir.path())
+        .args(["sprint", "rm", "S-1", "--delete-records"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted sprint S-1"));
+    assert_eq!(
+        git_log_field(dir.path(), "%s").first().map(String::as_str),
+        Some("pinto: delete S-1")
+    );
+    assert_eq!(
+        json_stdout(pinto_isolated_git(dir.path()).args(["sprint", "list", "--json"]))[0]["id"],
+        "S-2"
+    );
+    assert_eq!(
+        json_stdout(pinto_isolated_git(dir.path()).args(["sprint", "retro", "list", "--json"]))
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        json_stdout(pinto_isolated_git(dir.path()).args(["sprint", "review", "list", "--json",]))
+            [0]["id"],
+        "S-2"
+    );
+    assert!(
+        show_json(pinto_isolated_git(dir.path()).args(["show", "T-1", "--json"]))["sprint"]
+            .is_null()
+    );
+
+    pinto_isolated_git(dir.path())
+        .arg("undo")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pinto: delete S-1"));
+    assert_eq!(
+        json_stdout(pinto_isolated_git(dir.path()).args(["sprint", "list", "--json"]))
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        json_stdout(pinto_isolated_git(dir.path()).args(["sprint", "retro", "list", "--json"]))
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        json_stdout(pinto_isolated_git(dir.path()).args(["sprint", "review", "list", "--json",]))
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        show_json(pinto_isolated_git(dir.path()).args(["show", "T-1", "--json"]))["sprint"],
+        "S-1"
+    );
+}
+
+#[test]
 fn sprint_rm_alias_removes_a_sprint() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
