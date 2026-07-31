@@ -415,12 +415,25 @@ pub(crate) fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
     let rest = strip_delimiter_line(text)?;
     let closing = find_delimiter_line(rest)?;
     let front = &rest[..closing];
-    // Extract the text from the closing line (`+++\n...` or `+++`).
+    // Extract the text after the closing line (`+++\n...`, `+++\r\n...`, or `+++`).
     let after = &rest[closing..];
-    let body = after.split_once('\n').map(|(_, b)| b).unwrap_or("");
-    let body = body.strip_prefix('\n').unwrap_or(body); // Separator blank line.
-    let body = body.strip_suffix('\n').unwrap_or(body); // Trailing newline.
+    let body = after.strip_prefix(DELIMITER).unwrap_or("");
+    let body = strip_line_ending_prefix(body);
+    let body = strip_line_ending_prefix(body); // Separator blank line.
+    let body = strip_line_ending_suffix(body); // Trailing newline.
     Some((front, body))
+}
+
+fn strip_line_ending_prefix(text: &str) -> &str {
+    text.strip_prefix("\r\n")
+        .or_else(|| text.strip_prefix('\n'))
+        .unwrap_or(text)
+}
+
+fn strip_line_ending_suffix(text: &str) -> &str {
+    text.strip_suffix("\r\n")
+        .or_else(|| text.strip_suffix('\n'))
+        .unwrap_or(text)
 }
 
 /// Returns the remainder after removing the first `+++` line (`None` if the first line is not a separator line).
@@ -812,6 +825,14 @@ updated = \"1970-01-01T00:00:00Z\"
         let text = "+++\nfoo = 1\n+++\n\nbody line\n";
         let (front, body) = split_frontmatter(text).expect("has frontmatter");
         assert_eq!(front, "foo = 1\n");
+        assert_eq!(body, "body line");
+    }
+
+    #[test]
+    fn split_frontmatter_normalizes_crlf_around_the_body() {
+        let text = "+++\r\nfoo = 1\r\n+++\r\n\r\nbody line\r\n";
+        let (front, body) = split_frontmatter(text).expect("has frontmatter");
+        assert_eq!(front, "foo = 1\r\n");
         assert_eq!(body, "body line");
     }
 

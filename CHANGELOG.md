@@ -7,6 +7,28 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-31
+
+This patch release adds Sprint records and strengthens board integrity,
+interchange, and cross-platform CLI reliability without breaking the existing
+CLI contract.
+
+### Added
+
+- Added Sprint Goal achievement tracking and Sprint Goal reports.
+- Added separate Sprint Retro and Review records with linked action PBIs and
+  Sprint context.
+- Preserved Sprint child records across board export/import and backend
+  migrations.
+
+### Fixed
+
+- Strengthened Sprint deletion, goal-outcome, and record-integrity checks.
+- Prevented Windows CLI stack overflows during completion, shell, and
+  automation processing.
+- Isolated the doctor check's Windows executable from parallel integration
+  tests.
+
 ## [0.4.2] - 2026-07-28
 
 This patch release adds external subcommands and improves automation and
