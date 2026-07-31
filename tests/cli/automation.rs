@@ -668,6 +668,60 @@ fn automate_accepts_a_multiline_plan_from_stdin_and_reports_json() {
     assert_eq!(item["body"], "# Heading\n\n- [ ] long body");
 }
 
+#[cfg(unix)]
+#[test]
+fn automate_validation_survives_a_small_process_stack() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    let binary = pinto(dir.path()).get_program().to_owned();
+    let output = ProcessCommand::new("sh")
+        .args([
+            "-c",
+            "ulimit -s 1024; exec \"$1\" automate --plan \"$2\" --json",
+            "pinto-small-stack",
+        ])
+        .arg(binary)
+        .arg(r#"{"commands":[["list"]]}"#)
+        .current_dir(dir.path())
+        .output()
+        .expect("run small-stack automation");
+
+    assert!(
+        output.status.success(),
+        "small-stack automation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("small-stack automation report");
+    assert_eq!(report["status"], "completed");
+    assert_eq!(report["commands"][0]["status"], "succeeded");
+}
+
+#[cfg(unix)]
+#[test]
+fn completion_generation_survives_a_small_process_stack() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = pinto(dir.path()).get_program().to_owned();
+    let output = ProcessCommand::new("sh")
+        .args([
+            "-c",
+            "ulimit -s 1024; exec \"$1\" completion bash",
+            "pinto-small-stack",
+        ])
+        .arg(binary)
+        .current_dir(dir.path())
+        .output()
+        .expect("run small-stack completion");
+
+    assert!(
+        output.status.success(),
+        "small-stack completion failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("_pinto"));
+}
+
 #[test]
 fn automate_escapes_literal_placeholders_in_multiline_bodies_for_dry_run_and_apply() {
     let dir = TempDir::new().expect("temp dir");

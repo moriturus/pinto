@@ -49,7 +49,10 @@ run = "cargo deny check"
 
 [tasks.doctor]
 description = "Check the backlog soundness"
-# Keep the binary feature set aligned with the parallel all-feature checks.
+# Keep the binary feature set aligned with the parallel all-feature checks. Windows cannot replace
+# an executable while the parallel integration tests are still running it, so give doctor an
+# isolated target directory instead of sharing target/debug/pinto.exe with those tests.
+env = { CARGO_TARGET_DIR = "target/doctor" }
 run = "cargo run -q --all-features --locked -- doctor"
 
 [tasks.check]

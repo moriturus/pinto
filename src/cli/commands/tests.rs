@@ -19,8 +19,14 @@ fn argv(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_string()).collect()
 }
 
-#[test]
-fn automation_names_and_target_ids_cover_command_shapes() {
+async fn target_ids(values: &[String]) -> Vec<String> {
+    automation_target_ids(values)
+        .await
+        .expect("automation target IDs")
+}
+
+#[tokio::test]
+async fn automation_names_and_target_ids_cover_command_shapes() {
     assert_eq!(automation_command_name(&argv(&["dep", "add"])), "dep add");
     assert_eq!(
         automation_command_name(&argv(&["link", "sync"])),
@@ -33,33 +39,33 @@ fn automation_names_and_target_ids_cover_command_shapes() {
     assert_eq!(automation_command_name(&argv(&["list"])), "list");
     assert_eq!(automation_command_name(&[]), "unknown");
 
-    assert!(automation_target_ids(&[]).is_empty());
+    assert!(target_ids(&[]).await.is_empty());
     assert_eq!(
-        automation_target_ids(&argv(&["move", "T-1", "invalid", "T-2"])),
+        target_ids(&argv(&["move", "T-1", "invalid", "T-2"])).await,
         ["T-1"]
     );
-    assert_eq!(automation_target_ids(&argv(&["edit", "T-3"])), ["T-3"]);
+    assert_eq!(target_ids(&argv(&["edit", "T-3"])).await, ["T-3"]);
     assert_eq!(
-        automation_target_ids(&argv(&["reorder", "T-4", "--top"])),
+        target_ids(&argv(&["reorder", "T-4", "--top"])).await,
         ["T-4"]
     );
     assert_eq!(
-        automation_target_ids(&argv(&["remove", "T-5", "T-6"])),
+        target_ids(&argv(&["remove", "T-5", "T-6"])).await,
         ["T-5", "T-6"]
     );
     assert_eq!(
-        automation_target_ids(&argv(&["dep", "add", "T-7", "T-8"])),
+        target_ids(&argv(&["dep", "add", "T-7", "T-8"])).await,
         ["T-7"]
     );
     assert_eq!(
-        automation_target_ids(&argv(&["link", "add", "T-9", "abc"])),
+        target_ids(&argv(&["link", "add", "T-9", "abc"])).await,
         ["T-9"]
     );
     assert_eq!(
-        automation_target_ids(&argv(&["sprint", "add", "S-1", "T-10"])),
+        target_ids(&argv(&["sprint", "add", "S-1", "T-10"])).await,
         ["T-10"]
     );
-    assert!(automation_target_ids(&argv(&["unknown", "T-11"])).is_empty());
+    assert!(target_ids(&argv(&["unknown", "T-11"])).await.is_empty());
 }
 
 #[test]
@@ -98,8 +104,8 @@ fn automation_schema_tracks_safe_cli_commands_and_aliases() {
     }
 }
 
-#[test]
-fn automation_results_extract_created_ids_and_sanitize_errors() {
+#[tokio::test]
+async fn automation_results_extract_created_ids_and_sanitize_errors() {
     let localizer = localizer_from(Some("en_US.UTF-8"), None);
     let command = ValidatedAutomationCommand {
         index: 1,
@@ -122,7 +128,9 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
         },
         "succeeded",
         &localizer,
-    );
+    )
+    .await
+    .expect("automation result");
     assert_eq!(created.created_ids, ["T-42"]);
     assert_eq!(created.error, None);
 
@@ -142,7 +150,9 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
             },
             "failed",
             &localizer,
-        );
+        )
+        .await
+        .expect("automation result");
         assert_eq!(failed.error.as_deref(), Some(expected));
     }
 
@@ -158,7 +168,9 @@ fn automation_results_extract_created_ids_and_sanitize_errors() {
         },
         "failed",
         &localizer,
-    );
+    )
+    .await
+    .expect("automation result");
     assert_eq!(stderr.error.as_deref(), Some("user-facing failure"));
     assert_eq!(parsed_item_id(Some(&"bad".to_string())), None);
 }

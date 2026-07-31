@@ -25,12 +25,14 @@ pub(super) async fn cmd_automate(args: AutomateArgs) -> anyhow::Result<ExitCode>
     let source = args.plan.ok_or(Error::InvalidAutomationPlan)?;
     let input = read_automation_plan(&source).await?;
     let plan = AutomationPlan::parse(&input).map_err(|_| Error::InvalidAutomationPlan)?;
-    let validated = validate_automation_commands(&plan);
+    let validated = validate_automation_commands_on_dedicated_stack(plan).await?;
 
     if validated.iter().any(|command| command.error.is_some()) {
-        let commands = validated
-            .iter()
-            .map(|command| AutomationCommandResult {
+        let mut commands = Vec::with_capacity(validated.len());
+        for command in &validated {
+            let (updated_ids, resolved_ids) =
+                automation_ids_on_dedicated_stack(&command.argv).await?;
+            commands.push(AutomationCommandResult {
                 index: command.index,
                 command: command.name.clone(),
                 status: if command.error.is_some() {
@@ -39,11 +41,11 @@ pub(super) async fn cmd_automate(args: AutomateArgs) -> anyhow::Result<ExitCode>
                     "valid".to_string()
                 },
                 created_ids: Vec::new(),
-                updated_ids: automation_target_ids(&command.argv),
-                resolved_ids: automation_item_ids(&command.argv),
+                updated_ids,
+                resolved_ids,
                 error: command.error.clone(),
-            })
-            .collect();
+            });
+        }
         let report = AutomationReport {
             status: "invalid".to_string(),
             dry_run: args.dry_run,
@@ -85,7 +87,7 @@ pub(super) async fn cmd_automate(args: AutomateArgs) -> anyhow::Result<ExitCode>
                 results.push(automation_resolution_failure(command, &error));
                 failed_at = Some(position);
                 for skipped in validated.iter().skip(position + 1) {
-                    results.push(automation_skipped_result(skipped));
+                    results.push(automation_skipped_result(skipped).await?);
                 }
                 break;
             }
@@ -96,23 +98,18 @@ pub(super) async fn cmd_automate(args: AutomateArgs) -> anyhow::Result<ExitCode>
                 print!("{}", execution.stdout);
             }
             producer_results[position] = execution.producer_result.clone();
-            results.push(automation_execution_result(
-                command,
-                &resolved_argv,
-                &execution,
-                "succeeded",
-            ));
+            results.push(
+                automation_execution_result(command, &resolved_argv, &execution, "succeeded")
+                    .await?,
+            );
         } else {
             internal_failure = execution.exit_code != Some(1);
-            results.push(automation_execution_result(
-                command,
-                &resolved_argv,
-                &execution,
-                "failed",
-            ));
+            results.push(
+                automation_execution_result(command, &resolved_argv, &execution, "failed").await?,
+            );
             failed_at = Some(position);
             for skipped in validated.iter().skip(position + 1) {
-                results.push(automation_skipped_result(skipped));
+                results.push(automation_skipped_result(skipped).await?);
             }
             break;
         }
@@ -294,6 +291,44 @@ fn validate_automation_commands(plan: &AutomationPlan) -> Vec<ValidatedAutomatio
             }
         })
         .collect()
+}
+
+const AUTOMATION_WORKER_STACK_SIZE: usize = 2 * 1024 * 1024;
+
+async fn run_on_automation_worker_stack<T, F>(job: F) -> anyhow::Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let (result_sender, result_receiver) = tokio::sync::oneshot::channel();
+    let handle = std::thread::Builder::new()
+        .name("pinto-automation-worker".to_string())
+        .stack_size(AUTOMATION_WORKER_STACK_SIZE)
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+            let _ = result_sender.send(result);
+        })
+        .map_err(|error| anyhow::anyhow!("failed to start automation worker: {error}"))?;
+    drop(handle);
+
+    match result_receiver.await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(_)) => Err(anyhow::anyhow!("automation worker thread panicked")),
+        Err(_) => Err(anyhow::anyhow!(
+            "automation worker dropped before returning a result"
+        )),
+    }
+}
+
+/// Validate a plan on a stack large enough for the nested Clap parser.
+///
+/// The normal process stack on Windows is smaller than the stack needed when `automate` parses
+/// each planned command through the complete CLI definition. Keeping this work on a dedicated
+/// thread prevents a valid automation invocation from overflowing the CLI entrypoint's stack.
+async fn validate_automation_commands_on_dedicated_stack(
+    plan: AutomationPlan,
+) -> anyhow::Result<Vec<ValidatedAutomationCommand>> {
+    run_on_automation_worker_stack(move || validate_automation_commands(&plan)).await
 }
 
 fn item_id_arguments(cli: &Cli) -> Vec<&String> {
@@ -489,7 +524,7 @@ async fn run_dry_run_commands(
             Err(error) => {
                 results.push(automation_resolution_failure(command, &error));
                 for skipped in commands.iter().skip(position + 1) {
-                    results.push(automation_skipped_result(skipped));
+                    results.push(automation_skipped_result(skipped).await?);
                 }
                 failed = true;
                 break;
@@ -498,21 +533,15 @@ async fn run_dry_run_commands(
         let execution = run_automation_command(workspace, &resolved_argv).await?;
         if execution.success {
             producer_results[position] = execution.producer_result.clone();
-            results.push(automation_execution_result(
-                command,
-                &resolved_argv,
-                &execution,
-                "valid",
-            ));
+            results.push(
+                automation_execution_result(command, &resolved_argv, &execution, "valid").await?,
+            );
         } else {
-            results.push(automation_execution_result(
-                command,
-                &resolved_argv,
-                &execution,
-                "invalid",
-            ));
+            results.push(
+                automation_execution_result(command, &resolved_argv, &execution, "invalid").await?,
+            );
             for skipped in commands.iter().skip(position + 1) {
-                results.push(automation_skipped_result(skipped));
+                results.push(automation_skipped_result(skipped).await?);
             }
             failed = true;
             break;
@@ -836,11 +865,7 @@ pub(super) fn parsed_item_id(raw: Option<&String>) -> Option<String> {
         .map(|id| id.to_string())
 }
 
-pub(super) fn automation_target_ids(argv: &[String]) -> Vec<String> {
-    let Ok(cli) = Cli::try_parse_from(std::iter::once("pinto".to_string()).chain(argv.to_vec()))
-    else {
-        return Vec::new();
-    };
+fn automation_target_ids_from_cli(cli: &Cli) -> Vec<String> {
     match &cli.command {
         Command::Split(args) => parsed_item_id(Some(&args.source)).into_iter().collect(),
         Command::Move(args) => args
@@ -884,24 +909,42 @@ pub(super) fn automation_target_ids(argv: &[String]) -> Vec<String> {
     }
 }
 
-pub(super) fn automation_item_ids(argv: &[String]) -> Vec<String> {
-    let Ok(cli) = Cli::try_parse_from(std::iter::once("pinto".to_string()).chain(argv.to_vec()))
-    else {
-        return Vec::new();
-    };
-    item_id_arguments(&cli)
+fn automation_item_ids_from_cli(cli: &Cli) -> Vec<String> {
+    item_id_arguments(cli)
         .iter()
         .filter_map(|id| parsed_item_id(Some(id)))
         .collect()
 }
 
-pub(super) fn automation_execution_result(
+async fn automation_ids_on_dedicated_stack(
+    argv: &[String],
+) -> anyhow::Result<(Vec<String>, Vec<String>)> {
+    let argv = argv.to_vec();
+    run_on_automation_worker_stack(move || {
+        let Ok(cli) = Cli::try_parse_from(std::iter::once("pinto".to_string()).chain(argv)) else {
+            return (Vec::new(), Vec::new());
+        };
+        (
+            automation_target_ids_from_cli(&cli),
+            automation_item_ids_from_cli(&cli),
+        )
+    })
+    .await
+}
+
+#[cfg(test)]
+pub(super) async fn automation_target_ids(argv: &[String]) -> anyhow::Result<Vec<String>> {
+    Ok(automation_ids_on_dedicated_stack(argv).await?.0)
+}
+
+pub(super) async fn automation_execution_result(
     command: &ValidatedAutomationCommand,
     resolved_argv: &[String],
     execution: &AutomationExecution,
     status: &str,
-) -> AutomationCommandResult {
+) -> anyhow::Result<AutomationCommandResult> {
     automation_execution_result_with_localizer(command, resolved_argv, execution, status, current())
+        .await
 }
 
 /// Build a command result with an explicit localizer.
@@ -909,24 +952,25 @@ pub(super) fn automation_execution_result(
 /// The production entry point [`automation_execution_result`] forwards the process localizer
 /// ([`current`]); tests inject a deterministic localizer so their English assertions do not
 /// depend on the parent process locale.
-pub(super) fn automation_execution_result_with_localizer(
+pub(super) async fn automation_execution_result_with_localizer(
     command: &ValidatedAutomationCommand,
     resolved_argv: &[String],
     execution: &AutomationExecution,
     status: &str,
     localizer: &pinto::i18n::Localizer,
-) -> AutomationCommandResult {
+) -> anyhow::Result<AutomationCommandResult> {
     let created_ids = execution
         .producer_result
         .as_ref()
         .map_or_else(Vec::new, |result| result.created_ids.clone());
-    AutomationCommandResult {
+    let (updated_ids, resolved_ids) = automation_ids_on_dedicated_stack(resolved_argv).await?;
+    Ok(AutomationCommandResult {
         index: command.index,
         command: command.name.clone(),
         status: status.to_string(),
         created_ids,
-        updated_ids: automation_target_ids(resolved_argv),
-        resolved_ids: automation_item_ids(resolved_argv),
+        updated_ids,
+        resolved_ids,
         error: (!execution.success).then(|| {
             let error = visible_stderr(&execution.stderr);
             if error.is_empty() {
@@ -941,7 +985,7 @@ pub(super) fn automation_execution_result_with_localizer(
                 error.to_string()
             }
         }),
-    }
+    })
 }
 
 fn parse_producer_result(stderr: &str) -> anyhow::Result<AutomationProducerResult> {
@@ -978,16 +1022,19 @@ fn automation_resolution_failure(
     }
 }
 
-fn automation_skipped_result(command: &ValidatedAutomationCommand) -> AutomationCommandResult {
-    AutomationCommandResult {
+async fn automation_skipped_result(
+    command: &ValidatedAutomationCommand,
+) -> anyhow::Result<AutomationCommandResult> {
+    let (updated_ids, resolved_ids) = automation_ids_on_dedicated_stack(&command.argv).await?;
+    Ok(AutomationCommandResult {
         index: command.index,
         command: command.name.clone(),
         status: "skipped".to_string(),
         created_ids: Vec::new(),
-        updated_ids: automation_target_ids(&command.argv),
-        resolved_ids: automation_item_ids(&command.argv),
+        updated_ids,
+        resolved_ids,
         error: Some(current().text(Message::AutomationNotExecutedAfterFailure)),
-    }
+    })
 }
 
 fn print_automation_json(report: &AutomationReport) -> anyhow::Result<()> {
