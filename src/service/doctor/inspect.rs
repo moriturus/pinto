@@ -9,7 +9,8 @@ use crate::config::{Config, StorageBackend};
 use crate::error::{Error, Result};
 use crate::rank::Rank;
 use crate::sprint::{SprintId, SprintState};
-use crate::storage::{Backend, item_issued_ids_path};
+use crate::sprint_record::SprintRecordKind;
+use crate::storage::{Backend, item_issued_ids_path, record_from_markdown};
 #[cfg(feature = "sqlite")]
 use crate::storage::{BacklogItemRepository, SprintRepository};
 use rayon::prelude::*;
@@ -31,10 +32,13 @@ pub(super) async fn inspect_board(
         #[cfg(feature = "sqlite")]
         StorageBackend::Sqlite => inspect_sqlite_storage(board_dir, _backend).await?,
     };
+    let (child_records, child_record_issues) = read_child_records(board_dir, &sprints).await?;
     let issued = read_issued_history(board_dir).await?;
     let mut issues = analyze_sprints(&sprints);
     issues.extend(analyze_records(&records, &sprints, config));
+    issues.extend(analyze_action_sources(&records, &sprints, &child_records));
     issues.extend(analyze_issued(&records, &issued));
+    issues.extend(child_record_issues);
     issues.sort_by(|left, right| {
         left.kind
             .cmp(&right.kind)
@@ -83,10 +87,23 @@ async fn inspect_sqlite_storage(
     backend: &Backend,
 ) -> Result<(Vec<RawItemRecord>, Vec<RawSprintRecord>)> {
     let items = BacklogItemRepository::list(backend).await?;
-    let sprints = SprintRepository::list(backend).await?;
+    let archived = BacklogItemRepository::list_archived(backend).await?;
+    // The normal SQLite mapper normalizes an outcome paired with a blank Goal. Doctor must use the
+    // raw Sprint rows here so that corruption remains observable at the health-check boundary.
+    let sprints = match backend {
+        Backend::Sqlite(repository) => repository.list_sprints_raw().await?,
+        _ => SprintRepository::list(backend).await?,
+    };
+    // Inspect the active and archived stores together, matching the file and Git backends, so an
+    // archived action PBI with a dangling `source` is analyzed instead of silently skipped.
     let records = items
         .into_iter()
-        .map(|item| RawItemRecord::from_item(board_dir, item))
+        .map(|item| RawItemRecord::from_item(board_dir, item, false))
+        .chain(
+            archived
+                .into_iter()
+                .map(|item| RawItemRecord::from_item(board_dir, item, true)),
+        )
         .collect();
     let sprints = sprints
         .into_iter()
@@ -133,6 +150,94 @@ async fn read_documents(dir: &Path) -> Result<Vec<(PathBuf, String)>> {
     }
     documents.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(documents)
+}
+
+/// Read every Retro and Review document on disk, returning the `(kind, sprint-id)` of each valid
+/// record plus an issue for every malformed, misnamed, or orphaned one.
+///
+/// Sprint child records are stored as `<board>/retro/<ID>.md` and `<board>/review/<ID>.md` for
+/// every backend (SQLite keeps them in the shared Markdown directories), so scanning those
+/// directories yields the child records regardless of the configured storage backend. A record only
+/// answers "does a readable record of this kind exist for this Sprint?" when its document parses
+/// through the same typed reader `sprint retro show` uses, its frontmatter ID matches its filename,
+/// and a parent Sprint with that ID exists. A document that fails the typed parse (a missing or
+/// malformed `id`, `created`, or `updated`) is a [`DoctorIssueKind::MalformedRecord`]; a readable
+/// record whose Sprint is gone is an orphan flagged as [`DoctorIssueKind::DanglingSprint`]. Both are
+/// excluded from the reference set so an action PBI pointing at them is still reported, and one
+/// broken document never aborts the rest of the scan.
+async fn read_child_records(
+    board_dir: &Path,
+    sprints: &[RawSprintRecord],
+) -> Result<(HashSet<(SprintRecordKind, String)>, Vec<DoctorIssue>)> {
+    let valid_sprints = sprints
+        .iter()
+        .filter_map(RawSprintRecord::valid_id)
+        .map(|id| id.to_string())
+        .collect::<BTreeSet<_>>();
+    let mut ids = HashSet::new();
+    let mut issues = Vec::new();
+    for kind in SprintRecordKind::ALL {
+        for (path, text) in read_documents(&board_dir.join(kind.directory())).await? {
+            match validate_child_record(kind, &path, &text) {
+                Ok(id) if valid_sprints.contains(&id) => {
+                    ids.insert((kind, id));
+                }
+                Ok(id) => issues.push(make_issue(
+                    DoctorIssueKind::DanglingSprint,
+                    path.display().to_string(),
+                    format!("{} {id} has no parent sprint", kind.display_name()),
+                    "restore the sprint or remove the orphaned record",
+                )),
+                Err(issue) => issues.push(issue),
+            }
+        }
+    }
+    Ok((ids, issues))
+}
+
+/// Validate one child-record document and return its Sprint ID, or the issue that disqualifies it.
+///
+/// A record is valid only when it parses through [`record_from_markdown`] — the same typed reader
+/// the persistence layer uses, which requires a Sprint-ID `id` and RFC3339 `created`/`updated`
+/// fields — and its ID equals the filename stem. Reusing that reader keeps `doctor` from counting a
+/// document the shared child-record readers would reject (for example one with a broken timestamp)
+/// as a valid record.
+fn validate_child_record(
+    kind: SprintRecordKind,
+    path: &Path,
+    text: &str,
+) -> std::result::Result<String, DoctorIssue> {
+    let location = path.display().to_string();
+    let record = record_from_markdown(text, path, kind).map_err(|error| {
+        make_issue(
+            DoctorIssueKind::MalformedRecord,
+            location.clone(),
+            format!("{} is not readable: {error}", kind.display_name()),
+            format!(
+                "restore valid TOML frontmatter with the {} ID, created, and updated fields matching the filename",
+                kind.display_name()
+            ),
+        )
+    })?;
+    let id = record.id.to_string();
+    match path.file_stem().and_then(|stem| stem.to_str()) {
+        Some(stem) if stem == id => Ok(id),
+        Some(stem) => Err(make_issue(
+            DoctorIssueKind::Filename,
+            location,
+            format!(
+                "{} filename `{stem}.md` does not match frontmatter ID {id}",
+                kind.display_name()
+            ),
+            "rename the record to the canonical <SPRINT-ID>.md filename or fix its frontmatter",
+        )),
+        None => Err(make_issue(
+            DoctorIssueKind::MalformedRecord,
+            location,
+            format!("{} filename is not valid UTF-8", kind.display_name()),
+            "rename the record to a UTF-8 <SPRINT-ID>.md filename",
+        )),
+    }
 }
 
 pub(super) async fn read_issued_history(board_dir: &Path) -> Result<IssuedHistory> {
@@ -236,6 +341,60 @@ pub(super) fn analyze_sprints(sprints: &[RawSprintRecord]) -> Vec<DoctorIssue> {
                 error.clone(),
                 "set state to a string: planned, active, or closed",
             )),
+        }
+
+        match &sprint.title {
+            RawField::Present(title) if !title.trim().is_empty() => {}
+            RawField::Present(_) => issues.push(make_issue(
+                DoctorIssueKind::MalformedRecord,
+                sprint.location(),
+                "sprint title must not be empty",
+                "restore a non-empty title in frontmatter",
+            )),
+            RawField::Missing => issues.push(make_issue(
+                DoctorIssueKind::MalformedRecord,
+                sprint.location(),
+                "required sprint field title is missing",
+                "restore a non-empty title in frontmatter",
+            )),
+            RawField::Invalid(error) => issues.push(make_issue(
+                DoctorIssueKind::MalformedRecord,
+                sprint.location(),
+                error.clone(),
+                "set title to a string in frontmatter",
+            )),
+        }
+
+        // Preserve strict parser failures that lenient field extraction cannot see, such as an
+        // unreadable timestamp or an invalid optional numeric field. Required-field failures are
+        // already reported above, so only emit this additional finding when those fields are valid.
+        if sprint.required_fields_are_valid()
+            && let Some(error) = &sprint.parse_error
+        {
+            issues.push(make_issue(
+                DoctorIssueKind::MalformedRecord,
+                sprint.location(),
+                format!("sprint is not readable: {error}"),
+                "restore valid Sprint frontmatter values, including RFC3339 timestamps",
+            ));
+        }
+
+        // When the document forms a Sprint, apply the shared domain invariants that lenient field
+        // extraction cannot see — a two-sided non-inverted period, a Goal on an active Sprint, and
+        // no Goal outcome recorded against a blank Goal — so File, Git, and SQLite report the same
+        // finding for the same logical data, matching what `import` rejects. The parsed Sprint keeps
+        // its raw Goal outcome (the read paths that normalize it are bypassed here), so a
+        // hand-edited `goal_achieved` with a blank Goal is surfaced instead of hidden. A blank title,
+        // invalid id, or invalid state is already reported from the lenient fields above.
+        if let Some(parsed) = &sprint.parsed
+            && let Err(error) = parsed.validate()
+        {
+            issues.push(make_issue(
+                DoctorIssueKind::MalformedRecord,
+                sprint.location(),
+                error.to_string(),
+                "restore a valid period and Goal, or re-import from a healthy export",
+            ));
         }
     }
 
@@ -416,7 +575,7 @@ pub(super) fn analyze_records(
                 ));
             }
 
-            if record.area == RecordArea::Tasks
+            if record.area.is_active_store()
                 && let (RawField::Present(status), Some(rank)) = (&record.status, valid_rank)
                 && valid_statuses.contains(status)
             {
@@ -612,6 +771,94 @@ pub(super) fn analyze_records(
             format!("dependency relationship cycle: {}", cycle.join(" -> ")),
             "remove or change one dependency in the cycle manually",
         ));
+    }
+
+    issues
+}
+
+/// Flag action PBIs whose `[source]` link points at a Sprint or child record that is not present.
+///
+/// After a Sprint is deleted (with its records) or a hand-edited board loses a Retro/Review, the
+/// promoted action PBI keeps a `source` naming the vanished Sprint or record. Both the active and
+/// the archived stores are covered because `records` already includes both areas. Findings reuse
+/// [`DoctorIssueKind::DanglingSprint`]: like a dangling `sprint` assignment, the link names board
+/// state that no longer exists, and doctor only reports it for conservative manual repair.
+pub(super) fn analyze_action_sources(
+    records: &[RawItemRecord],
+    sprints: &[RawSprintRecord],
+    child_records: &HashSet<(SprintRecordKind, String)>,
+) -> Vec<DoctorIssue> {
+    let mut issues = Vec::new();
+    let valid_sprints = sprints
+        .iter()
+        .filter_map(RawSprintRecord::valid_id)
+        .map(|id| id.to_string())
+        .collect::<BTreeSet<_>>();
+
+    for record in records {
+        let source = match &record.source {
+            RawField::Missing => continue,
+            RawField::Present(source) => source,
+            RawField::Invalid(error) => {
+                issues.push(make_issue(
+                    DoctorIssueKind::DanglingSprint,
+                    record.location(),
+                    error.clone(),
+                    "remove the [source] table or restore its kind and sprint_id fields",
+                ));
+                continue;
+            }
+        };
+
+        let kind = match source.kind.as_str() {
+            "retro" => SprintRecordKind::Retro,
+            "review" => SprintRecordKind::Review,
+            other => {
+                issues.push(make_issue(
+                    DoctorIssueKind::DanglingSprint,
+                    record.location(),
+                    format!("action source kind is invalid: {other:?}"),
+                    "set source.kind to `retro` or `review`, or remove the [source] table",
+                ));
+                continue;
+            }
+        };
+
+        let sprint_id =
+            match source.sprint_id.parse::<SprintId>() {
+                Ok(id) => id.to_string(),
+                Err(_) => {
+                    issues.push(make_issue(
+                    DoctorIssueKind::DanglingSprint,
+                    record.location(),
+                    format!("action source sprint reference is invalid: {:?}", source.sprint_id),
+                    "set source.sprint_id to an existing sprint ID, or remove the [source] table",
+                ));
+                    continue;
+                }
+            };
+
+        if !valid_sprints.contains(&sprint_id) {
+            issues.push(make_issue(
+                DoctorIssueKind::DanglingSprint,
+                record.location(),
+                format!(
+                    "action PBI refers to missing sprint {sprint_id} through its {} source",
+                    kind.display_name()
+                ),
+                "clear the [source] link or restore the sprint",
+            ));
+        } else if !child_records.contains(&(kind, sprint_id.clone())) {
+            issues.push(make_issue(
+                DoctorIssueKind::DanglingSprint,
+                record.location(),
+                format!(
+                    "action PBI refers to missing {} {sprint_id}",
+                    kind.display_name()
+                ),
+                "clear the [source] link or restore the record",
+            ));
+        }
     }
 
     issues

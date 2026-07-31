@@ -23,6 +23,313 @@ fn doctor_reports_a_clean_board_successfully() {
 }
 
 #[test]
+fn doctor_flags_action_pbi_source_pointing_at_a_missing_record() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Notes"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "action", "S-1", "Follow up"])
+        .assert()
+        .success();
+
+    // Simulate a hand-broken board: drop the Retro record file directly, leaving T-1's [source]
+    // link pointing at a record that no longer exists. doctor must surface it rather than report a
+    // healthy board.
+    std::fs::remove_file(dir.path().join(".pinto/retro/S-1.md")).expect("remove retro record");
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("dangling sprint"))
+        .stdout(predicate::str::contains("missing Retro S-1"));
+}
+
+#[test]
+fn doctor_flags_a_child_record_whose_frontmatter_id_mismatches_its_filename() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Notes"])
+        .assert()
+        .success();
+
+    // Hand-break the Retro so its frontmatter ID no longer matches the filename. The shared child
+    // record reader rejects such a document, so doctor must not count the `S-1.md` stem as a valid
+    // Retro and report a healthy board.
+    rewrite_item(
+        &dir.path().join(".pinto/retro/S-1.md"),
+        &[("id = \"S-1\"", "id = \"T-1\"")],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("filename mismatch"))
+        .stdout(predicate::str::contains(
+            "does not match frontmatter ID T-1",
+        ));
+}
+
+#[test]
+fn doctor_flags_a_child_record_with_an_unreadable_timestamp() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Notes"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "action", "S-1", "Follow up"])
+        .assert()
+        .success();
+
+    // Corrupt the Retro's `created` timestamp so the typed child-record reader rejects it, exactly
+    // as `sprint retro show` would. doctor must report the unreadable record and the now-dangling
+    // action source instead of counting the broken document as a valid Retro.
+    rewrite_item(
+        &dir.path().join(".pinto/retro/S-1.md"),
+        &[("created = \"", "created = \"not-a-date\" # \"")],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("malformed record"))
+        .stdout(predicate::str::contains("is not readable"))
+        .stdout(predicate::str::contains("missing Retro S-1"));
+}
+
+#[test]
+fn doctor_flags_an_orphaned_child_record_whose_sprint_is_gone() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Notes"])
+        .assert()
+        .success();
+
+    // Drop the parent Sprint document, leaving a readable Retro whose Sprint no longer exists. Such
+    // an orphan is exactly the state `import` rejects, so doctor must flag it rather than report a
+    // healthy board.
+    std::fs::remove_file(dir.path().join(".pinto/sprints/S-1.md")).expect("remove sprint");
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("dangling sprint"))
+        .stdout(predicate::str::contains("Retro S-1 has no parent sprint"));
+}
+
+#[test]
+fn doctor_flags_a_sprint_with_a_blank_title() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+
+    // Hand-blank the Sprint title. Normal Sprint reads reject it, so doctor must not report the
+    // board healthy — matching the states `import` refuses.
+    rewrite_item(
+        &dir.path().join(".pinto/sprints/S-1.md"),
+        &[("title = \"Sprint\"", "title = \"\"")],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("sprint title must not be empty"));
+}
+
+#[test]
+fn doctor_flags_a_sprint_with_an_inverted_period() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+
+    // Inject a period whose start is after its end. The persistence Sprint parser accepts it, so
+    // doctor's own domain check is what surfaces the inversion.
+    rewrite_item(
+        &dir.path().join(".pinto/sprints/S-1.md"),
+        &[(
+            "updated =",
+            "start = \"2026-08-05T00:00:00Z\"\nend = \"2026-08-01T00:00:00Z\"\nupdated =",
+        )],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("invalid sprint period"));
+}
+
+#[test]
+fn doctor_flags_a_sprint_with_a_one_sided_period() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+
+    // Only a start is set. A period is written as a pair through normal edits, so one side alone is
+    // an inconsistency doctor must surface.
+    rewrite_item(
+        &dir.path().join(".pinto/sprints/S-1.md"),
+        &[("updated =", "start = \"2026-08-01T00:00:00Z\"\nupdated =")],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("has only one of start/end set"));
+}
+
+#[test]
+fn doctor_flags_a_sprint_with_an_unreadable_timestamp() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+
+    // Keep the required fields valid while making a typed timestamp unreadable. The normal Sprint
+    // reader rejects this document, so doctor must report the parse failure instead of treating the
+    // record as absent from its domain-invariant checks.
+    rewrite_item(
+        &dir.path().join(".pinto/sprints/S-1.md"),
+        &[("updated = \"", "updated = \"not-a-date\" # \"")],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("malformed record"))
+        .stdout(predicate::str::contains("is not readable"));
+}
+
+#[test]
+fn doctor_flags_an_active_sprint_without_a_goal() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+
+    // Force the Sprint active while its Goal stays blank. Starting a Sprint requires a Goal, so an
+    // active blank-Goal Sprint is a hand-edited state doctor must flag.
+    rewrite_item(
+        &dir.path().join(".pinto/sprints/S-1.md"),
+        &[("state = \"planned\"", "state = \"active\"")],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("sprint goal must be set"));
+}
+
+#[test]
+fn doctor_flags_a_sprint_with_a_goal_outcome_but_no_goal() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    // A Sprint created without a Goal has a blank Goal body.
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+
+    // Record a Goal outcome against that blank Goal. The normal read path clears it silently, but
+    // doctor inspects the raw document so it reports the corruption instead of hiding it — matching
+    // what import rejects and what the SQLite read path exposes.
+    rewrite_item(
+        &dir.path().join(".pinto/sprints/S-1.md"),
+        &[(
+            "state = \"planned\"",
+            "state = \"planned\"\ngoal_achieved = true",
+        )],
+    );
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "records a goal outcome but has no goal",
+        ));
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn doctor_flags_an_archived_action_source_on_the_sqlite_backend() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["migrate", "--to", "sqlite"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Notes"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "action", "S-1", "Follow up"])
+        .assert()
+        .success();
+
+    // Archive the promoted action PBI, then drop the Retro it sources. The dangling `source` now
+    // lives only on an archived SQLite row, so doctor must inspect the archive to surface it instead
+    // of reporting a healthy board.
+    pinto(dir.path()).args(["rm", "T-1"]).assert().success();
+    std::fs::remove_file(dir.path().join(".pinto/retro/S-1.md")).expect("remove retro record");
+
+    pinto(dir.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("dangling sprint"))
+        .stdout(predicate::str::contains("missing Retro S-1"));
+}
+
+#[test]
 fn doctor_reports_relationship_state_rank_and_filename_corruption() {
     let dir = TempDir::new().expect("temp dir");
     init_with_items(dir.path(), &["first", "second"]);

@@ -260,6 +260,21 @@ impl SprintFrontmatter {
     }
 
     fn into_sprint(self, goal: String, path: &Path) -> Result<Sprint> {
+        let mut sprint = self.into_sprint_unnormalized(goal, path)?;
+        // A hand-edited file can pair a recorded outcome with a blank Goal. Enforce the same
+        // invariant on load as on save so downstream reports never trust an outcome the tool would
+        // itself clear on the next write. `doctor` deliberately skips this step (see
+        // [`sprint_from_markdown_raw`]) so it can report the raw corruption instead of hiding it.
+        sprint.normalize_goal_outcome();
+        Ok(sprint)
+    }
+
+    /// Map the frontmatter to a [`Sprint`] without normalizing the Goal outcome.
+    ///
+    /// This preserves a hand-edited `goal_achieved` paired with a blank Goal so `doctor` can observe
+    /// and report it. Everything else — the ID, state, and non-empty title — is validated exactly as
+    /// the normalizing path does.
+    fn into_sprint_unnormalized(self, goal: String, path: &Path) -> Result<Sprint> {
         let to_parse = |e: Error| Error::parse(path, e.to_string());
         let id: SprintId = self.id.parse().map_err(to_parse)?;
         let state: SprintState = self.state.parse().map_err(to_parse)?;
@@ -267,7 +282,7 @@ impl SprintFrontmatter {
         if self.title.trim().is_empty() {
             return Err(Error::parse(path, Error::EmptySprintTitle.to_string()));
         }
-        let mut sprint = Sprint {
+        Ok(Sprint {
             id,
             title: self.title,
             goal,
@@ -286,12 +301,7 @@ impl SprintFrontmatter {
             closed_at: self.closed_at,
             created: self.created,
             updated: self.updated,
-        };
-        // A hand-edited file can pair a recorded outcome with a blank Goal. Enforce the same
-        // invariant on load as on save so downstream reports never trust an outcome the tool would
-        // itself clear on the next write.
-        sprint.normalize_goal_outcome();
-        Ok(sprint)
+        })
     }
 }
 
@@ -310,13 +320,27 @@ pub(super) fn sprint_to_markdown(sprint: &Sprint) -> Result<String> {
 }
 
 /// Parse the Markdown of a sprint with a structured title and a Markdown goal body.
-pub(super) fn sprint_from_markdown(text: &str, path: &Path) -> Result<Sprint> {
+pub(crate) fn sprint_from_markdown(text: &str, path: &Path) -> Result<Sprint> {
     let (front, goal) = split_frontmatter(text).ok_or_else(|| Error::MissingFrontmatter {
         path: path.to_path_buf(),
     })?;
     let fm: SprintFrontmatter =
         toml::from_str(front).map_err(|e| Error::parse(path, e.to_string()))?;
     fm.into_sprint(goal.to_string(), path)
+}
+
+/// Parse a Sprint Markdown document without normalizing its Goal outcome.
+///
+/// `doctor` uses this so a hand-edited `goal_achieved` paired with a blank Goal survives the parse
+/// and can be reported as a raw-data violation, instead of being silently cleared the way the normal
+/// load path ([`sprint_from_markdown`]) does. All other validation is identical.
+pub(crate) fn sprint_from_markdown_raw(text: &str, path: &Path) -> Result<Sprint> {
+    let (front, goal) = split_frontmatter(text).ok_or_else(|| Error::MissingFrontmatter {
+        path: path.to_path_buf(),
+    })?;
+    let fm: SprintFrontmatter =
+        toml::from_str(front).map_err(|e| Error::parse(path, e.to_string()))?;
+    fm.into_sprint_unnormalized(goal.to_string(), path)
 }
 
 /// Sprint child-record frontmatter fields. The Sprint ID is both the record identity and the
@@ -371,7 +395,7 @@ pub(super) fn record_to_markdown(record: &SprintRecord) -> Result<String> {
 }
 
 /// Parse a Sprint child-record Markdown document from its kind-specific directory.
-pub(super) fn record_from_markdown(
+pub(crate) fn record_from_markdown(
     text: &str,
     path: &Path,
     kind: SprintRecordKind,

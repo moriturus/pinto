@@ -43,7 +43,7 @@ pub(super) async fn apply_safe_fixes(
             RecordArea::Tasks => RecordArea::Archive,
             RecordArea::Archive => RecordArea::Tasks,
             #[cfg(feature = "sqlite")]
-            RecordArea::Database => continue,
+            RecordArea::DatabaseActive | RecordArea::DatabaseArchive => continue,
         };
         let other_destination = other_area
             .directory(board_dir)
@@ -247,6 +247,8 @@ fn record_area_priority(area: RecordArea) -> u8 {
         RecordArea::Tasks => 0,
         RecordArea::Archive => 1,
         #[cfg(feature = "sqlite")]
-        RecordArea::Database => 2,
+        RecordArea::DatabaseActive => 2,
+        #[cfg(feature = "sqlite")]
+        RecordArea::DatabaseArchive => 3,
     }
 }

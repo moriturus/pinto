@@ -45,10 +45,12 @@ impl Backend {
         }
     }
 
-    /// Replace all active board records in one operation-specific persistence boundary.
+    /// Replace all board records — active PBIs, archived PBIs, Sprints, and Sprint child records —
+    /// in one operation-specific persistence boundary.
     pub(crate) async fn replace_board(
         &self,
         items: &[BacklogItem],
+        archived_items: &[BacklogItem],
         sprints: &[Sprint],
         records: &[SprintRecord],
     ) -> Result<()> {
@@ -56,15 +58,21 @@ impl Backend {
             Backend::File(repository) => {
                 clear_active_board(repository).await?;
                 repository.save_batch(items).await?;
+                save_archived_batch(repository, archived_items).await?;
                 save_sprints_and_records(repository, sprints, records).await
             }
             Backend::Git(repository) => {
                 clear_active_board(repository).await?;
                 repository.save_item_batch(items).await?;
+                save_archived_batch(repository, archived_items).await?;
                 save_sprints_and_records(repository, sprints, records).await
             }
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite(repository) => repository.replace_board(items, sprints, records).await,
+            Backend::Sqlite(repository) => {
+                repository
+                    .replace_board(items, archived_items, sprints, records)
+                    .await
+            }
         }
     }
 
@@ -169,6 +177,15 @@ impl BacklogItemRepository for Backend {
         }
     }
 
+    async fn save_archived(&self, item: &BacklogItem) -> Result<()> {
+        match self {
+            Backend::File(r) => BacklogItemRepository::save_archived(r, item).await,
+            Backend::Git(r) => BacklogItemRepository::save_archived(r, item).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(r) => BacklogItemRepository::save_archived(r, item).await,
+        }
+    }
+
     async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
         match self {
             Backend::File(r) => BacklogItemRepository::load_archived(r, id).await,
@@ -184,6 +201,15 @@ impl BacklogItemRepository for Backend {
             Backend::Git(r) => BacklogItemRepository::delete(r, id).await,
             #[cfg(feature = "sqlite")]
             Backend::Sqlite(r) => BacklogItemRepository::delete(r, id).await,
+        }
+    }
+
+    async fn delete_archived(&self, id: &ItemId) -> Result<()> {
+        match self {
+            Backend::File(r) => BacklogItemRepository::delete_archived(r, id).await,
+            Backend::Git(r) => BacklogItemRepository::delete_archived(r, id).await,
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite(r) => BacklogItemRepository::delete_archived(r, id).await,
         }
     }
 
@@ -293,10 +319,12 @@ impl SprintRecordRepository for Backend {
     }
 }
 
-/// Delete every active PBI, Sprint, and Sprint child record from `repository`.
+/// Delete every active PBI, archived PBI, Sprint, and Sprint child record from `repository`.
 ///
 /// Shared by the file and Git arms of [`Backend::replace_board`]; the two backends differ only in
-/// how they batch the subsequent writes.
+/// how they batch the subsequent writes. The archive is cleared too so the snapshot fully mirrors
+/// the board — otherwise a stale archived PBI could survive a forced import and keep a dangling
+/// reference to a Sprint or record the snapshot removed.
 async fn clear_active_board<R>(repository: &R) -> Result<()>
 where
     R: BacklogItemRepository + SprintRepository + SprintRecordRepository,
@@ -309,8 +337,26 @@ where
     for item in BacklogItemRepository::list(repository).await? {
         BacklogItemRepository::delete(repository, &item.id).await?;
     }
+    for item in BacklogItemRepository::list_archived(repository).await? {
+        BacklogItemRepository::delete_archived(repository, &item.id).await?;
+    }
     for sprint in SprintRepository::list(repository).await? {
         SprintRepository::delete(repository, &sprint.id).await?;
+    }
+    Ok(())
+}
+
+/// Write each archived PBI to the archive store after the active board has been cleared.
+///
+/// The active batch is written first, so `save_archived` never observes an active shadow of an
+/// archived ID. Each write goes through the regular archive-store path, keeping the file and Git
+/// backends' cross-store collision guards in force.
+async fn save_archived_batch<R>(repository: &R, archived_items: &[BacklogItem]) -> Result<()>
+where
+    R: BacklogItemRepository,
+{
+    for item in archived_items {
+        BacklogItemRepository::save_archived(repository, item).await?;
     }
     Ok(())
 }

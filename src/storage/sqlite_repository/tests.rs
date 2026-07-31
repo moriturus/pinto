@@ -927,6 +927,32 @@ async fn sprint_goal_outcome_can_be_cleared_without_leaving_a_relation_row() {
 }
 
 #[tokio::test]
+async fn sqlite_reads_normalize_a_goal_outcome_when_the_goal_is_blank() {
+    let (_dir, repo) = repo();
+    let mut sprint = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint 1", ts(1_000)).unwrap();
+    sprint.goal = "Ship the release".to_string();
+    sprint.goal_achieved = Some(true);
+    SprintRepository::save(&repo, &sprint)
+        .await
+        .expect("save outcome");
+
+    // Simulate a hand-edited database. The normal reader must apply the same blank-Goal
+    // normalization as the file and Git readers, even though doctor has a separate raw scan.
+    raw(&repo)
+        .execute("UPDATE sprints SET goal = '' WHERE id = 'S-1'", [])
+        .expect("blank the goal");
+
+    let loaded = SprintRepository::load(&repo, &sprint.id)
+        .await
+        .expect("load corrupted sprint");
+    assert_eq!(loaded.goal_achieved, None);
+    let listed = SprintRepository::list(&repo)
+        .await
+        .expect("list corrupted sprint");
+    assert_eq!(listed[0].goal_achieved, None);
+}
+
+#[tokio::test]
 async fn existing_supported_database_gets_the_goal_outcome_table_additively() {
     let (_dir, repo) = repo();
     let sprint = Sprint::new(SprintId::new("S-1").unwrap(), "Sprint 1", ts(1_000)).unwrap();

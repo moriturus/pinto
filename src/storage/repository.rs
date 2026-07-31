@@ -45,6 +45,22 @@ pub trait BacklogItemRepository {
     /// or validated. Listing is read-only and safe to retry after a transient read failure.
     fn list_archived(&self) -> impl Future<Output = Result<Vec<BacklogItem>>>;
 
+    /// Update an archived backlog item in place, replacing the archived copy with the same ID
+    /// while keeping it archived.
+    ///
+    /// Unlike [`Self::save`], which targets the active store and refuses to shadow an archived
+    /// copy, this writes to the archive store so callers can fix fields (such as a stale action
+    /// source that points at a deleted Sprint) on an item that must stay archived. Implementations
+    /// refuse when an active item with the same ID exists so the update never creates a duplicate
+    /// across the two stores.
+    ///
+    /// # Errors
+    ///
+    /// Returns validation, serialization, parsing, or I/O/backend errors. A successful write may be
+    /// durable before a service-level Git commit completes; retrying the same write is safe, but
+    /// inspect the board after a later commit failure.
+    fn save_archived(&self, item: &BacklogItem) -> impl Future<Output = Result<()>>;
+
     /// Load an archived backlog item by ID. Return [`crate::error::Error::NotFound`] when it does
     /// not exist in the archive.
     ///
@@ -64,6 +80,20 @@ pub trait BacklogItemRepository {
     /// remain after a later failure; inspect the board before retrying, especially for permanent
     /// deletion.
     fn delete(&self, id: &ItemId) -> impl Future<Output = Result<()>>;
+
+    /// Permanently delete an archived backlog item by ID. Return [`crate::error::Error::NotFound`]
+    /// when it does not exist in the archive.
+    ///
+    /// This is the archive-store counterpart of [`Self::delete`]. Board replacement uses it to clear
+    /// stale archived PBIs before the snapshot's archive is written; the issued-ID history is
+    /// intentionally left untouched so a deleted ID is never reissued.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::NotFound`] or persistence, I/O, and backend errors. The record
+    /// may be deleted before a service-level commit finishes, so durable partial changes may remain
+    /// after a later failure; inspect the archive store before retrying.
+    fn delete_archived(&self, id: &ItemId) -> impl Future<Output = Result<()>>;
 
     /// Move a backlog item by ID to `archive/` and return the destination path.
     ///

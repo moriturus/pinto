@@ -73,9 +73,10 @@ the ordinary PBI workflow status.
 
 ## Complete board export
 
-`pinto export --json` returns one read-only object with six fields:
+`pinto export --json` returns one read-only object with seven fields:
 
 - `items` — the active PBIs, using the same objects and hierarchical priority order as `list --json`.
+- `archived_items` — the archived PBIs, using the same objects and rank order as `list --archived --json`.
 - `sprints` — all Sprints, using the same objects and creation order as `sprint list --json`.
 - `retros` — all Sprint Retros, using the same record fields and creation order as `sprint retro list --json`.
 - `reviews` — all Sprint Reviews, using the same record fields and creation order as `sprint review list --json`.
@@ -87,8 +88,12 @@ selected backend and holds it while assembling the complete snapshot. It does
 not modify board data or require a server. Ordinary read commands remain
 non-blocking and do not provide board-wide snapshot isolation; use
 `export --json` when automation needs all resource collections to describe one
-board state. Archived PBIs are excluded, matching the default active-backlog
-behavior of `list --json`.
+board state. Archived PBIs are included in `archived_items` so the snapshot is a
+lossless board copy: an active PBI may reference an archived parent, and
+excluding the archive would let a healthy board export to a snapshot that
+reimports as a dangling reference. `archived_items` is an added key, so a
+snapshot from an older pinto (which omits it) still imports, restoring no
+archive.
 
 ## Restoring a board (`import`)
 
@@ -98,14 +103,29 @@ rebuilds the board's PBIs, Sprints, Sprint Retros, Sprint Reviews, configuration
 and shared DoD. The board must already be initialized (`pinto init`).
 
 - **Fail-fast on a populated board.** Importing into a board that already holds
-  active PBIs or Sprints is refused unless `--force` is given. With `--force`
-  the snapshot replaces the existing data: active PBIs, Sprints, Retros, and
-  Reviews absent from the snapshot are removed, and `config.toml` and the shared
-  DoD are overwritten to match. The whole operation runs under the board write
-  lock.
+  active PBIs, archived PBIs, or Sprints is refused unless `--force` is given.
+  With `--force` the snapshot replaces the existing data: active PBIs, archived
+  PBIs, Sprints, Retros, and Reviews absent from the snapshot are removed, and
+  `config.toml` and the shared DoD are overwritten to match. The whole operation
+  runs under the board write lock.
+- **Consistency check.** Before any write, import rejects a snapshot that would
+  produce a board `doctor` flags: a duplicate Sprint, a Sprint that breaks its
+  domain invariants (a blank title, a one-sided or inverted period, an active
+  Sprint without a Goal, or a Goal outcome recorded without a Goal), a duplicate
+  or orphaned Retro or Review, a duplicate PBI ID across the active and archived
+  collections, a `parent`, `depends_on`, `sprint`, or action `source` reference
+  that resolves to nothing in the snapshot, a PBI with an empty title or a
+  `status` that is not a configured workflow column, a `parent` or `depends_on`
+  cycle, or a rank reused within an active PBI's `(status, parent)` scope. The
+  checks span the active and archived PBIs together and validate `status` against
+  the snapshot's own `config` columns, so they mirror `doctor`'s health boundary:
+  a healthy `export` always round-trips, and a snapshot that would import as an
+  unhealthy board is refused with a non-zero exit and no durable change.
 - **Round-trip contract.** `export` → `import` → `export` reproduces the same
   JSON document. Equivalence is defined against this contract, not byte-identical
-  storage files.
+  storage files. Because the consistency check rejects the only Sprint states the
+  persistence layer would silently normalize (a Goal outcome without a Goal), no
+  accepted snapshot loses a value on the round trip.
 - **Persistence impact.** Import reuses the existing plain-text persistence.
   Items and Sprints are written to the backend selected by the snapshot's
   `config`, and their IDs are recorded in `issued_ids` so a later `add` never

@@ -183,25 +183,32 @@ impl SqliteRepository {
         self.root.join("board.sqlite3")
     }
 
-    /// Replace all active rows, Sprint rows, and shared Markdown child records.
+    /// Replace all active rows, archived rows, Sprint rows, and shared Markdown child records.
+    ///
+    /// The archive is cleared and rewritten alongside the active set so the snapshot fully mirrors
+    /// the board, matching the file and Git backends. Active items are upserted (`archived = 0`) and
+    /// archived items are upserted and then flagged `archived = 1` within the same transaction.
     pub(crate) async fn replace_board(
         &self,
         items: &[BacklogItem],
+        archived_items: &[BacklogItem],
         sprints: &[Sprint],
         records: &[SprintRecord],
     ) -> Result<()> {
         let db = self.db_path();
         let items = items.to_vec();
+        let archived_items = archived_items.to_vec();
         let sprints = sprints.to_vec();
         let records = records.to_vec();
         let issued_items = items.clone();
+        let issued_archived = archived_items.clone();
         let failure = self.failure.clone();
         let old_ids = tokio::task::spawn_blocking(move || {
             let mut conn = open_conn(&db)?;
             let tx = conn.transaction().map_err(|e| sqlite_err(&db, &e))?;
             let old_ids = {
                 let mut statement = tx
-                    .prepare("SELECT id FROM items WHERE archived = 0")
+                    .prepare("SELECT id FROM items")
                     .map_err(|e| sqlite_err(&db, &e))?;
                 statement
                     .query_map([], |row| row.get::<_, String>(0))
@@ -209,12 +216,21 @@ impl SqliteRepository {
                     .collect::<rusqlite::Result<Vec<_>>>()
                     .map_err(|e| sqlite_err(&db, &e))?
             };
-            tx.execute("DELETE FROM items WHERE archived = 0", [])
+            tx.execute("DELETE FROM items", [])
                 .map_err(|e| sqlite_err(&db, &e))?;
             tx.execute("DELETE FROM sprints", [])
                 .map_err(|e| sqlite_err(&db, &e))?;
             for item in &items {
                 super::sqlite_repository::items::upsert_item(&db, &tx, item)?;
+                failure.after_record_write(&db)?;
+            }
+            for item in &archived_items {
+                super::sqlite_repository::items::upsert_item(&db, &tx, item)?;
+                tx.execute(
+                    "UPDATE items SET archived = 1 WHERE id = ?1",
+                    [item.id.to_string()],
+                )
+                .map_err(|e| sqlite_err(&db, &e))?;
                 failure.after_record_write(&db)?;
             }
             for sprint in &sprints {
@@ -238,6 +254,7 @@ impl SqliteRepository {
             })
             .collect::<Result<Vec<_>>>()?;
         issued.extend(issued_items.iter().map(|item| item.id.clone()));
+        issued.extend(issued_archived.iter().map(|item| item.id.clone()));
         record_issued_ids(&self.root, &issued).await?;
         replace_child_records(&self.root, &records).await
     }

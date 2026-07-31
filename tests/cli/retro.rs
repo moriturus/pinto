@@ -82,9 +82,59 @@ fn retro_and_review_show_generated_sprint_context_separately_from_markdown() {
             .args(["sprint", record, "show", "S-1", "--plain"])
             .assert()
             .success()
-            .stdout(predicate::str::contains("Sprint Context (generated)").not())
-            .stdout(predicate::str::contains("Authored notes"));
+            .stdout(predicate::eq("Authored notes\n"));
     }
+}
+
+#[test]
+fn retro_plain_emits_nothing_for_an_empty_body() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+    // A record created without a body has empty authored Markdown; `--plain` must emit exactly
+    // that, so a body-only pipe stays empty rather than leaking the Sprint ID heading.
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "show", "S-1", "--plain"])
+        .assert()
+        .success()
+        .stdout(predicate::eq(""));
+}
+
+#[test]
+fn retro_plain_preserves_a_body_that_already_ends_with_a_newline() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint"])
+        .assert()
+        .success();
+
+    // A body authored through the template or editor keeps its own trailing newline. Write such a
+    // record directly so its stored body is exactly `One\nTwo\n`.
+    let retro = dir.path().join(".pinto/retro/S-1.md");
+    std::fs::create_dir_all(retro.parent().unwrap()).expect("retro directory");
+    std::fs::write(
+        &retro,
+        "+++\nid = \"S-1\"\ncreated = \"1970-01-01T00:00:00Z\"\nupdated = \"1970-01-01T00:00:00Z\"\n+++\n\nOne\nTwo\n\n",
+    )
+    .expect("write retro record");
+
+    // The stored body keeps its trailing newline, and `--plain` must reproduce it byte for byte
+    // rather than padding it with a spurious blank line.
+    let shown = show_json(pinto(dir.path()).args(["sprint", "retro", "show", "S-1", "--json"]));
+    assert_eq!(shown["body"], "One\nTwo\n");
+    pinto(dir.path())
+        .args(["sprint", "retro", "show", "S-1", "--plain"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("One\nTwo\n"));
 }
 
 fn create_sprints(dir: &Path) {
@@ -149,12 +199,13 @@ fn retro_can_be_created_for_each_sprint_state_and_is_listed_as_json() {
     assert_eq!(shown["id"], "S-2");
     assert_eq!(shown["sprint_id"], "S-2");
     assert_eq!(shown["body"], "Active notes");
+    // `--plain` is body-only: exactly the authored Markdown plus a trailing newline, with no
+    // Sprint ID heading that would corrupt a pipe, diff, or reuse of the record body.
     pinto(dir.path())
         .args(["sprint", "retro", "show", "S-1", "--plain"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("S-1"))
-        .stdout(predicate::str::contains("Planned notes"));
+        .stdout(predicate::eq("Planned notes\n"));
 
     let path = dir.path().join(".pinto/retro/S-1.md");
     let markdown = std::fs::read_to_string(path).expect("retro file exists");

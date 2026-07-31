@@ -131,8 +131,10 @@ pub async fn delete_sprint(project_dir: &Path, id: &SprintId) -> Result<()> {
 /// unchanged. With the option enabled, only records belonging to `id` are deleted. Every PBI that
 /// referenced the Sprint has its assignment cleared, and every action PBI whose Retro/Review
 /// source pointed at the Sprint has that source link cleared, so no PBI is left referencing a
-/// Sprint or child record that no longer exists. Git-backed boards commit all resulting changes
-/// once, so the existing undo path can recover the complete operation.
+/// Sprint or child record that no longer exists. Active and archived PBIs are updated
+/// symmetrically, so restoring an archived action PBI later never resurrects a dangling reference.
+/// Git-backed boards commit all resulting changes once, so the existing undo path can recover the
+/// complete operation.
 ///
 /// # Errors
 ///
@@ -169,20 +171,18 @@ pub async fn delete_sprint_with_options(
 
     // Clear both the Sprint assignment and any Retro/Review action-source link that points at this
     // Sprint, so deleting a Sprint never leaves a PBI referencing a Sprint or child record that no
-    // longer exists. A single PBI may need both cleared, so decide and save it once.
+    // longer exists. Active and archived PBIs are treated symmetrically: an archived action PBI is
+    // updated in place so a later `restore` never resurrects a dangling reference. A single PBI may
+    // need both cleared, so decide and save it once.
     let now = Utc::now();
-    let affected = BacklogItemRepository::list(&repo)
-        .await?
-        .into_iter()
-        .filter(|item| {
-            item.sprint.as_deref() == Some(id.as_str())
-                || item
-                    .source
-                    .as_ref()
-                    .is_some_and(|source| source.sprint_id == *id)
-        })
-        .collect::<Vec<_>>();
-    for mut item in affected {
+    let references_sprint = |item: &BacklogItem| {
+        item.sprint.as_deref() == Some(id.as_str())
+            || item
+                .source
+                .as_ref()
+                .is_some_and(|source| source.sprint_id == *id)
+    };
+    let clear_references = |item: &mut BacklogItem| {
         if item.sprint.as_deref() == Some(id.as_str()) {
             item.sprint = None;
         }
@@ -194,7 +194,17 @@ pub async fn delete_sprint_with_options(
             item.source = None;
         }
         item.updated = now;
+    };
+
+    let active = BacklogItemRepository::list(&repo).await?;
+    for mut item in active.into_iter().filter(&references_sprint) {
+        clear_references(&mut item);
         BacklogItemRepository::save(&repo, &item).await?;
+    }
+    let archived = BacklogItemRepository::list_archived(&repo).await?;
+    for mut item in archived.into_iter().filter(&references_sprint) {
+        clear_references(&mut item);
+        BacklogItemRepository::save_archived(&repo, &item).await?;
     }
 
     if options.delete_records {

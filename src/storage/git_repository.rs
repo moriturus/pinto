@@ -552,12 +552,20 @@ impl BacklogItemRepository for GitRepository {
         BacklogItemRepository::list_archived(&self.file).await
     }
 
+    async fn save_archived(&self, item: &BacklogItem) -> Result<()> {
+        BacklogItemRepository::save_archived(&self.file, item).await
+    }
+
     async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
         BacklogItemRepository::load_archived(&self.file, id).await
     }
 
     async fn delete(&self, id: &ItemId) -> Result<()> {
         BacklogItemRepository::delete(&self.file, id).await
+    }
+
+    async fn delete_archived(&self, id: &ItemId) -> Result<()> {
+        BacklogItemRepository::delete_archived(&self.file, id).await
     }
 
     async fn archive(&self, id: &ItemId) -> Result<PathBuf> {

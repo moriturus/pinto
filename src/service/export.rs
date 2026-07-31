@@ -18,6 +18,13 @@ use std::path::Path;
 pub struct BoardSnapshot {
     /// Active PBIs in the same hierarchical priority order as `list --json`.
     pub items: Vec<BacklogItem>,
+    /// Archived PBIs in the same rank order as `list --archived --json`.
+    ///
+    /// Including the archive makes the snapshot a lossless board copy: an active PBI may legitimately
+    /// reference an archived parent, so excluding the archive would let a healthy board export to a
+    /// snapshot that reimports as a dangling reference. The collection defaults to empty when it is
+    /// absent from a snapshot produced by an older pinto.
+    pub archived_items: Vec<BacklogItem>,
     /// Sprints in the same creation order as `sprint list --json`.
     pub sprints: Vec<Sprint>,
     /// Sprint Retros in the same creation order as `sprint retro list --json`.
@@ -47,8 +54,9 @@ pub struct BoardSnapshot {
 pub async fn export_snapshot(project_dir: &Path) -> Result<BoardSnapshot> {
     let _lock = lock_board(project_dir).await?;
     let (board_dir, repo, config) = open_board(project_dir).await?;
-    let (mut items, sprints, retros, reviews, dod) = tokio::try_join!(
+    let (mut items, archived_items, sprints, retros, reviews, dod) = tokio::try_join!(
         BacklogItemRepository::list(&repo),
+        BacklogItemRepository::list_archived(&repo),
         SprintRepository::list(&repo),
         SprintRecordRepository::list(&repo, SprintRecordKind::Retro),
         SprintRecordRepository::list(&repo, SprintRecordKind::Review),
@@ -68,6 +76,7 @@ pub async fn export_snapshot(project_dir: &Path) -> Result<BoardSnapshot> {
 
     Ok(BoardSnapshot {
         items,
+        archived_items,
         sprints,
         retros,
         reviews,

@@ -8,8 +8,9 @@ use crate::storage::repository::SprintRepository;
 use rusqlite::{OptionalExtension, Row, Transaction, params};
 use std::path::Path;
 
-/// Copy one line of `sprints` to [`Sprint`]. Column order should match the `SELECT` statement.
-fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
+/// Copy one line of `sprints` to [`Sprint`] without applying read-side normalization.
+/// Column order should match the `SELECT` statement.
+fn sprint_from_raw(db: &Path, row: &Row<'_>) -> Result<Sprint> {
     let id: String = column(db, row, 0, "sprint id")?;
     let title: String = column(db, row, 1, "sprint title")?;
     if title.trim().is_empty() {
@@ -136,8 +137,37 @@ fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
     })
 }
 
-/// A `SELECT` list containing the columns read by [`sprint_from`] in that order.
+/// Read one Sprint through the normal persistence contract.
+fn sprint_from(db: &Path, row: &Row<'_>) -> Result<Sprint> {
+    let mut sprint = sprint_from_raw(db, row)?;
+    sprint.normalize_goal_outcome();
+    Ok(sprint)
+}
+
+/// A `SELECT` list containing the columns read by [`sprint_from_raw`] in that order.
 const SPRINT_COLUMNS: &str = "id, title, goal, state, closed_at, start_at, end_at, daily_work_hours, holiday_days, deduction_factor, spillover_points, spillover_items, unestimated_spillover_items, created, updated, (SELECT achieved FROM sprint_goal_outcomes WHERE sprint_id = sprints.id)";
+
+fn read_sprints(db: &Path, normalize_goal_outcome: bool) -> Result<Vec<Sprint>> {
+    let conn = open_conn(db)?;
+    let sql = format!("SELECT {SPRINT_COLUMNS} FROM sprints");
+    let mut stmt = conn.prepare(&sql).map_err(|e| sqlite_err(db, &e))?;
+    let sprints = stmt
+        .query_map([], |row| {
+            let sprint = sprint_from_raw(db, row).map(|mut sprint| {
+                if normalize_goal_outcome {
+                    sprint.normalize_goal_outcome();
+                }
+                sprint
+            });
+            Ok(sprint)
+        })
+        .map_err(|e| sqlite_err(db, &e))?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| sqlite_err(db, &e))?
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?;
+    Ok(sprints)
+}
 
 pub(super) fn upsert_sprint(db: &Path, tx: &Transaction<'_>, sprint: &Sprint) -> Result<()> {
     let mut sprint = sprint.clone();
@@ -188,6 +218,22 @@ pub(super) fn upsert_sprint(db: &Path, tx: &Transaction<'_>, sprint: &Sprint) ->
     Ok(())
 }
 
+impl SqliteRepository {
+    /// List raw Sprint rows for integrity inspection without applying read-side normalization.
+    pub(crate) async fn list_sprints_raw(&self) -> Result<Vec<Sprint>> {
+        let db = self.db_path();
+        let mut sprints = tokio::task::spawn_blocking(move || read_sprints(&db, false))
+            .await
+            .map_err(Error::task)??;
+        sprints.sort_by(|a, b| {
+            a.created
+                .cmp(&b.created)
+                .then_with(|| a.id.as_str().cmp(b.id.as_str()))
+        });
+        Ok(sprints)
+    }
+}
+
 impl SprintRepository for SqliteRepository {
     async fn save(&self, sprint: &Sprint) -> Result<()> {
         let sprint = sprint.clone();
@@ -225,21 +271,9 @@ impl SprintRepository for SqliteRepository {
 
     async fn list(&self) -> Result<Vec<Sprint>> {
         let db = self.db_path();
-        let mut sprints = tokio::task::spawn_blocking(move || {
-            let conn = open_conn(&db)?;
-            let sql = format!("SELECT {SPRINT_COLUMNS} FROM sprints");
-            let mut stmt = conn.prepare(&sql).map_err(|e| sqlite_err(&db, &e))?;
-            let sprints = stmt
-                .query_map([], |row| Ok(sprint_from(&db, row)))
-                .map_err(|e| sqlite_err(&db, &e))?
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(|e| sqlite_err(&db, &e))?
-                .into_iter()
-                .collect::<Result<Vec<_>>>()?;
-            Ok::<_, Error>(sprints)
-        })
-        .await
-        .map_err(Error::task)??;
+        let mut sprints = tokio::task::spawn_blocking(move || read_sprints(&db, true))
+            .await
+            .map_err(Error::task)??;
 
         // Match the file backend: sort by creation time, then use the ID as a tie-breaker.
         sprints.sort_by(|a, b| {

@@ -174,6 +174,63 @@ fn doctor_classifies_malformed_documents_and_relationships() {
     ));
 }
 
+#[test]
+fn doctor_flags_action_sources_that_lost_their_sprint_or_record() {
+    use crate::sprint_record::SprintRecordKind;
+    use std::collections::HashSet;
+
+    let (valid, _) = item_record(
+        "T-1.md",
+        RecordArea::Tasks,
+        "id = \"T-1\"\ntitle = \"Ok\"\nstatus = \"todo\"\nrank = \"i\"\n[source]\nkind = \"retro\"\nsprint_id = \"S-1\"",
+    );
+    let (missing_sprint, _) = item_record(
+        "T-2.md",
+        RecordArea::Archive,
+        "id = \"T-2\"\ntitle = \"Dangling sprint\"\nstatus = \"todo\"\nrank = \"j\"\n[source]\nkind = \"retro\"\nsprint_id = \"S-9\"",
+    );
+    let (missing_record, _) = item_record(
+        "T-3.md",
+        RecordArea::Tasks,
+        "id = \"T-3\"\ntitle = \"Dangling record\"\nstatus = \"todo\"\nrank = \"k\"\n[source]\nkind = \"review\"\nsprint_id = \"S-1\"",
+    );
+    let (invalid_kind, _) = item_record(
+        "T-4.md",
+        RecordArea::Tasks,
+        "id = \"T-4\"\ntitle = \"Bad kind\"\nstatus = \"todo\"\nrank = \"l\"\n[source]\nkind = \"note\"\nsprint_id = \"S-1\"",
+    );
+
+    let sprints = vec![sprint_record("S-1.md", "id = \"S-1\"\nstate = \"planned\"")];
+    // Only a Retro exists for S-1; the Review that T-3 sources is absent.
+    let mut child_records = HashSet::new();
+    child_records.insert((SprintRecordKind::Retro, "S-1".to_string()));
+
+    let records = vec![valid, missing_sprint, missing_record, invalid_kind];
+    let issues = analyze_action_sources(&records, &sprints, &child_records);
+
+    // The valid retro-sourced PBI produces no issue; the other three each produce exactly one.
+    assert_eq!(issues.len(), 3, "got {issues:?}");
+    assert!(
+        issues
+            .iter()
+            .all(|issue| issue.kind == DoctorIssueKind::DanglingSprint)
+    );
+    assert!(
+        issues.iter().any(|issue| issue.location.contains("T-2.md")
+            && issue.detail.contains("missing sprint S-9"))
+    );
+    assert!(
+        issues.iter().any(|issue| issue.location.contains("T-3.md")
+            && issue.detail.contains("missing Review S-1"))
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.location.contains("T-4.md")
+                && issue.detail.contains("kind is invalid"))
+    );
+}
+
 #[tokio::test]
 async fn doctor_safe_fixes_rename_only_unambiguous_records() {
     let dir = TempDir::new().expect("temp dir");
@@ -343,6 +400,134 @@ async fn doctor_inspects_sqlite_records_through_the_backend() {
     assert!(
         inspection.issues.is_empty(),
         "issues: {:?}",
+        inspection.issues
+    );
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_item(number: u32) -> BacklogItem {
+    use chrono::Utc;
+    BacklogItem::new(
+        ItemId::new("T", number),
+        "SQLite item",
+        crate::backlog::Status::new("todo"),
+        Rank::parse("i").expect("rank"),
+        Utc::now(),
+    )
+    .expect("item")
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn analyze_records_flags_duplicate_ranks_among_sqlite_active_items() {
+    // Two SQLite active PBIs share the same status, parent, and rank. File and Git report this as a
+    // RankAnomaly, and the SQLite active store must join that scope so the three backends agree.
+    let board_dir = PathBuf::from(".pinto");
+    let first = RawItemRecord::from_item(&board_dir, sqlite_item(1), false);
+    let second = RawItemRecord::from_item(&board_dir, sqlite_item(2), false);
+    let config = Config::default();
+    let issues = analyze_records(&[first, second], &[], &config);
+    assert!(
+        has_issue_kind(&issues, DoctorIssueKind::RankAnomaly),
+        "duplicate ranks among active SQLite PBIs must be a RankAnomaly: {issues:?}"
+    );
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn analyze_records_ignores_duplicate_ranks_among_sqlite_archived_items() {
+    // doctor does not require rank uniqueness among archived PBIs, so two archived SQLite PBIs that
+    // share a rank must not be flagged — matching the file and Git archives.
+    let board_dir = PathBuf::from(".pinto");
+    let first = RawItemRecord::from_item(&board_dir, sqlite_item(1), true);
+    let second = RawItemRecord::from_item(&board_dir, sqlite_item(2), true);
+    let config = Config::default();
+    let issues = analyze_records(&[first, second], &[], &config);
+    assert!(
+        !has_issue_kind(&issues, DoctorIssueKind::RankAnomaly),
+        "duplicate ranks among archived SQLite PBIs must not be flagged: {issues:?}"
+    );
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn analyze_sprints_flags_a_sqlite_goal_outcome_without_a_goal() {
+    use chrono::Utc;
+    // A SQLite row can pair `goal_achieved` with a blank Goal: the row mapper returns it raw, and
+    // doctor keeps it raw (unlike the normalizing read paths). doctor must report it so its health
+    // boundary matches what `import` rejects, on SQLite as on File and Git.
+    let mut sprint = Sprint::new(
+        SprintId::new("S-1").expect("sprint ID"),
+        "Sprint",
+        Utc::now(),
+    )
+    .expect("sprint");
+    sprint.goal = String::new();
+    sprint.goal_achieved = Some(true);
+    let record = RawSprintRecord::from_sprint(sprint);
+    let issues = analyze_sprints(&[record]);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.kind == DoctorIssueKind::MalformedRecord
+                && issue
+                    .detail
+                    .contains("records a goal outcome but has no goal")),
+        "a raw SQLite Goal outcome without a Goal must be flagged: {issues:?}"
+    );
+}
+
+#[cfg(feature = "sqlite")]
+#[tokio::test]
+async fn doctor_flags_a_sqlite_goal_outcome_without_a_goal_end_to_end() {
+    use crate::storage::{SprintRepository, SqliteRepository};
+    use chrono::Utc;
+
+    let dir = TempDir::new().expect("temp dir");
+    crate::service::init_board(dir.path())
+        .await
+        .expect("initialize board");
+    let board_dir = dir.path().join(".pinto");
+    let repository = SqliteRepository::new(board_dir.clone());
+
+    // Save a Sprint that legitimately records a Goal outcome, so the outcome row exists alongside a
+    // non-blank Goal.
+    let mut sprint = Sprint::new(
+        SprintId::new("S-1").expect("sprint ID"),
+        "Sprint",
+        Utc::now(),
+    )
+    .expect("sprint");
+    sprint.goal = "Ship it".to_string();
+    sprint.goal_achieved = Some(true);
+    SprintRepository::save(&repository, &sprint)
+        .await
+        .expect("save sprint");
+
+    // Blank the Goal directly in the database, leaving the recorded outcome behind — the exact
+    // hand-edited corruption `import` rejects. The normal read paths would clear the outcome, but
+    // doctor must report it instead of calling the board healthy.
+    let connection = rusqlite::Connection::open(board_dir.join("board.sqlite3")).expect("open db");
+    connection
+        .execute("UPDATE sprints SET goal = '' WHERE id = 'S-1'", [])
+        .expect("blank the goal");
+    drop(connection);
+
+    let mut config = Config::default();
+    config.storage.backend = StorageBackend::Sqlite;
+    let backend = Backend::Sqlite(repository);
+    let inspection = inspect_board(&board_dir, &backend, &config)
+        .await
+        .expect("inspect SQLite board");
+    assert!(
+        inspection
+            .issues
+            .iter()
+            .any(|issue| issue.kind == DoctorIssueKind::MalformedRecord
+                && issue
+                    .detail
+                    .contains("records a goal outcome but has no goal")),
+        "the end-to-end SQLite read path must surface the raw Goal outcome: {:?}",
         inspection.issues
     );
 }

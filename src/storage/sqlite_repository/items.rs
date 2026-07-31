@@ -487,6 +487,42 @@ impl BacklogItemRepository for SqliteRepository {
         self.load_item(id, false).await
     }
 
+    async fn save_archived(&self, item: &BacklogItem) -> Result<()> {
+        record(&self.root, &item.id).await?;
+        let item = item.clone();
+        let db = self.db_path();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = open_conn(&db)?;
+            let key = item.id.to_string();
+            // Refuse to shadow an active row so the update never creates an active/archived
+            // duplicate, mirroring the file backend's cross-store collision guard.
+            let state: Option<i64> = conn
+                .query_row("SELECT archived FROM items WHERE id = ?1", [&key], |row| {
+                    row.get(0)
+                })
+                .optional()
+                .map_err(|e| sqlite_err(&db, &e))?;
+            if state == Some(0) {
+                return Err(Error::parse(
+                    &db,
+                    format!(
+                        "cannot save archived item `{key}`: active item already exists; remove the active copy before updating the archived item"
+                    ),
+                ));
+            }
+            let tx = conn.transaction().map_err(|e| sqlite_err(&db, &e))?;
+            // `upsert_item` always writes `archived = 0`, so flip the flag back within the same
+            // transaction to keep the record archived.
+            upsert_item(&db, &tx, &item)?;
+            tx.execute("UPDATE items SET archived = 1 WHERE id = ?1", [&key])
+                .map_err(|e| sqlite_err(&db, &e))?;
+            tx.commit().map_err(|e| sqlite_err(&db, &e))?;
+            Ok(())
+        })
+        .await
+        .map_err(Error::task)?
+    }
+
     async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
         self.load_item(id, true).await
     }
@@ -517,6 +553,26 @@ impl BacklogItemRepository for SqliteRepository {
         .await
         .map_err(Error::task)??;
         record(&self.root, id).await
+    }
+
+    async fn delete_archived(&self, id: &ItemId) -> Result<()> {
+        let want = id.clone();
+        let key = id.to_string();
+        let db = self.db_path();
+        tokio::task::spawn_blocking(move || {
+            let conn = open_conn(&db)?;
+            // Delete only archived PBIs; `ON DELETE CASCADE` removes their related rows. The issued
+            // history is left untouched so the ID is never reissued.
+            let affected = conn
+                .execute("DELETE FROM items WHERE id = ?1 AND archived = 1", [&key])
+                .map_err(|e| sqlite_err(&db, &e))?;
+            if affected == 0 {
+                return Err(Error::NotFound(want));
+            }
+            Ok(())
+        })
+        .await
+        .map_err(Error::task)?
     }
 
     async fn archive(&self, id: &ItemId) -> Result<PathBuf> {

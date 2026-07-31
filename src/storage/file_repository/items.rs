@@ -72,6 +72,28 @@ impl BacklogItemRepository for FileRepository {
         Ok(items)
     }
 
+    async fn save_archived(&self, item: &BacklogItem) -> Result<()> {
+        let (active, _) = self.read_all_item_records().await?;
+        let dir = self.archive_dir();
+        fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| Error::io(&dir, &e))?;
+        let path = self.archive_path_for(&item.id)?;
+        if let Some((active_path, _)) = active.iter().find(|(_, existing)| existing.id == item.id) {
+            return Err(Error::parse(
+                &path,
+                format!(
+                    "cannot save archived item `{}`: active file {} already exists; remove the active copy before updating the archived item",
+                    item.id,
+                    active_path.display()
+                ),
+            ));
+        }
+        record(&self.root, &item.id).await?;
+        let text = to_markdown(item)?;
+        atomic_write(&path, &text).await
+    }
+
     async fn load_archived(&self, id: &ItemId) -> Result<BacklogItem> {
         let (_, archived) = self.read_all_item_records().await?;
         archived
@@ -85,6 +107,16 @@ impl BacklogItemRepository for FileRepository {
         let path = self.path_for(id)?;
         match fs::remove_file(&path).await {
             Ok(()) => record(&self.root, id).await,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Err(Error::NotFound(id.clone())),
+            Err(e) => Err(Error::io(&path, &e)),
+        }
+    }
+
+    async fn delete_archived(&self, id: &ItemId) -> Result<()> {
+        self.read_all_item_records().await?;
+        let path = self.archive_path_for(id)?;
+        match fs::remove_file(&path).await {
+            Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Err(Error::NotFound(id.clone())),
             Err(e) => Err(Error::io(&path, &e)),
         }

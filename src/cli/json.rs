@@ -440,6 +440,8 @@ pub(super) fn sprints_json(sprints: &[Sprint]) -> serde_json::Result<String> {
 #[derive(Debug, Serialize, Deserialize)]
 struct ExportJson {
     items: Vec<ItemJson>,
+    #[serde(default)]
+    archived_items: Vec<ItemJson>,
     sprints: Vec<SprintJson>,
     #[serde(default)]
     retros: Vec<SprintRecordJson>,
@@ -453,6 +455,11 @@ struct ExportJson {
 pub(super) fn export_json(snapshot: &BoardSnapshot) -> serde_json::Result<String> {
     let dto = ExportJson {
         items: snapshot.items.iter().map(ItemJson::from_item).collect(),
+        archived_items: snapshot
+            .archived_items
+            .iter()
+            .map(ItemJson::from_item)
+            .collect(),
         sprints: snapshot
             .sprints
             .iter()
@@ -483,13 +490,19 @@ const SNAPSHOT_LABEL: &str = "<export snapshot>";
 /// back into their domain types (`ItemId`, `Rank`, `Status`, `SprintId`, `SprintState`, and
 /// RFC3339 `DateTime<Utc>`), including the Retro and Review child records. The `config` object is
 /// kept as raw JSON and validated by the import service; `dod` is passed through unchanged. The
-/// child collections default to empty when they are absent from an older snapshot. Sprint
+/// `archived_items` and child collections default to empty when they are absent from an older
+/// snapshot. Sprint
 /// capacity settings are absent from the export contract, so imported sprints carry no capacity
 /// (see `docs/json-schema.md`).
 pub(super) fn parse_export(json: &str) -> Result<BoardSnapshot, Error> {
     let dto: ExportJson = serde_json::from_str(json).map_err(snapshot_parse_error)?;
     let items = dto
         .items
+        .into_iter()
+        .map(ItemJson::into_item)
+        .collect::<Result<Vec<_>, _>>()?;
+    let archived_items = dto
+        .archived_items
         .into_iter()
         .map(ItemJson::into_item)
         .collect::<Result<Vec<_>, _>>()?;
@@ -510,6 +523,7 @@ pub(super) fn parse_export(json: &str) -> Result<BoardSnapshot, Error> {
         .collect::<Result<Vec<_>, _>>()?;
     Ok(BoardSnapshot {
         items,
+        archived_items,
         sprints,
         retros,
         reviews,

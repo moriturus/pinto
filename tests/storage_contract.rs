@@ -18,6 +18,8 @@ struct ContractSnapshot {
     item_loaded_after_update: BacklogItem,
     archived_items: Vec<BacklogItem>,
     archived_item_loaded: BacklogItem,
+    archived_item_after_update: BacklogItem,
+    active_after_archived_update: Vec<BacklogItem>,
     items_after_restore: Vec<BacklogItem>,
     items_after_delete: Vec<BacklogItem>,
     next_item_id: ItemId,
@@ -159,6 +161,23 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
     let archived_item_loaded = BacklogItemRepository::load_archived(backend, &item.id)
         .await
         .expect("load archived item");
+
+    // `save_archived` updates an archived item in place without moving it back to the active
+    // store, so the same rule that clears a dangling action source can be applied to an archived
+    // action PBI. Every backend must keep the record archived after the update.
+    let mut updated_archived = archived_item_loaded.clone();
+    updated_archived.source = None;
+    updated_archived.updated = timestamp(1_500);
+    BacklogItemRepository::save_archived(backend, &updated_archived)
+        .await
+        .expect("save archived item in place");
+    let archived_item_after_update = BacklogItemRepository::load_archived(backend, &item.id)
+        .await
+        .expect("load archived item after in-place update");
+    let active_after_archived_update = BacklogItemRepository::list(backend)
+        .await
+        .expect("list active items after archived update");
+
     BacklogItemRepository::restore(backend, &item.id)
         .await
         .expect("restore item");
@@ -347,6 +366,8 @@ async fn exercise_contract(backend: &Backend) -> ContractSnapshot {
         item_loaded_after_update,
         archived_items,
         archived_item_loaded,
+        archived_item_after_update,
+        active_after_archived_update,
         items_after_restore,
         items_after_delete,
         next_item_id,

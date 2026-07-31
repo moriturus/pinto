@@ -105,6 +105,14 @@ pub enum Error {
     #[error("sprint goal must be set before starting the sprint")]
     EmptySprintGoal,
 
+    /// A Sprint records a Goal outcome while its Goal is blank.
+    ///
+    /// A recorded outcome only makes sense alongside a non-blank Goal. The persistence layer clears
+    /// such an outcome on load and save, so a restored snapshot carrying this pair would silently
+    /// lose the outcome; it is rejected instead.
+    #[error("sprint {0} records a goal outcome but has no goal; set a goal or clear the outcome")]
+    SprintGoalOutcomeRequiresGoal(SprintId),
+
     /// The sprint state transition is invalid; only `planned → active → closed` is allowed.
     #[error("invalid sprint transition: {from} -> {to} (allowed: planned -> active -> closed)")]
     InvalidSprintTransition {
@@ -159,6 +167,13 @@ pub enum Error {
         /// Planned end date.
         end: chrono::NaiveDate,
     },
+
+    /// A Sprint has only one of `start`/`end` set.
+    ///
+    /// The two dates form a single period and are always set together through normal edits, so a
+    /// restored snapshot with only one side is inconsistent and rejected.
+    #[error("sprint {0} has only one of start/end set; set both dates or clear both")]
+    SprintPeriodIncomplete(SprintId),
 
     /// The number of working hours per day is not a finite number greater than or equal to 0.
     #[error("daily work hours must be a finite number greater than or equal to 0 (got {0})")]
@@ -375,6 +390,7 @@ impl Error {
             Self::InvalidSprintState(_) => "invalid-sprint-state",
             Self::EmptySprintTitle => "empty-sprint-title",
             Self::EmptySprintGoal => "empty-sprint-goal",
+            Self::SprintGoalOutcomeRequiresGoal(_) => "sprint-goal-outcome-requires-goal",
             Self::InvalidSprintTransition { .. } => "invalid-sprint-transition",
             Self::SprintNotFound(_) => "sprint-not-found",
             Self::SprintExists(_) => "sprint-exists",
@@ -389,6 +405,7 @@ impl Error {
             },
             Self::SprintClosed(_) => "sprint-closed",
             Self::InvalidSprintPeriod { .. } => "invalid-sprint-period",
+            Self::SprintPeriodIncomplete(_) => "sprint-period-incomplete",
             Self::InvalidDailyWorkHours(_) => "invalid-daily-work-hours",
             Self::InvalidDeductionFactor(_) => "invalid-deduction-factor",
             Self::InvalidSprintHolidays { .. } => "invalid-sprint-holidays",
@@ -500,6 +517,10 @@ impl Error {
             ),
             Self::EmptySprintTitle => localizer.text(Message::ErrorEmptySprintTitle),
             Self::EmptySprintGoal => localizer.text(Message::ErrorEmptySprintGoal),
+            Self::SprintGoalOutcomeRequiresGoal(id) => message!(
+                Message::ErrorSprintGoalOutcomeRequiresGoal,
+                "id" => id,
+            ),
             Self::InvalidSprintTransition { from, to } => message!(
                 Message::ErrorInvalidSprintTransition,
                 "from" => from,
@@ -529,6 +550,10 @@ impl Error {
                 Message::ErrorInvalidSprintPeriod,
                 "start" => start,
                 "end" => end,
+            ),
+            Self::SprintPeriodIncomplete(id) => message!(
+                Message::ErrorSprintPeriodIncomplete,
+                "id" => id,
             ),
             Self::InvalidDailyWorkHours(value) => message!(
                 Message::ErrorInvalidDailyWorkHours,
@@ -679,6 +704,7 @@ impl Error {
                 | Error::InvalidSprintState(_)
                 | Error::EmptySprintTitle
                 | Error::EmptySprintGoal
+                | Error::SprintGoalOutcomeRequiresGoal(_)
                 | Error::InvalidSprintTransition { .. }
                 | Error::SprintNotFound(_)
                 | Error::SprintExists(_)
@@ -687,6 +713,7 @@ impl Error {
                 | Error::SprintRecordExists { .. }
                 | Error::SprintClosed(_)
                 | Error::InvalidSprintPeriod { .. }
+                | Error::SprintPeriodIncomplete(_)
                 | Error::InvalidDailyWorkHours(_)
                 | Error::InvalidDeductionFactor(_)
                 | Error::InvalidSprintHolidays { .. }
@@ -772,10 +799,12 @@ mod tests {
                 id: SprintId::new("S-1").unwrap(),
             },
             Error::SprintClosed(SprintId::new("S-1").unwrap()),
+            Error::SprintGoalOutcomeRequiresGoal(SprintId::new("S-1").unwrap()),
             Error::InvalidSprintPeriod {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
                 end: chrono::NaiveDate::from_ymd_opt(2026, 7, 6).unwrap(),
             },
+            Error::SprintPeriodIncomplete(SprintId::new("S-1").unwrap()),
             Error::SprintPeriodUnset(SprintId::new("S-1").unwrap()),
             Error::SprintEmpty(SprintId::new("S-1").unwrap()),
             Error::NotInSprint {
@@ -918,6 +947,7 @@ mod tests {
             Error::InvalidSprintState("paused".into()),
             Error::EmptySprintTitle,
             Error::EmptySprintGoal,
+            Error::SprintGoalOutcomeRequiresGoal(sprint.clone()),
             Error::InvalidSprintTransition {
                 from: SprintState::Active,
                 to: SprintState::Planned,
@@ -949,6 +979,7 @@ mod tests {
                 start: chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap(),
                 end: chrono::NaiveDate::from_ymd_opt(2026, 7, 6).unwrap(),
             },
+            Error::SprintPeriodIncomplete(sprint.clone()),
             Error::InvalidDailyWorkHours("NaN".into()),
             Error::InvalidDeductionFactor("2".into()),
             Error::InvalidSprintHolidays {

@@ -260,7 +260,18 @@ async fn cmd_sprint_record(
                     linked_action_items(&dir, &ActionSource::new(kind, sprint_id.clone())).await?;
                 println!("{}", sprint_record_json(&record, &context, &actions)?);
             } else if plain {
-                print!("{}", format_record_detail(&record));
+                // `--plain` is the body-only contract: emit exactly the authored Markdown so it
+                // can be piped, diffed, and reused without the human-facing Sprint ID heading.
+                // Print the body verbatim and add a single trailing newline only when the body
+                // does not already end with one, so a body stored with its own trailing newline
+                // (the template and editor case) is not padded with a spurious blank line.
+                if !record.body.is_empty() {
+                    if record.body.ends_with('\n') {
+                        print!("{}", record.body);
+                    } else {
+                        println!("{}", record.body);
+                    }
+                }
             } else {
                 let context = sprint_context(&dir, &sprint_id).await?;
                 let actions =

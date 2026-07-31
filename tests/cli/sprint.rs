@@ -1279,6 +1279,63 @@ fn sprint_delete_with_records_clears_action_pbi_source_links() {
 }
 
 #[test]
+fn sprint_delete_clears_archived_action_pbi_source_links() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args(["sprint", "new", "S-1", "Sprint", "--goal", "Ship"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "new", "S-1", "--body", "Notes"])
+        .assert()
+        .success();
+    pinto(dir.path())
+        .args(["sprint", "retro", "action", "S-1", "Follow up"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created T-1"));
+
+    // Archive the action PBI before removing the Sprint. Archived PBIs must be cleaned up with the
+    // same rule as active ones, so restoring T-1 later never resurrects a dangling reference.
+    pinto(dir.path()).args(["rm", "T-1"]).assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "remove", "S-1", "--delete-records"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted sprint S-1"));
+
+    let archived = show_json(pinto(dir.path()).args(["show", "T-1", "--archived", "--json"]));
+    assert_eq!(archived["title"], "Follow up", "the archived PBI remains");
+    assert!(
+        archived
+            .get("source")
+            .is_none_or(serde_json::Value::is_null),
+        "the archived action PBI's dangling source link is cleared"
+    );
+    let markdown = std::fs::read_to_string(dir.path().join(".pinto/archive/T-1.md"))
+        .expect("archived action PBI file");
+    assert!(
+        !markdown.contains("[source]"),
+        "the source table is removed from the archived PBI"
+    );
+
+    // Restoring the archived PBI must not bring back a reference to the deleted Sprint or record.
+    pinto(dir.path())
+        .args(["restore", "T-1"])
+        .assert()
+        .success();
+    let restored = show_json(pinto(dir.path()).args(["show", "T-1", "--json"]));
+    assert!(
+        restored
+            .get("source")
+            .is_none_or(serde_json::Value::is_null),
+        "restore does not resurrect the dangling source link"
+    );
+}
+
+#[test]
 fn sprint_delete_protects_each_existing_child_record_before_mutation() {
     for (child_command, child_label) in [("retro", "Retro"), ("review", "Review")] {
         let dir = TempDir::new().expect("temp dir");

@@ -352,6 +352,7 @@ fn export_json_uses_empty_arrays_and_null_for_optional_dod() {
     let exported = json_stdout(pinto(dir.path()).args(["export", "--json"]));
 
     assert_eq!(exported["items"], serde_json::json!([]));
+    assert_eq!(exported["archived_items"], serde_json::json!([]));
     assert_eq!(exported["sprints"], serde_json::json!([]));
     assert_eq!(exported["retros"], serde_json::json!([]));
     assert_eq!(exported["reviews"], serde_json::json!([]));

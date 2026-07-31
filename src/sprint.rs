@@ -230,6 +230,41 @@ impl Sprint {
         self.updated = now;
     }
 
+    /// Check the invariants a Sprint must satisfy to be persisted, without mutating it.
+    ///
+    /// The mutators ([`Sprint::new`], [`Sprint::update_details`], and the state transitions) uphold
+    /// these already, so callers that build a Sprint through them never need this. It is the shared
+    /// gate for data that reaches the model without passing through a mutator — an `import` snapshot
+    /// and `doctor`'s backend rows — so both reject the same states the tool could never produce.
+    ///
+    /// It rejects a blank title, a one-sided period (only `start` or only `end`), an inverted period
+    /// (`start > end`), an `active` Sprint with a blank Goal, and a recorded Goal outcome paired with
+    /// a blank Goal.
+    pub fn validate(&self) -> Result<()> {
+        if self.title.trim().is_empty() {
+            return Err(Error::EmptySprintTitle);
+        }
+        match (self.start, self.end) {
+            (Some(start), Some(end)) if start > end => {
+                return Err(Error::InvalidSprintPeriod {
+                    start: start.date_naive(),
+                    end: end.date_naive(),
+                });
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                return Err(Error::SprintPeriodIncomplete(self.id.clone()));
+            }
+            _ => {}
+        }
+        if self.state == SprintState::Active && self.goal.trim().is_empty() {
+            return Err(Error::EmptySprintGoal);
+        }
+        if self.goal_achieved.is_some() && self.goal.trim().is_empty() {
+            return Err(Error::SprintGoalOutcomeRequiresGoal(self.id.clone()));
+        }
+        Ok(())
+    }
+
     /// Enforce the invariant that a recorded Goal result accompanies a non-blank Goal.
     pub(crate) fn normalize_goal_outcome(&mut self) {
         if self.goal.trim().is_empty() {
@@ -583,6 +618,87 @@ mod tests {
                 holidays: 2,
                 calendar_days: 1,
             })
+        );
+    }
+
+    // --- validate ---
+
+    /// Build a Sprint by mutating fields directly, bypassing the mutators, so `validate` can be
+    /// exercised on states only external data (import snapshots, backend rows) can reach.
+    fn raw_sprint() -> Sprint {
+        Sprint::new(sid("S-1"), "Sprint 1", epoch()).unwrap()
+    }
+
+    #[test]
+    fn validate_accepts_a_well_formed_sprint() {
+        let mut sprint = raw_sprint();
+        sprint.goal = "Ship it".to_string();
+        sprint.goal_achieved = Some(true);
+        sprint.start = Some(epoch());
+        sprint.end = Some(epoch() + chrono::Duration::days(14));
+        sprint.state = SprintState::Active;
+        assert_eq!(sprint.validate(), Ok(()));
+    }
+
+    #[test]
+    fn validate_accepts_a_period_free_planned_sprint() {
+        assert_eq!(raw_sprint().validate(), Ok(()));
+    }
+
+    #[test]
+    fn validate_rejects_blank_title() {
+        let mut sprint = raw_sprint();
+        sprint.title = "   ".to_string();
+        assert_eq!(sprint.validate(), Err(Error::EmptySprintTitle));
+    }
+
+    #[test]
+    fn validate_rejects_one_sided_period() {
+        let mut start_only = raw_sprint();
+        start_only.start = Some(epoch());
+        assert_eq!(
+            start_only.validate(),
+            Err(Error::SprintPeriodIncomplete(sid("S-1")))
+        );
+
+        let mut end_only = raw_sprint();
+        end_only.end = Some(epoch());
+        assert_eq!(
+            end_only.validate(),
+            Err(Error::SprintPeriodIncomplete(sid("S-1")))
+        );
+    }
+
+    #[test]
+    fn validate_rejects_inverted_period() {
+        let mut sprint = raw_sprint();
+        let start = epoch() + chrono::Duration::days(5);
+        let end = epoch() + chrono::Duration::days(1);
+        sprint.start = Some(start);
+        sprint.end = Some(end);
+        assert_eq!(
+            sprint.validate(),
+            Err(Error::InvalidSprintPeriod {
+                start: start.date_naive(),
+                end: end.date_naive(),
+            })
+        );
+    }
+
+    #[test]
+    fn validate_rejects_active_sprint_with_blank_goal() {
+        let mut sprint = raw_sprint();
+        sprint.state = SprintState::Active;
+        assert_eq!(sprint.validate(), Err(Error::EmptySprintGoal));
+    }
+
+    #[test]
+    fn validate_rejects_goal_outcome_without_goal() {
+        let mut sprint = raw_sprint();
+        sprint.goal_achieved = Some(false);
+        assert_eq!(
+            sprint.validate(),
+            Err(Error::SprintGoalOutcomeRequiresGoal(sid("S-1")))
         );
     }
 

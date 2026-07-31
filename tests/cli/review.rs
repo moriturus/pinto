@@ -67,12 +67,13 @@ fn review_can_be_created_for_each_parent_sprint_state_and_is_listed_as_json() {
     assert_eq!(shown["id"], "S-2");
     assert_eq!(shown["sprint_id"], "S-2");
     assert_eq!(shown["body"], "Active notes");
+    // `--plain` is body-only: exactly the authored Markdown plus a trailing newline, with no
+    // Sprint ID heading that would corrupt a pipe, diff, or reuse of the record body.
     pinto(dir.path())
         .args(["sprint", "review", "show", "S-1", "--plain"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("S-1"))
-        .stdout(predicate::str::contains("Planned notes"));
+        .stdout(predicate::eq("Planned notes\n"));
 
     let path = dir.path().join(".pinto/review/S-1.md");
     let markdown = std::fs::read_to_string(path).expect("review file exists");

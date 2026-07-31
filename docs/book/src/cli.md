@@ -40,8 +40,18 @@ on `PATH`.
 
 Use `pinto doctor` to check board integrity after hand edits, interrupted migrations, or copied
 records. Add `--fix` to apply only safe mechanical repairs. The command reports references,
-relationship cycles, duplicate IDs, issued-ID history, workflow states, rank anomalies, and
-tasks/archive filename collisions with a location and repair direction. Both modes inspect the
+relationship cycles, duplicate IDs, issued-ID history, workflow states, rank anomalies,
+tasks/archive filename collisions, Sprints that break their domain invariants (a blank title, a
+one-sided or inverted period, an active Sprint without a Goal, or a Goal outcome recorded against a
+blank Goal), and action PBIs whose Retro/Review `source` points at a Sprint or record that no longer
+exists (active and archived alike), each with a location and repair direction. The Sprint checks
+inspect the raw stored values — the same states `import` rejects — so a hand-edited Goal outcome
+paired with a blank Goal is reported rather than silently cleared. On the SQLite backend, the typed
+row mapper applies the same blank-Goal outcome normalization as File and Git for normal reads, while
+the doctor scan uses a raw Sprint-row reader so the corruption remains reportable. The typed mapper
+rejects structural corruption (a blank title or a one-sided or inverted period) as a
+"corrupt SQLite data" read error before the scan, so those states surface as a non-zero read error
+there instead of a per-record finding; File and Git report them as records. Both modes inspect the
 board once up front; `--fix` re-inspects only after it applied a repair.
 
 | Command | Purpose |
@@ -429,10 +439,22 @@ pinto import --force snapshot.json # replace an existing non-empty board
 pinto undo                         # revert the most recent completed mutation (git backend)
 ```
 
-`pinto import` is the inverse of `pinto export --json`: it rebuilds the PBIs,
-Sprints, configuration, and shared DoD from a snapshot (a file, or `-` for
-standard input). Importing into a board that already holds PBIs or Sprints is
-refused unless `--force` is given. See
+`pinto import` is the inverse of `pinto export --json`: it rebuilds the active
+and archived PBIs, Sprints, configuration, and shared DoD from a snapshot (a
+file, or `-` for standard input). Importing into a board that already holds
+active PBIs, archived PBIs, or Sprints is refused unless `--force` is given, and
+`--force` mirrors the snapshot by clearing the archive as well. A snapshot that
+would produce a board `doctor` flags — a duplicate Sprint, a Sprint that breaks
+its domain invariants (a blank title, a one-sided or inverted period, an active
+Sprint without a Goal, or a Goal outcome without a Goal), a duplicate or
+orphaned Retro or Review, a duplicate PBI ID across the active and archived
+collections, a `parent`, `depends_on`, `sprint`, or action `source` reference
+missing from the snapshot, a PBI with an empty title or a `status` outside the
+configured workflow columns, a `parent` or `depends_on` cycle, or a rank reused
+within an active PBI's `(status, parent)` scope — is rejected before any write,
+so an invalid snapshot can never replace a valid board or be reported as a
+successful import. The reported item count sums the active and
+archived PBIs restored. See
 [JSON output](https://github.com/moriturus/pinto/blob/main/docs/json-schema.md)
 for the round-trip contract.
 

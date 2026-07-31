@@ -36,6 +36,10 @@ pub use lock::BoardLock;
 pub use markdown::parse_item_markdown;
 pub(crate) use markdown::split_frontmatter as parse_frontmatter;
 pub(crate) use markdown::{from_markdown as item_from_markdown, to_markdown as item_to_markdown};
+// Sprint child-record reader, shared with `doctor` so its child-record diagnostics parse a Retro or
+// Review through the exact typed path the persistence layer uses.
+pub(crate) use markdown::record_from_markdown;
+pub(crate) use markdown::sprint_from_markdown_raw;
 // Re-export the backend type here because backend selection and migration use the persistence
 // facade's public API ([`Backend::open`] and [`crate::service::migrate_storage`]).
 pub use crate::config::StorageBackend;

@@ -161,15 +161,23 @@ fn deep_dependency_cycle_is_reported_by_doctor() {
     let dir = TempDir::new().expect("temp dir");
     pinto(dir.path()).arg("init").assert().success();
 
-    // T-1 -> T-2 -> ... -> T-DEPTH -> T-1: a dependency cycle spanning every node.
+    // T-1 -> T-2 -> ... -> T-DEPTH: an acyclic chain import accepts. Import refuses a snapshot that
+    // already contains a cycle, so the closing back edge is added afterwards through `dep add`, which
+    // records a dependency cycle as a warning rather than an error.
     let ranks = ranks(DEPTH);
     let items = (1..=DEPTH)
         .map(|n| {
-            let next = if n == DEPTH { 1 } else { n + 1 };
-            item(n, &ranks[n - 1], None, &[next], Value::Null)
+            let deps: Vec<usize> = if n < DEPTH { vec![n + 1] } else { Vec::new() };
+            item(n, &ranks[n - 1], None, &deps, Value::Null)
         })
         .collect();
     import(dir.path(), &snapshot(items, false));
+
+    // Close the chain into a full cycle T-1 -> ... -> T-DEPTH -> T-1, seeding the deep cyclic board.
+    pinto(dir.path())
+        .args(["dep", "add", &format!("T-{DEPTH}"), "T-1"])
+        .assert()
+        .success();
 
     // Cycle inspection must terminate and flag the dependency cycle (exit 1).
     pinto(dir.path())
@@ -177,4 +185,39 @@ fn deep_dependency_cycle_is_reported_by_doctor() {
         .assert()
         .failure()
         .stdout(predicate::str::contains("dependency"));
+}
+
+#[test]
+fn deep_dependency_cycle_snapshot_is_refused_by_import() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    // T-1 -> T-2 -> ... -> T-DEPTH -> T-1: a dependency cycle spanning every node. Import must refuse
+    // it before any write, and the pre-write cycle check must terminate on an explicit stack rather
+    // than overflowing at several thousand levels deep.
+    let ranks = ranks(DEPTH);
+    let items = (1..=DEPTH)
+        .map(|n| {
+            let next = if n == DEPTH { 1 } else { n + 1 };
+            item(n, &ranks[n - 1], None, &[next], Value::Null)
+        })
+        .collect();
+    let path = dir.path().join("snapshot.json");
+    fs::write(
+        &path,
+        serde_json::to_vec(&snapshot(items, false)).expect("serialize snapshot"),
+    )
+    .expect("write snapshot");
+    pinto(dir.path())
+        .args(["import", path.to_str().expect("snapshot path")])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cycle"));
+
+    // A rejected import leaves the board empty.
+    let listed = json_stdout(pinto(dir.path()).args(["list", "--json"]));
+    assert!(
+        listed.as_array().expect("list array").is_empty(),
+        "no PBI is written by a rejected import"
+    );
 }
