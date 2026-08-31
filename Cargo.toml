@@ -46,7 +46,7 @@ rustyline = "18.0.1"
 # system-library dependency; it remains outside the default build. Keep the
 # 0.39 series while Rust 1.89 is the MSRV: 0.40 pulls a build script that uses
 # the unstable `cfg_select` macro.
-rusqlite = { version = "0.39.0", features = ["bundled"], optional = true }
+rusqlite = { version = "0.40.2", features = ["bundled"], optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 # Small crate used only to obtain terminal width (Unix reuses transitive rustix).
