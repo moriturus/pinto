@@ -95,4 +95,4 @@ proptest = "1.9.0"
 # the archived `serde_yaml`. `default-features = false` drops the `encoding`
 # feature (and its `encoding_rs` dependency): the checks parse UTF-8 `&str`
 # inputs, so charset detection is unnecessary. See docs/dependencies.md.
-yaml-rust2 = { version = "0.11.0", default-features = false }
+yaml-rust2 = { version = "0.12.0", default-features = false }
