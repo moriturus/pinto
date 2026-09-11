@@ -17,6 +17,7 @@ pub(crate) fn pinto(dir: &Path) -> Command {
     // own command and set `LC_ALL`/`LANG` explicitly.
     cmd.current_dir(dir)
         .env("XDG_CONFIG_HOME", dir.join("test-xdg-config"))
+        .env_remove("VISUAL")
         .env("LC_ALL", "en_US.UTF-8")
         .env("LANG", "en_US.UTF-8");
     cmd

@@ -384,10 +384,7 @@ pub(super) async fn cmd_sprint_with_localizer(
             end,
         } => {
             let id: SprintId = id.parse()?;
-            let period = match (start, end) {
-                (Some(start), Some(end)) => Some((start, end)),
-                _ => None,
-            };
+            let period = (start.is_some() || end.is_some()).then_some((start, end));
             let sprint = edit_sprint(
                 &dir,
                 &id,

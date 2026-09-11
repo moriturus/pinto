@@ -1,6 +1,6 @@
 [package]
 name = "pinto-cli"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2024"
 rust-version = "1.89"
 description = "A lightweight, local-first, Git-friendly Scrum backlog and Kanban board for the CLI and TUI"
@@ -46,7 +46,7 @@ rustyline = "18.0.1"
 # system-library dependency; it remains outside the default build. Keep the
 # 0.39 series while Rust 1.89 is the MSRV: 0.40 pulls a build script that uses
 # the unstable `cfg_select` macro.
-rusqlite = { version = "0.39.0", features = ["bundled"], optional = true }
+rusqlite = { version = "0.40.2", features = ["bundled"], optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 # Small crate used only to obtain terminal width (Unix reuses transitive rustix).
@@ -95,4 +95,4 @@ proptest = "1.9.0"
 # the archived `serde_yaml`. `default-features = false` drops the `encoding`
 # feature (and its `encoding_rs` dependency): the checks parse UTF-8 `&str`
 # inputs, so charset detection is unnecessary. See docs/dependencies.md.
-yaml-rust2 = { version = "0.11.0", default-features = false }
+yaml-rust2 = { version = "0.12.0", default-features = false }

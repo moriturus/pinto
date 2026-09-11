@@ -43,10 +43,17 @@ if [ "$missing_source" -ne 0 ]; then
     exit 1
 fi
 
+target_dir=$(cargo metadata --no-deps --format-version 1 |
+    sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
+if [ -z "$target_dir" ]; then
+    echo "could not determine Cargo target directory" >&2
+    exit 1
+fi
+
 package_marker="$temporary_dir/package-start"
 touch "$package_marker"
 package
-package_file=$(find "$root/target/package" -maxdepth 1 -type f -name 'pinto-cli-*.crate' -newer "$package_marker" -print | sort | tail -n 1)
+package_file=$(find "$target_dir/package" -maxdepth 1 -type f -name 'pinto-cli-*.crate' -newer "$package_marker" -print | sort | tail -n 1)
 if [ -z "$package_file" ]; then
     echo "cargo package did not produce a .crate archive" >&2
     exit 1

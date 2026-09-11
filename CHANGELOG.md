@@ -7,6 +7,16 @@ and releases use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-11
+
+This patch release improves Sprint schedule editing without changing the
+persisted paired-period invariant or the existing `sprint new` contract.
+
+### Fixed
+
+- Allowed `sprint edit --start` and `--end` to be updated independently while
+  preserving the endpoint that was not supplied.
+
 ## [0.4.3] - 2026-07-31
 
 This patch release adds Sprint records and strengthens board integrity,
