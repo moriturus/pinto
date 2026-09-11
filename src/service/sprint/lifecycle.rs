@@ -13,6 +13,8 @@ use std::path::Path;
 
 use super::SprintDeletionOptions;
 
+type SprintEditPeriod = (Option<DateTime<Utc>>, Option<DateTime<Utc>>);
+
 /// Create a sprint on the board in `project_dir` and return the saved [`Sprint`].
 ///
 /// The state is [`crate::sprint::SprintState::Planned`]. `goal` is persisted after the frontmatter
@@ -69,9 +71,11 @@ pub async fn create_sprint(
 
 /// Update the title, goal, and/or planned period of an existing sprint.
 ///
-/// Fields set to `None` remain unchanged. Return [`Error::NothingToUpdate`] when no field is
-/// supplied, [`Error::EmptySprintTitle`] for a blank title, [`Error::InvalidSprintPeriod`] for an
-/// inverted period, or [`Error::SprintNotFound`] when the sprint does not exist.
+/// Fields set to `None` remain unchanged. Supplying only one schedule endpoint preserves the
+/// existing counterpart. Return [`Error::NothingToUpdate`] when no field is supplied,
+/// [`Error::EmptySprintTitle`] for a blank title, [`Error::SprintPeriodIncomplete`] when the
+/// effective schedule has only one endpoint, [`Error::InvalidSprintPeriod`] for an inverted period,
+/// or [`Error::SprintNotFound`] when the sprint does not exist.
 ///
 /// # Errors
 ///
@@ -83,14 +87,23 @@ pub async fn edit_sprint(
     id: &SprintId,
     title: Option<String>,
     goal: Option<String>,
-    period: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    period: Option<SprintEditPeriod>,
     goal_achieved: Option<bool>,
     clear_goal_achieved: bool,
 ) -> Result<Sprint> {
     let (_board_dir, repo, _config, _lock) = open_board_locked(project_dir).await?;
     let mut sprint = SprintRepository::load(&repo, id).await?;
     let now = Utc::now();
-    if title.is_some() || goal.is_some() || period.is_some() {
+    let schedule_update = period.is_some();
+    let period = if let Some((start, end)) = period {
+        match (start.or(sprint.start), end.or(sprint.end)) {
+            (Some(start), Some(end)) => Some((start, end)),
+            _ => return Err(Error::SprintPeriodIncomplete(sprint.id.clone())),
+        }
+    } else {
+        None
+    };
+    if title.is_some() || goal.is_some() || schedule_update {
         sprint.update_details(title, goal, period, now)?;
     } else if goal_achieved.is_none() && !clear_goal_achieved {
         return Err(Error::NothingToUpdate);

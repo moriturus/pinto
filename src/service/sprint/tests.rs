@@ -200,7 +200,7 @@ async fn edit_updates_title_goal_and_period() {
         &sid("S-1"),
         Some("Updated title".to_string()),
         Some("Updated goal".to_string()),
-        Some((start, end)),
+        Some((Some(start), Some(end))),
         None,
         false,
     )
@@ -211,6 +211,112 @@ async fn edit_updates_title_goal_and_period() {
     assert_eq!(edited.goal, "Updated goal");
     assert_eq!(edited.start, Some(start));
     assert_eq!(edited.end, Some(end));
+}
+
+#[tokio::test]
+async fn edit_preserves_omitted_period_endpoint() {
+    let dir = init_temp().await;
+    let original_start = date(2026, 8, 3);
+    let original_end = date(2026, 8, 14);
+    create_sprint(
+        dir.path(),
+        &sid("S-1"),
+        "Sprint 1",
+        None,
+        Some((original_start, original_end)),
+    )
+    .await
+    .unwrap();
+
+    let edited = edit_sprint(
+        dir.path(),
+        &sid("S-1"),
+        None,
+        None,
+        Some((Some(date(2026, 8, 5)), None)),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(edited.start, Some(date(2026, 8, 5)));
+    assert_eq!(edited.end, Some(original_end));
+
+    let edited = edit_sprint(
+        dir.path(),
+        &sid("S-1"),
+        None,
+        None,
+        Some((None, Some(date(2026, 8, 18)))),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(edited.start, Some(date(2026, 8, 5)));
+    assert_eq!(edited.end, Some(date(2026, 8, 18)));
+}
+
+#[tokio::test]
+async fn edit_rejects_inverted_effective_period_without_mutation() {
+    let dir = init_temp().await;
+    let start = date(2026, 8, 3);
+    let end = date(2026, 8, 14);
+    create_sprint(
+        dir.path(),
+        &sid("S-1"),
+        "Sprint 1",
+        None,
+        Some((start, end)),
+    )
+    .await
+    .unwrap();
+
+    let err = edit_sprint(
+        dir.path(),
+        &sid("S-1"),
+        Some("Changed".to_string()),
+        None,
+        Some((Some(date(2026, 8, 15)), None)),
+        None,
+        false,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        err,
+        Error::InvalidSprintPeriod {
+            start: date(2026, 8, 15).date_naive(),
+            end: end.date_naive(),
+        }
+    );
+
+    let repo = FileRepository::new(dir.path().join(".pinto"));
+    let unchanged = SprintRepository::load(&repo, &sid("S-1")).await.unwrap();
+    assert_eq!(unchanged.title, "Sprint 1");
+    assert_eq!(unchanged.start, Some(start));
+    assert_eq!(unchanged.end, Some(end));
+}
+
+#[tokio::test]
+async fn edit_rejects_one_sided_effective_period() {
+    let dir = init_temp().await;
+    create_sprint(dir.path(), &sid("S-1"), "Sprint 1", None, None)
+        .await
+        .unwrap();
+
+    let err = edit_sprint(
+        dir.path(),
+        &sid("S-1"),
+        None,
+        None,
+        Some((Some(date(2026, 8, 3)), None)),
+        None,
+        false,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, Error::SprintPeriodIncomplete(sid("S-1")));
 }
 
 #[tokio::test]
