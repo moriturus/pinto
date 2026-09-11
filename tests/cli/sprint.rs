@@ -366,6 +366,113 @@ fn sprint_edit_updates_goal_title_and_period_then_allows_start() {
         "active"
     );
 }
+#[test]
+fn sprint_edit_start_preserves_existing_end() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Planning",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-20",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--start", "2026-07-08"])
+        .assert()
+        .success();
+
+    let edited = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(edited[0]["start"], "2026-07-08T00:00:00+00:00");
+    assert_eq!(edited[0]["end"], "2026-07-20T00:00:00+00:00");
+}
+
+#[test]
+fn sprint_edit_end_preserves_existing_start() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Planning",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-20",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--end", "2026-07-22"])
+        .assert()
+        .success();
+
+    let edited = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(edited[0]["start"], "2026-07-06T00:00:00+00:00");
+    assert_eq!(edited[0]["end"], "2026-07-22T00:00:00+00:00");
+}
+
+#[test]
+fn sprint_edit_rejects_inverted_effective_period_without_mutation() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "new",
+            "S-1",
+            "Planning",
+            "--start",
+            "2026-07-06",
+            "--end",
+            "2026-07-20",
+        ])
+        .assert()
+        .success();
+
+    pinto(dir.path())
+        .args([
+            "sprint",
+            "edit",
+            "S-1",
+            "--title",
+            "Changed",
+            "--start",
+            "2026-07-21",
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("invalid sprint period"));
+
+    let unchanged = json_stdout(pinto(dir.path()).args(["sprint", "list", "--json"]));
+    assert_eq!(unchanged[0]["title"], "Planning");
+    assert_eq!(unchanged[0]["start"], "2026-07-06T00:00:00+00:00");
+    assert_eq!(unchanged[0]["end"], "2026-07-20T00:00:00+00:00");
+}
+
+#[test]
+fn sprint_edit_rejects_malformed_schedule_input() {
+    let dir = TempDir::new().expect("temp dir");
+    pinto(dir.path()).arg("init").assert().success();
+
+    pinto(dir.path())
+        .args(["sprint", "edit", "S-1", "--start", "not-a-date"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("invalid value"));
+}
 
 #[test]
 fn sprint_edit_rejects_empty_title_and_no_fields_without_mutation() {

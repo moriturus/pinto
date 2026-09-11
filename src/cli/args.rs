@@ -519,10 +519,12 @@ pub(super) enum SprintCommand {
         )]
         clear_goal_achieved: bool,
         /// Replacement planned start date and time (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, in UTC).
-        #[arg(long, short = 's', requires = "end", value_parser = parse_utc_datetime)]
+        /// When supplied alone, preserves the existing end date.
+        #[arg(long, short = 's', value_parser = parse_utc_datetime)]
         start: Option<chrono::DateTime<chrono::Utc>>,
         /// Replacement planned end date and time (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, in UTC).
-        #[arg(long, short = 'e', requires = "start", value_parser = parse_utc_datetime)]
+        /// When supplied alone, preserves the existing start date.
+        #[arg(long, short = 'e', value_parser = parse_utc_datetime)]
         end: Option<chrono::DateTime<chrono::Utc>>,
     },
     /// Remove a sprint and release any assigned PBIs back to the backlog.
