@@ -41,7 +41,7 @@ ratatui = "0.30.2"
 # Secure editor buffers: exclusive creation, owner-only Unix permissions,
 # collision retries, and RAII cleanup while an external editor runs.
 tempfile = "3.27.0"
-rustyline = "18.0.1"
+rustyline = "19.0.0"
 # Optional SQLite backend. `bundled` compiles SQLite from source, avoiding a
 # system-library dependency; it remains outside the default build. Keep the
 # 0.39 series while Rust 1.89 is the MSRV: 0.40 pulls a build script that uses
